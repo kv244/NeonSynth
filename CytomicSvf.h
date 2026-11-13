@@ -43,12 +43,19 @@
     factor. The voice therefore passes L = L0 * velocity level * envelope and
     the self-oscillation follows the amp envelope with no extra gain stage.
 
-    Drive divides the ceiling: L / D, with D from 1 to sqrt 10 (0 to 10 dB).
-    The states stay in the undriven domain, so a moving drive never rescales
-    them (no clicks), and the small-signal gain stays 1 at any drive; loud
-    signals and the resonant peak are compressed. (Whether drive stays here
-    is open: at full drive the loop adds inharmonic content at about -30 dB
-    that 2x oversampling does not remove; see the v1.8.0 plan.)
+    Drive sits ahead of the filter (decided 13 Nov 2026, after measuring):
+    drive inside the loop, as a lower ceiling, made inharmonic content at
+    -25 to -40 dB that 2x oversampling did not remove, because the loop
+    makes it, not the sampling. Ahead of the filter it is a plain soft clip,
+    y = L * sat (D x / 4L) / sat (D / 4), D from 1 to 10 (0 to 20 dB):
+    a signal at the ceiling L keeps its peak at every drive, quieter parts
+    are raised (by up to 8.6 dB), so turning drive up makes the sound denser
+    and brighter, not louder. Its harmonics then meet the resonance. It is
+    anti-aliased by first-order ADAA (the antiderivative of
+    u / sqrt (1 + u^2) is sqrt (1 + u^2)), as FOLD is, in double because the
+    difference of two square roots near 1 loses float precision. ADAA delays
+    by half a sample, so the first 5% of the knob crossfades from the dry
+    signal. Same homogeneity: it scales with L, so it follows the envelope.
 
     Notch = low-pass + high-pass: the textbook (s^2 + 1) / (s^2 + k s + 1),
     zeros exactly at the cutoff whatever k is. The other form, x - k * bp,
@@ -86,7 +93,7 @@ public:
         setCoefficients (cutoffHz, R2);
     }
 
-    void reset() noexcept   { s1 = 0.0f; s2 = 0.0f; }
+    void reset() noexcept   { s1 = 0.0f; s2 = 0.0f; lastInput = 0.0f; }
 
     /** The damping JUCE holds as R2 for setResonance (1 / sqrt2), the voice's Q before v1.8.0. */
     static float butterworthK() noexcept
@@ -107,11 +114,41 @@ public:
         return butterworthK() - r * (2.9504896f + r * (-2.979486f + r * 1.4707224f));
     }
 
-    /** Drive 0..1 -> D, 1 (exactly) at 0 up to sqrt 10 (10 dB) at 1, exponential. */
+    /** Drive 0..1 -> D, 1 (exactly) at 0 up to 10 (20 dB) at 1, exponential. */
     static float driveToGain (float drive01) noexcept
     {
-        return std::pow (10.0f, 0.5f * juce::jlimit (0.0f, 1.0f, drive01));
+        return std::pow (10.0f, juce::jlimit (0.0f, 1.0f, drive01));
     }
+
+    /** The drive stage's per-setting values, computed once when the knob moves. */
+    struct Drive
+    {
+        double gain = 1.0;     // D / 4: the input scale per unit of ceiling
+        double makeup = 1.0;   // 1 / sat (D / 4): keeps a signal at the ceiling at the ceiling
+        double blend = 0.0;    // 0..1 over the first 5% of the knob, from the dry signal
+    };
+
+    static Drive makeDrive (float drive01) noexcept
+    {
+        const double d = juce::jlimit (0.0f, 1.0f, drive01);
+        const double quarter = 0.25 * (double) driveToGain ((float) d);
+        return { quarter, 1.0 / sat (quarter), std::min (1.0, 20.0 * d) };
+    }
+
+    /** The drive stage, ahead of the filter: ceiling > 0. Call trackInput()
+        instead on samples where drive is off, so it starts cleanly. */
+    float drive (float x, float ceiling, const Drive& d) noexcept
+    {
+        const double scale = d.gain / (double) ceiling;
+        const double u = scale * (double) x, uPrev = scale * (double) lastInput;
+        const double du = u - uPrev;
+        const double shaped = std::abs (du) > 1.0e-5 ? (std::sqrt (1.0 + u * u) - std::sqrt (1.0 + uPrev * uPrev)) / du
+                                                     : sat (0.5 * (u + uPrev));
+        lastInput = x;
+        return (float) ((double) x + d.blend * ((double) ceiling * d.makeup * shaped - (double) x));
+    }
+
+    void trackInput (float x) noexcept   { lastInput = x; }
 
     /** The nonlinear damping's strength c (see the file comment); with it,
         self-oscillation at 100% resonance peaks at about 1.05 L. */
@@ -144,12 +181,11 @@ public:
         return { yLP, yBP, yHP };
     }
 
-    /** The step with amplitude-dependent damping k + c * (A / limit)^2,
-        limit = ceiling / driveGain (see the file comment). ceiling > 0, driveGain >= 1. */
-    Outputs processNonlinear (float x, float ceiling, float driveGain) noexcept
+    /** The step with amplitude-dependent damping k + c * (A / ceiling)^2
+        (see the file comment). ceiling > 0. */
+    Outputs processNonlinear (float x, float ceiling) noexcept
     {
-        const float limit = ceiling / driveGain;
-        const float a2 = (s1 * s1 + s2 * s2) * 0.25f / (limit * limit);   // (amplitude / limit)^2 from both states
+        const float a2 = (s1 * s1 + s2 * s2) * 0.25f / (ceiling * ceiling);   // (amplitude / ceiling)^2 from both states
         const float q  = dampingCurve * a2;
         const float k  = R2 + maxExtraDamping * q / (maxExtraDamping + q);   // c u^2 when small, never above +2
         const float hk = 1.0f / (1.0f + k * g + g * g);
@@ -194,4 +230,7 @@ private:
     float R2 = butterworthK();
     float g = 0.0f, h = 0.0f;
     float s1 = 0.0f, s2 = 0.0f;
+    float lastInput = 0.0f;   // the drive stage's previous input, for ADAA
+
+    static double sat (double u) noexcept   { return u / std::sqrt (1.0 + u * u); }
 };

@@ -310,15 +310,17 @@ int main()
                     {
                         CytomicSvf svf;
                         svf.prepare (rate);
-                        const float k = CytomicSvf::resonanceToK (res), d = CytomicSvf::driveToGain (drive);
-                        const bool linear = res == 0.0f && drive == 0.0f;
+                        const float k = CytomicSvf::resonanceToK (res);
+                        const auto d = CytomicSvf::makeDrive (drive);
+                        const bool linear = res == 0.0f;
                         svf.setCoefficients (fc > 0.0f ? fc : 1000.0f, k);
                         for (int i = 0; i < n; ++i)
                         {
                             if (fc < 0.0f && i % 16 == 0)
                                 svf.setCoefficients (randomCutoff (random, rate), k);
-                            const float x = (*input)[(size_t) i];
-                            const auto o = linear ? svf.processLinear (x) : svf.processNonlinear (x, 1.0f, d);
+                            const float dry = (*input)[(size_t) i];
+                            const float x = drive > 0.0f ? svf.drive (dry, 1.0f, d) : dry;
+                            const auto o = linear ? svf.processLinear (x) : svf.processNonlinear (x, 1.0f);
                             for (const Mode m : allModes)
                             {
                                 const float y = CytomicSvf::select (o, m);
@@ -346,8 +348,8 @@ int main()
                     CytomicSvf svf;
                     svf.prepare (rate);
                     svf.setCoefficients (fc, CytomicSvf::resonanceToK (1.0f));
-                    const float d = CytomicSvf::driveToGain (drive);
-                    const float limit = ceiling / d;   // the effective ceiling (see CytomicSvf.h)
+                    const auto d = CytomicSvf::makeDrive (drive);
+                    const float limit = ceiling;
                     const auto burst = noise (64, 5, 0.1f * ceiling);
                     const int total = (int) (2.5 * rate);
                     float peak = 0.0f, earlyPeak = 0.0f, lastPeak = 0.0f;
@@ -355,7 +357,8 @@ int main()
                     float previous = 0.0f;
                     for (int i = 0; i < total; ++i)
                     {
-                        const auto o = svf.processNonlinear (i < 64 ? burst[(size_t) i] : 0.0f, ceiling, d);
+                        const float dry = i < 64 ? burst[(size_t) i] : 0.0f;
+                        const auto o = svf.processNonlinear (drive > 0.0f ? svf.drive (dry, ceiling, d) : dry, ceiling);
                         if (i >= (int) (0.5 * rate))   // the 2 s after the build-up
                             for (const Mode m : allModes)
                                 peak = std::max (peak, std::abs (CytomicSvf::select (o, m)));
@@ -384,14 +387,14 @@ int main()
                     std::printf ("    L %.2f drive %.0f%% cutoff %5.0f Hz: peak %.3f x L/D, last 0.5 s peak %.3f x L/D, %.1f Hz\n",
                                  (double) ceiling, drive * 100.0, (double) fc, (double) (peak / limit), (double) (lastPeak / limit), hz);
                 }
-        std::snprintf (what, sizeof what, "peak of all four outputs <= 1.1 x ceiling / drive gain (worst %.3f)", worstRatio);
+        std::snprintf (what, sizeof what, "peak of all four outputs <= 1.1 x ceiling (worst %.3f)", worstRatio);
         check (allBounded, what);
         std::snprintf (what, sizeof what, "still ringing after 2 s, not decaying (last 0.5 s >= 95%% of 0.5..1 s; quietest %.3f x ceiling)", quietest);
         check (allRinging, what);
         std::snprintf (what, sizeof what, "rings at the cutoff within 5%% (worst %.2f%%)", worstPitch * 100.0);
         check (allPitched, what);
         const double spreadDb = 20.0 * std::log10 (flatHigh / flatLow);
-        std::snprintf (what, sizeof what, "level x L/D the same at every cutoff from 100 Hz to 5 kHz, within 1 dB (spread %.2f dB)", spreadDb);
+        std::snprintf (what, sizeof what, "level x L the same at every cutoff from 100 Hz to 5 kHz, within 1 dB (spread %.2f dB)", spreadDb);
         check (spreadDb <= 1.0, what);
     }
 
@@ -410,8 +413,9 @@ int main()
                     ref.prepare (rate);
                     ref.setCoefficients (800.0f, CytomicSvf::resonanceToK (res));
                     std::vector<CytomicSvf::Outputs> base;
+                    const auto d = CytomicSvf::makeDrive (drive);
                     for (const float v : *input)
-                        base.push_back (ref.processNonlinear (v, 0.3f, CytomicSvf::driveToGain (drive)));
+                        base.push_back (ref.processNonlinear (drive > 0.0f ? ref.drive (v, 0.3f, d) : v, 0.3f));
                     float scale = 0.0f;
                     for (const auto& o : base)
                         scale = std::max ({ scale, std::abs (o.lp), std::abs (o.bp), std::abs (o.hp) });
@@ -423,7 +427,8 @@ int main()
                         svf.setCoefficients (800.0f, CytomicSvf::resonanceToK (res));
                         for (size_t i = 0; i < input->size(); ++i)
                         {
-                            const auto o = svf.processNonlinear (a * (*input)[i], a * 0.3f, CytomicSvf::driveToGain (drive));
+                            const float v = a * (*input)[i];
+                            const auto o = svf.processNonlinear (drive > 0.0f ? svf.drive (v, a * 0.3f, d) : v, a * 0.3f);
                             for (const auto& [got, want] : { std::pair<float, float> { o.lp, base[i].lp }, { o.bp, base[i].bp }, { o.hp, base[i].hp } })
                             {
                                 const double err = std::abs ((double) got - (double) a * want) / ((double) a * scale);
@@ -437,7 +442,43 @@ int main()
         check (ok, what);
     }
 
-    std::printf ("\nAliasing (report only): saw, low-pass 5 kHz, resonance 90%%, drive 100%%, 48 kHz\n");
+    std::printf ("\nDrive (ahead of the filter)\n");
+    {
+        const auto x = noise (24000, 13);
+        bool bounded = true, smallGain = true, off = true;
+        double worstPeak = 0.0, worstGain = 0.0;
+        for (const float drive : { 0.0f, 0.02f, 0.3f, 0.7f, 1.0f })
+            for (const float ceiling : { 1.0f, 0.2f })
+            {
+                CytomicSvf svf;
+                svf.prepare (48000.0);
+                const auto d = CytomicSvf::makeDrive (drive);
+                for (const float v : x)
+                {
+                    const float y = svf.drive (ceiling * v, ceiling, d);   // input peak <= the ceiling
+                    worstPeak = std::max (worstPeak, (double) (std::abs (y) / ceiling));
+                    bounded = bounded && std::abs (y) <= 1.001f * ceiling;
+                    off = off && (drive > 0.0f || y == ceiling * v);
+                }
+                // A small, slow signal: gain = blend * makeup * D / 4 + (1 - blend)
+                CytomicSvf quiet;
+                quiet.prepare (48000.0);
+                float y = 0.0f;
+                for (int i = 0; i < 64; ++i)
+                    y = quiet.drive (1.0e-3f * ceiling, ceiling, d);
+                const double want = d.blend * d.makeup * d.gain + (1.0 - d.blend);
+                worstGain = std::max (worstGain, std::abs ((double) y / (1.0e-3 * ceiling) / want - 1.0));
+                smallGain = smallGain && std::abs ((double) y / (1.0e-3 * ceiling) / want - 1.0) < 1.0e-3;
+            }
+        check (off, "drive 0 passes the input through unchanged");
+        std::snprintf (what, sizeof what, "input within the ceiling stays within it at every drive (worst %.4f x L)", worstPeak);
+        check (bounded, what);
+        std::snprintf (what, sizeof what, "small-signal gain as designed (worst relative error %.1e)", worstGain);
+        check (smallGain, what);
+        std::printf ("    small-signal gain at drive 100%%: %+.1f dB\n", 20.0 * std::log10 (CytomicSvf::makeDrive (1.0f).makeup * CytomicSvf::makeDrive (1.0f).gain));
+    }
+
+    std::printf ("\nAliasing (report only): saw, 48 kHz\n");
     {
         // 2093 Hz (C7), not 2 kHz: at 48 kHz a 2 kHz saw's aliases fold exactly onto its own harmonics
         // (48000 / 2000 is a whole number), so no measurement could see them.
@@ -452,51 +493,42 @@ int main()
             v = osc.nextSample();
         std::vector<float> sawIn (in.begin() + skip, in.end());
 
-        const auto run = [&] (float ceiling, float drive, bool linear)
+        // naive: the same drive curve without ADAA, to show what ADAA buys
+        const auto run = [&] (float cutoff, float res, float drive, bool naive)
         {
             CytomicSvf svf;
             svf.prepare (rate);
-            svf.setCoefficients (5000.0f, CytomicSvf::resonanceToK (0.9f));
+            svf.setCoefficients (cutoff, CytomicSvf::resonanceToK (res));
+            const auto d = CytomicSvf::makeDrive (drive);
             std::vector<float> out;
             out.reserve ((size_t) n);
             for (size_t i = 0; i < in.size(); ++i)
             {
-                const auto o = linear ? svf.processLinear (in[i]) : svf.processNonlinear (in[i], ceiling, CytomicSvf::driveToGain (drive));
+                float v = in[i];
+                if (drive > 0.0f)
+                {
+                    if (naive)
+                    {
+                        const double u = d.gain * v;
+                        v = (float) (v + d.blend * (d.makeup * u / std::sqrt (1.0 + u * u) - v));
+                    }
+                    else
+                    {
+                        v = svf.drive (v, 1.0f, d);
+                    }
+                }
+                const auto o = res > 0.0f ? svf.processNonlinear (v, 1.0f) : svf.processLinear (v);
                 if (i >= (size_t) skip)
-                    out.push_back (o.lp);
+                    out.push_back (cutoff > 20000.0f ? v : o.lp);
             }
             return aliasingDb (out, hz, rate);
         };
-        std::printf ("    PolyBLEP saw input alone:                  %7.1f dB\n", aliasingDb (sawIn, hz, rate));
-        std::printf ("    linear filter (no saturator):              %7.1f dB\n", run (1.0f, 0.0f, true));
-        for (const float ceiling : { 2.0f, 1.0f, 0.5f })
-        {
-            std::printf ("    nonlinear, L %.1f, drive   0%%:              %7.1f dB\n", (double) ceiling, run (ceiling, 0.0f, false));
-            std::printf ("    nonlinear, L %.1f, drive 100%%:              %7.1f dB   <- the figure asked for at L %.1f\n",
-                         (double) ceiling, run (ceiling, 1.0f, false), (double) ceiling);
-        }
-
-        // The same at 2x oversampling (JUCE's polyphase IIR half-band), to show what oversampling would buy
-        {
-            juce::dsp::Oversampling<float> os (1, 1, juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true);
-            os.initProcessing (in.size());
-            for (const float ceiling : { 1.0f, 0.5f })
-            {
-                os.reset();
-                std::vector<float> buffer (in);
-                float* channel = buffer.data();
-                juce::dsp::AudioBlock<float> block (&channel, 1, buffer.size());
-                auto up = os.processSamplesUp (block);
-                CytomicSvf svf;
-                svf.prepare (2.0 * rate);
-                svf.setCoefficients (5000.0f, CytomicSvf::resonanceToK (0.9f));
-                for (size_t i = 0; i < up.getNumSamples(); ++i)
-                    up.setSample (0, (int) i, svf.processNonlinear (up.getSample (0, (int) i), ceiling, CytomicSvf::driveToGain (1.0f)).lp);
-                os.processSamplesDown (block);
-                std::vector<float> out (buffer.begin() + skip, buffer.end());
-                std::printf ("    2x oversampled, L %.1f, drive 100%%:         %7.1f dB\n", (double) ceiling, aliasingDb (out, hz, rate));
-            }
-        }
+        std::printf ("    PolyBLEP saw alone:                               %7.1f dB\n", aliasingDb (sawIn, hz, rate));
+        std::printf ("    drive 100%% alone, naive / ADAA:                   %7.1f / %.1f dB\n", run (21000.0f, 0.0f, 1.0f, true), run (21000.0f, 0.0f, 1.0f, false));
+        std::printf ("    drive  50%% alone, naive / ADAA:                   %7.1f / %.1f dB\n", run (21000.0f, 0.0f, 0.5f, true), run (21000.0f, 0.0f, 0.5f, false));
+        std::printf ("    low-pass 5 kHz, resonance 0, drive 0:              %7.1f dB\n", run (5000.0f, 0.0f, 0.0f, false));
+        std::printf ("    low-pass 5 kHz, resonance 90%%, drive 0:            %7.1f dB\n", run (5000.0f, 0.9f, 0.0f, false));
+        std::printf ("    low-pass 5 kHz, resonance 90%%, drive 100%%:         %7.1f dB\n", run (5000.0f, 0.9f, 1.0f, false));
         std::printf ("    (non-harmonic energy relative to total; lower is cleaner)\n");
     }
 
