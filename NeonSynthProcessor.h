@@ -266,6 +266,9 @@ private:
     juce::AudioParameterFloat*  noiseLevelParameter    = nullptr;
     juce::AudioParameterFloat*  foldDriveParameter     = nullptr;
     juce::AudioParameterFloat*  foldMixParameter       = nullptr;
+    juce::AudioParameterChoice* filterModeParameter    = nullptr;
+    juce::AudioParameterFloat*  filterResParameter     = nullptr;
+    juce::AudioParameterFloat*  filterDriveParameter   = nullptr;
 
     /** CHOP's pattern, bit k = step k chopped. Written by the editor, read once per block; lock-free. */
     std::atomic<juce::uint16> chopPattern { ChopSettings().pattern };

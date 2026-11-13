@@ -49,6 +49,12 @@ public:
         int   waveform = 0;            // PolyBlepOscillator::Waveform: 0 Sine, 1 Square, 2 Triangle, 3 Sawtooth
         float cutoffHz = 2000.0f;
         bool  filterOn = true;
+
+        // Filter character (v1.8.0); the defaults are the v1.7.1 filter.
+        int   filterMode = 0;          // CytomicSvf::Mode: 0 Low-pass, 1 High-pass, 2 Band-pass, 3 Notch
+        float filterResonance = 0.0f;  // 0..1
+        float filterDrive = 0.0f;      // 0..1
+
         float width = 0.0f;            // stereo width, 0 = mono .. 1 = full spread
         juce::ADSR::Parameters adsr;
 

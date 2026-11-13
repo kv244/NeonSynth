@@ -10,8 +10,11 @@ sample. Every parameter added since a release starts at a neutral default, so a
 session that never touches the new controls must render bit-identically: this
 is the check behind the roadmap's "defaults neutral" rule.
 
-The sessions only set parameters both builds have. Each build renders in its
-own process, so the two plugins (which share a plugin ID) never meet.
+A session that sets a parameter the earlier release lacks (a new feature) has
+nothing to compare against there, so it is rendered twice by the current build,
+each time in a fresh process, and the two renders must match: the new feature
+must be repeatable. Each build renders in its own process, so the two plugins
+(which share a plugin ID) never meet.
 
     python tests/compare_versions.py OLD.vst3 NEW.vst3
 
@@ -69,6 +72,20 @@ SESSIONS = {
     "sequencer-swing-gate": (dict(sequencer_sync=False, sequencer_mode="Transpose", sequencer_tempo=140.0,
                                   sequencer_rate="1/16", sequencer_swing=0.3, sequencer_gate=0.8, sequencer_on=True),
                              [(55, 0.0, 1.0, 100), (60, 1.2, 2.2, 100)], 2.6),
+    # The filter's modes, resonance and drive (v1.8.0). Earlier builds lack these parameters, so
+    # these sessions compare the new build with itself (see the module docstring).
+    "filter-low-pass-res50": (dict(waveform="Sawtooth", cutoff=800.0, filter_mode="Low-pass",
+                                   filter_resonance=50.0), LINE, 2.5),
+    "filter-high-pass-res50": (dict(waveform="Sawtooth", cutoff=800.0, filter_mode="High-pass",
+                                    filter_resonance=50.0), LINE, 2.5),
+    "filter-band-pass-res50": (dict(waveform="Sawtooth", cutoff=800.0, filter_mode="Band-pass",
+                                    filter_resonance=50.0), LINE, 2.5),
+    "filter-notch-res50": (dict(waveform="Sawtooth", cutoff=800.0, filter_mode="Notch",
+                                filter_resonance=50.0), LINE, 2.5),
+    "filter-self-oscillation-chord": (dict(waveform="Sawtooth", cutoff=1200.0, filter_mode="Low-pass",
+                                           filter_resonance=100.0), CHORD, 2.2),
+    "filter-drive-saw": (dict(waveform="Sawtooth", cutoff=1500.0, filter_resonance=70.0,
+                              filter_drive=100.0), CHORD, 2.2),
 }
 
 
@@ -109,26 +126,36 @@ def main() -> int:
 
     old_vst, new_vst = (plugin_path(v) for v in sys.argv[1:3])
     with tempfile.TemporaryDirectory() as tmp:
-        outs = []
-        for i, vst in enumerate((old_vst, new_vst)):
+        def render_in_process(vst: str, i: int) -> dict:
             out = str(Path(tmp) / f"render{i}.npz")
             subprocess.run([sys.executable, __file__, "render", vst, out], check=True)
             with np.load(out) as data:   # closed again, or Windows can't delete the folder
-                outs.append({key: data[key] for key in data.files})
-        old, new = outs
+                return {key: data[key] for key in data.files}
+
+        old = render_in_process(old_vst, 0)
+        new = render_in_process(new_vst, 1)
+        # Sessions only the new build can render are checked against a second render of the new build.
+        new_only = [name for name in SESSIONS if name in new and name not in old]
+        again = render_in_process(new_vst, 2) if new_only else {}
 
         failed = []
         for name in SESSIONS:
-            if name not in old or name not in new:
-                print(f"  SKIP  {name} (a parameter it sets is missing from one build)")
+            if name in new_only:
+                a, b, against = again.get(name), new[name], "a second render of the new build"
+            elif name in old and name in new:
+                a, b, against = old[name], new[name], "the old build"
+            else:
+                print(f"  SKIP  {name} (a parameter it sets is missing from the new build)")
                 continue
-            a, b = old[name], new[name]
-            if not np.isfinite(b).all():
+            if a is None:
+                failed.append(name)
+                print(f"  FAIL  {name}: missing from the second render of the new build")
+            elif not np.isfinite(b).all():
                 failed.append(name)
                 print(f"  FAIL  {name}: the new build's output is not finite")
             elif a.shape == b.shape and np.array_equal(a, b):
                 peak = float(np.max(np.abs(b)))
-                print(f"  PASS  {name}: identical ({b.shape[1]} samples, peak {peak:.3f})")
+                print(f"  PASS  {name}: identical to {against} ({b.shape[1]} samples, peak {peak:.3f})")
             else:
                 failed.append(name)
                 if a.shape != b.shape:
