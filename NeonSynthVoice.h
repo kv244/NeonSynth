@@ -134,7 +134,7 @@ public:
 
         cutoff.reset (newSampleRate, 0.02);       // 20 ms, multiplicative (even in octaves)
         cutoff.setCurrentAndTargetValue (clampCutoff (cutoff.getTargetValue()));
-        filter.setCutoffFrequency (cutoff.getCurrentValue());
+        setFilterCoefficients();
 
         filterMix.reset (newSampleRate, 0.01);    // 10 ms crossfade for the on/off toggle
 
@@ -196,7 +196,7 @@ public:
             pan.setCurrentAndTargetValue (notePan * width);
             updatePanGains (pan.getCurrentValue());
             cutoff.setCurrentAndTargetValue (cutoff.getTargetValue());
-            filter.setCutoffFrequency (cutoff.getCurrentValue());
+            setFilterCoefficients();   // at once, not at the next 16-sample boundary
             filterMix.setCurrentAndTargetValue (filterMix.getTargetValue());
         }
 
@@ -240,7 +240,8 @@ public:
         two versions:
 
           steady   nothing is gliding (velocity level, cutoff, filter on/off
-                   mix and pan all at rest - almost always the case): their
+                   mix and pan all at rest, and the filter's coefficients
+                   already match the cutoff - almost always the case): their
                    values are read once and every "is it smoothing?" branch
                    is out of the loop;
           gliding  any of them is moving: each is advanced per sample.
@@ -250,15 +251,23 @@ public:
         do the same operations in the same order, so the steady version is
         bit-identical to the single loop this replaced.
 
-        Known flaw, kept on purpose for now: the gliding version reads the
-        level and filter-mix smoothers once before its loop (the two "steady"
-        values at the top of renderSamples(), which it then doesn't use), so
-        each call moves those two glides one sample further than it should. A
-        2 ms velocity glide or a 10 ms filter switch ends a few samples early;
-        it is not audible. Fixing it changes the output bits while something
-        glides (a retriggered or stolen voice, the filter switch, a Width
-        change), so it is left for the v1.8.0 filter work, where the voice's
-        render loop is reworked and re-verified anyway (code review, 12 Nov 2026).
+        The filter's coefficients (a tan() and a division) are not updated
+        every sample: while the cutoff moves they are set every 16 samples
+        from modulatedCutoffHz(), and at rest not at all. The cutoff smoother
+        itself still advances every sample, so its timing is unchanged. The
+        16-sample countdown runs on across calls (the steady version advances
+        it arithmetically), so the update points, and with them the output,
+        don't depend on the host's block size or on where MIDI events split
+        a block. When the cutoff comes to rest between two update points the
+        last update is still pending; the voice stays in the gliding version
+        until it has been made.
+
+        The gliding version advances the level and filter-mix smoothers only
+        inside its loop, once per sample. (Up to v1.7.1 it also read them once
+        before the loop, so each call moved those two glides one sample
+        further than it should - a velocity glide or filter switch ended a few
+        samples early. Fixed in v1.8.0; the steady version, which reads them
+        once on purpose, is unchanged.)
 
         Why not render stage by stage (whole buffers through the oscillator,
         then the envelope, then the filter...) so the compiler can vectorise
@@ -285,9 +294,15 @@ public:
         if (cloudSounds)
             renderCloud (numSamples);
 
-        const bool steady = ! level.isSmoothing() && ! cutoff.isSmoothing() && ! filterMix.isSmoothing() && ! pan.isSmoothing();
+        const bool steady = ! level.isSmoothing() && ! cutoff.isSmoothing() && ! filterMix.isSmoothing() && ! pan.isSmoothing()
+                         && ! filterUpdatePending();
         const int rendered = steady ? renderSamples<true>  (left, right, startSample, numSamples, cloudSounds)
                                     : renderSamples<false> (left, right, startSample, numSamples, cloudSounds);
+
+        // The gliding version counts down per sample; the steady one skips ahead here.
+        if (steady)
+            coefficientCountdown = (coefficientCountdown - 1 + coefficientInterval - rendered % coefficientInterval)
+                                       % coefficientInterval + 1;
 
         samplesSinceOn += rendered;
         if (samplesSinceOff >= 0)
@@ -300,20 +315,31 @@ private:
     int renderSamples (float* left, float* right, int startSample, int numSamples, bool cloudSounds) noexcept
     {
         // Steady: the values that would otherwise be advanced every sample, read once.
-        // (getNextValue() of a smoother at rest just returns its value.)
-        const float steadyLevel = level.getNextValue(), steadyMix = filterMix.getNextValue();
+        // (getNextValue() of a smoother at rest just returns its value.) Gliding doesn't
+        // touch them here: its loop advances them, once per sample.
+        const float steadyLevel = steady ? level.getNextValue()     : 0.0f;
+        const float steadyMix   = steady ? filterMix.getNextValue() : 0.0f;
         const float steadyLeft = gainLeft, steadyRight = gainRight;
 
         int rendered = 0;
         for (int i = startSample; i < startSample + numSamples; ++i, ++rendered)
         {
             if constexpr (! steady)
+            {
                 if (cutoff.isSmoothing())
-                    filter.setCutoffFrequency (cutoff.getNextValue());
+                    cutoff.getNextValue();   // per sample, so the glide's timing is unchanged
+
+                if (--coefficientCountdown == 0)
+                {
+                    coefficientCountdown = coefficientInterval;
+                    if (filterUpdatePending())
+                        setFilterCoefficients();
+                }
+            }
 
             lastEnvelope    = adsr.getNextSample();
             const float dry = nextSourceSample (cloudSounds) * (steady ? steadyLevel : level.getNextValue()) * lastEnvelope;
-            const float wet = filter.processSample (0, dry);   // always run: state stays warm
+            const float wet = filterStep (dry);   // always run: state stays warm
             const float out = dry + (steady ? steadyMix : filterMix.getNextValue()) * (wet - dry);
 
             if constexpr (! steady)
@@ -361,6 +387,52 @@ private:
     float clampCutoff (float hz) const noexcept
     {
         return juce::jlimit (20.0f, 0.45f * (float) sampleRate, hz);   // stay well below Nyquist
+    }
+
+    //==============================================================================
+    // The filter. Everything that touches it goes through the four functions below,
+    // so the filter itself can be replaced without touching the render loop.
+
+    /** The cutoff the filter should have right now: the (smoothed) knob, plus
+        modulation in octaves, clamped. The one place the cutoff is worked out. */
+    float modulatedCutoffHz() const noexcept
+    {
+        const float knobHz = cutoff.getCurrentValue();   // already clamped by setParameters()
+
+        // Modulation, in octaves, adds up here: the filter envelope and velocity
+        // (v1.8), the LFO and pitch bend (v1.9). Nothing yet. Anything that can
+        // move it per sample must also count as "moving" in renderNextBlock(),
+        // so that block renders in the gliding version.
+        const float modulationOctaves = 0.0f;
+
+        // Unmodulated, the knob value goes through untouched: a round trip through
+        // log2 and exp2 can move it by a bit, and the default sound must not change.
+        if (modulationOctaves == 0.0f)
+            return knobHz;
+
+        return clampCutoff (std::exp2 (std::log2 (knobHz) + modulationOctaves));
+    }
+
+    /** True if the coefficients lag the cutoff (it moved since the last update). */
+    bool filterUpdatePending() const noexcept
+    {
+        return modulatedCutoffHz() != coefficientCutoffHz;
+    }
+
+    /** Sets the filter's coefficients from modulatedCutoffHz() and restarts the
+        16-sample countdown. The render loop calls it every 16 samples while the
+        cutoff moves; prepare() and startNote() call it to set them at once. */
+    void setFilterCoefficients() noexcept
+    {
+        coefficientCutoffHz = modulatedCutoffHz();
+        filter.setCutoffFrequency (coefficientCutoffHz);
+        coefficientCountdown = coefficientInterval;
+    }
+
+    /** One sample through the filter, with the current coefficients. */
+    float filterStep (float dry) noexcept
+    {
+        return filter.processSample (0, dry);
     }
 
     /** Picks the note's source and starts it. */
@@ -477,6 +549,9 @@ private:
     juce::SmoothedValue<float> level { 0.0f };   // velocity * voiceGain
     juce::dsp::StateVariableTPTFilter<float> filter;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Multiplicative> cutoff { 2000.0f };
+    static constexpr int coefficientInterval = 16;   // samples between coefficient updates while the cutoff moves
+    int   coefficientCountdown = coefficientInterval;  // samples until the next one, 1..16; runs on across calls
+    float coefficientCutoffHz = 0.0f;                  // the cutoff the coefficients were last set for
     juce::SmoothedValue<float> filterMix { 1.0f };
 
     // Stereo placement
