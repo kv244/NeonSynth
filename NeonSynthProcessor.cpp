@@ -140,6 +140,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout NeonSynthProcessor::createPa
                                                         NormalisableRange<float> (1.0f, 10.0f, 0.01f), 3.0f));
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "foldMix", 1 }, "Fold Mix",
                                                         NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f));          // %: 0 skips the fold
+
+    // Filter character (v1.8.0). The defaults (Low-pass, resonance 0, drive 0) are the filter of
+    // v1.7.1, so sessions saved before v1.8.0 render the same.
+    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "filterMode", 1 }, "Filter Mode",
+                                                         StringArray { "Low-pass", "High-pass", "Band-pass", "Notch" }, 0));
+    layout.add (std::make_unique<AudioParameterFloat>  (ParameterID { "filterRes", 1 }, "Filter Resonance",
+                                                         NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f));         // %: self-oscillates near the top
+    layout.add (std::make_unique<AudioParameterFloat>  (ParameterID { "filterDrive", 1 }, "Filter Drive",
+                                                         NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f));         // %: 0 keeps the filter linear
     return layout;
 }
 
@@ -196,6 +205,9 @@ NeonSynthProcessor::NeonSynthProcessor()
     noiseLevelParameter    = getTypedParameter<juce::AudioParameterFloat>  (apvts, "noiseLevel");
     foldDriveParameter     = getTypedParameter<juce::AudioParameterFloat>  (apvts, "foldDrive");
     foldMixParameter       = getTypedParameter<juce::AudioParameterFloat>  (apvts, "foldMix");
+    filterModeParameter    = getTypedParameter<juce::AudioParameterChoice> (apvts, "filterMode");
+    filterResParameter     = getTypedParameter<juce::AudioParameterFloat>  (apvts, "filterRes");
+    filterDriveParameter   = getTypedParameter<juce::AudioParameterFloat>  (apvts, "filterDrive");
 
     loadDefaultPattern();
     publishSample (SampleLoader::makeDefaultSample());
@@ -256,6 +268,9 @@ void NeonSynthProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     params.waveform = waveformParameter->getIndex();
     params.cutoffHz = cutoffParameter->get();
     params.filterOn = filterEnabledParameter->get();
+    params.filterMode      = filterModeParameter->getIndex();
+    params.filterResonance = filterResParameter->get() * 0.01f;
+    params.filterDrive     = filterDriveParameter->get() * 0.01f;
     params.width    = widthParameter->get();
     params.adsr     = { attackParameter->get(), decayParameter->get(),
                         sustainParameter->get(), releaseParameter->get() };

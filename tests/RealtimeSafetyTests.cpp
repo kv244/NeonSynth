@@ -212,6 +212,15 @@ int main()
             setParameter (processor, "foldDrive", 1.0f + (float) ((b / 170) % 4) * 3.0f);  // 1, 4, 7, 10
         if (b % 130 == 0)
             setParameter (processor, "foldMix", (float) ((b / 130) % 5) * 25.0f);          // 0 skips the fold
+
+        // Filter character (v1.8.0): mode changes start a crossfade, resonance and drive move
+        // the filter between its linear and saturating paths.
+        if (b % 115 == 0)
+            setParameter (processor, "filterMode", (float) ((b / 115) % 4));               // Low-pass, High-pass, Band-pass, Notch
+        if (b % 105 == 0)
+            setParameter (processor, "filterRes", (float) ((b / 105) % 5) * 25.0f);        // 0 (linear) ... 100 % (self-oscillation)
+        if (b % 135 == 0)
+            setParameter (processor, "filterDrive", (float) ((b / 135) % 5) * 25.0f);     // 0 (linear) ... 100 %
         if (b % 50 == 0)
             setParameter (processor, "grPos", (float) ((b / 50) % 5) * 0.25f);
         if (b % 150 == 0)
