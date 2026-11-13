@@ -1,0 +1,170 @@
+// NeonSynth - Copyright (C) 2026 Razvan Julian Petrescu
+// SPDX-License-Identifier: AGPL-3.0-only
+// Licensed under the GNU Affero General Public License v3; see LICENSE.
+
+#pragma once
+#include <juce_core/juce_core.h>
+#include <cmath>
+#include <complex>
+
+/**
+    @file CytomicSvf.h
+
+    The voice filter from v1.8.0: Andrew Simper's (Cytomic) trapezoidal
+    state-variable filter, with a resonance that reaches self-oscillation, a
+    bounded soft saturator in the loop and a drive control.
+
+    Why JUCE's arithmetic, operation for operation: before v1.8.0 the voice ran
+    juce::dsp::StateVariableTPTFilter. Default settings must still render
+    bit-identical audio, so the linear path (processLinear, setCoefficients)
+    repeats JUCE's update() and processSample() exactly: g from a double tan of
+    the float cutoff, h from a double sum of the float products R2 * g and
+    g * g, and the same float operations in the same order per sample. Any
+    "equivalent" rewrite (k * g + g * g as one product, s1 = 2 * yBP - s1, ...)
+    rounds differently. FilterTests checks the bits against JUCE.
+
+    The limiter: after each nonlinear step the band-pass state is bounded,
+    s1 = L * sat (s1 / L) with sat (u) = u / sqrt (1 + u * u) (slope 1 at 0,
+    |sat| < 1). Below L the filter is close to linear; at negative damping
+    (resonance near 100%) it is what holds the self-oscillation, so its level
+    is set by L and stays below it. Because the filter is linear and
+    L * sat (s / L) is homogeneous (a * L * sat (a * s / (a * L)) = a * that),
+    scaling the input and L together scales the output by the same factor.
+    The voice therefore passes L = L0 * velocity level * envelope and the
+    self-oscillation follows the amp envelope with no extra gain stage.
+
+    Drive: the signal entering the saturator is multiplied by D and divided by
+    D after it. By the same homogeneity this is the filter with ceiling L / D,
+    which is how it is computed: the states stay in the undriven domain, so a
+    moving drive never rescales them (no clicks), and the small-signal gain
+    stays 1 at any drive (that division is the level compensation).
+
+    Notch = low-pass + high-pass: the textbook (s^2 + 1) / (s^2 + k s + 1),
+    zeros exactly at the cutoff whatever k is. The other form, x - k * bp,
+    needs k and the undriven input, which the nonlinear path does not keep.
+
+    Audio thread: no allocation, no locks. One channel per instance.
+*/
+class CytomicSvf
+{
+public:
+    /** In the order of the Filter Mode parameter's choices. */
+    enum class Mode { lowpass = 0, highpass = 1, bandpass = 2, notch = 3 };
+
+    struct Outputs { float lp, bp, hp; };
+
+    CytomicSvf() noexcept   { setCoefficients (cutoffHz, R2); }   // as JUCE's constructor
+
+    static float select (const Outputs& o, Mode m) noexcept
+    {
+        switch (m)
+        {
+            case Mode::highpass:  return o.hp;
+            case Mode::bandpass:  return o.bp;
+            case Mode::notch:     return o.lp + o.hp;
+            case Mode::lowpass:
+            default:              return o.lp;
+        }
+    }
+
+    /** Keeps the last cutoff and damping, as JUCE's prepare() does. */
+    void prepare (double newSampleRate) noexcept
+    {
+        sampleRate = newSampleRate;
+        reset();
+        setCoefficients (cutoffHz, R2);
+    }
+
+    void reset() noexcept   { s1 = 0.0f; s2 = 0.0f; }
+
+    /** The damping JUCE holds as R2 for setResonance (1 / sqrt2), the voice's Q before v1.8.0. */
+    static float butterworthK() noexcept
+    {
+        return (float) (1.0 / (double) (1.0f / std::sqrt (2.0f)));
+    }
+
+    /** Resonance 0..1 -> damping k (JUCE's R2 = 1 / Q).
+        0 gives butterworthK() exactly (0 * anything = 0). The cubic passes
+        through Q 2 at 50%, Q 10 at 90% and k = 0 at 98%, and reaches
+        k = -0.0275 at 100%: the filter self-oscillates from about 98% and the
+        saturator holds the level. It falls monotonically over 0..1.
+        The self-oscillation settles where the saturator's loss balances the
+        negative damping, so its level is a fraction of the ceiling that grows
+        with the cutoff: about 0.04 L / D at 200 Hz, 0.1 at 1 kHz, 0.2 at 5 kHz
+        (48 kHz; FilterTests prints it). */
+    static float resonanceToK (float resonance01) noexcept
+    {
+        const float r = juce::jlimit (0.0f, 1.0f, resonance01);
+        return butterworthK() - r * (2.9504896f + r * (-2.979486f + r * 1.4707224f));
+    }
+
+    /** Drive 0..1 -> gain into the saturator, 1 (exactly) at 0 up to 10 at 1, exponential. */
+    static float driveToGain (float drive01) noexcept
+    {
+        return std::pow (10.0f, juce::jlimit (0.0f, 1.0f, drive01));
+    }
+
+    /** JUCE's update(), with k in place of R2. cutoffHz must be below half the sample rate. */
+    void setCoefficients (float newCutoffHz, float k) noexcept
+    {
+        cutoffHz = newCutoffHz;
+        R2 = k;
+        g  = (float) std::tan (juce::MathConstants<double>::pi * cutoffHz / sampleRate);
+        h  = (float) (1.0 / (1.0 + R2 * g + g * g));
+    }
+
+    /** JUCE's processSample(), operation for operation (bit-identical at the same g, R2, h). */
+    Outputs processLinear (float x) noexcept
+    {
+        const float yHP = h * (x - s1 * (g + R2) - s2);
+
+        const float yBP = yHP * g + s1;
+        s1              = yHP * g + yBP;
+
+        const float yLP = yBP * g + s2;
+        s2              = yBP * g + yLP;
+
+        return { yLP, yBP, yHP };
+    }
+
+    /** The linear step, then the band-pass state bounded by the saturator with
+        ceiling L / driveGain (see the file comment). ceiling > 0, driveGain >= 1. */
+    Outputs processNonlinear (float x, float ceiling, float driveGain) noexcept
+    {
+        const Outputs out = processLinear (x);
+        const float limit = ceiling / driveGain;
+        const float u = s1 / limit;
+        s1 = limit * (u / std::sqrt (1.0f + u * u));
+        return out;
+    }
+
+    /** Magnitude of the linear filter at hz with the current g and k: the
+        bilinear transform of the analog prototype, s = j tan (pi hz / fs) / g. */
+    double magnitudeAt (double hz, Mode m) const noexcept
+    {
+        const double w = std::tan (juce::MathConstants<double>::pi * hz / sampleRate) / (double) g;
+        const std::complex<double> s (0.0, w);
+        const std::complex<double> den = s * s + (double) R2 * s + 1.0;
+        std::complex<double> num;
+        switch (m)
+        {
+            case Mode::highpass:  num = s * s; break;
+            case Mode::bandpass:  num = s; break;
+            case Mode::notch:     num = s * s + 1.0; break;
+            case Mode::lowpass:
+            default:              num = 1.0; break;
+        }
+        return std::abs (num / den);
+    }
+
+    float getG() const noexcept   { return g; }
+    float getK() const noexcept   { return R2; }
+
+private:
+    // As JUCE initialises them: 1 kHz at 44.1 kHz, Q 1 / sqrt2.
+    double sampleRate = 44100.0;
+    float cutoffHz = 1000.0f;
+    float R2 = butterworthK();
+    float g = 0.0f, h = 0.0f;
+    float s1 = 0.0f, s2 = 0.0f;
+};
