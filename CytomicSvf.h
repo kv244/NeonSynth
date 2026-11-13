@@ -11,8 +11,8 @@
     @file CytomicSvf.h
 
     The voice filter from v1.8.0: Andrew Simper's (Cytomic) trapezoidal
-    state-variable filter, with a resonance that reaches self-oscillation, a
-    bounded soft saturator in the loop and a drive control.
+    state-variable filter, with a resonance that reaches self-oscillation,
+    amplitude-dependent damping that bounds it, and a drive control.
 
     Why JUCE's arithmetic, operation for operation: before v1.8.0 the voice ran
     juce::dsp::StateVariableTPTFilter. Default settings must still render
@@ -23,21 +23,32 @@
     "equivalent" rewrite (k * g + g * g as one product, s1 = 2 * yBP - s1, ...)
     rounds differently. FilterTests checks the bits against JUCE.
 
-    The limiter: after each nonlinear step the band-pass state is bounded,
-    s1 = L * sat (s1 / L) with sat (u) = u / sqrt (1 + u * u) (slope 1 at 0,
-    |sat| < 1). Below L the filter is close to linear; at negative damping
-    (resonance near 100%) it is what holds the self-oscillation, so its level
-    is set by L and stays below it. Because the filter is linear and
-    L * sat (s / L) is homogeneous (a * L * sat (a * s / (a * L)) = a * that),
-    scaling the input and L together scales the output by the same factor.
-    The voice therefore passes L = L0 * velocity level * envelope and the
-    self-oscillation follows the amp envelope with no extra gain stage.
+    The limiter is in the damping, not a clip: the nonlinear step uses
+    k + c * (A / L)^2 in place of k (a van der Pol oscillator's
+    amplitude-dependent damping, bounded above by +2), with A the amplitude
+    read from both integrator states, A^2 = (s1^2 + s2^2) / 4. At the cutoff
+    the two states are equal in size and a quarter-cycle apart, so A does not
+    ripple with the phase. Small signals see k; loud resonance is damped
+    harder, smoothly, and stays bounded. Two simpler versions were measured
+    and dropped (13 Nov 2026): clipping the band-pass state aliased at
+    -15 dB and its ringing level grew 13 dB with the cutoff; damping from the
+    previous band-pass sample alone blew up near a quarter of the sample
+    rate, where every other sample of it is close to zero.
+    With k < 0 (resonance near 100%) the filter self-oscillates and settles
+    where the damping balances, with a peak of about 1.05 L, the same within
+    1 dB from 100 Hz to 5 kHz, then falling towards Nyquist (-3.6 dB at
+    10 kHz, -5.6 dB at 15 kHz at 48 kHz; FilterTests prints it).
+    Because the filter is linear and the damping term depends only on
+    A / L, scaling the input and L together scales the output by the same
+    factor. The voice therefore passes L = L0 * velocity level * envelope and
+    the self-oscillation follows the amp envelope with no extra gain stage.
 
-    Drive: the signal entering the saturator is multiplied by D and divided by
-    D after it. By the same homogeneity this is the filter with ceiling L / D,
-    which is how it is computed: the states stay in the undriven domain, so a
-    moving drive never rescales them (no clicks), and the small-signal gain
-    stays 1 at any drive (that division is the level compensation).
+    Drive divides the ceiling: L / D, with D from 1 to sqrt 10 (0 to 10 dB).
+    The states stay in the undriven domain, so a moving drive never rescales
+    them (no clicks), and the small-signal gain stays 1 at any drive; loud
+    signals and the resonant peak are compressed. (Whether drive stays here
+    is open: at full drive the loop adds inharmonic content at about -30 dB
+    that 2x oversampling does not remove; see the v1.8.0 plan.)
 
     Notch = low-pass + high-pass: the textbook (s^2 + 1) / (s^2 + k s + 1),
     zeros exactly at the cutoff whatever k is. The other form, x - k * bp,
@@ -87,22 +98,28 @@ public:
         0 gives butterworthK() exactly (0 * anything = 0). The cubic passes
         through Q 2 at 50%, Q 10 at 90% and k = 0 at 98%, and reaches
         k = -0.0275 at 100%: the filter self-oscillates from about 98% and the
-        saturator holds the level. It falls monotonically over 0..1.
-        The self-oscillation settles where the saturator's loss balances the
-        negative damping, so its level is a fraction of the ceiling that grows
-        with the cutoff: about 0.04 L / D at 200 Hz, 0.1 at 1 kHz, 0.2 at 5 kHz
-        (48 kHz; FilterTests prints it). */
+        nonlinear damping holds the level. It falls monotonically over 0..1.
+        The self-oscillation settles where the nonlinear damping balances the
+        negative k, at a peak of about 1.05 L (FilterTests prints it). */
     static float resonanceToK (float resonance01) noexcept
     {
         const float r = juce::jlimit (0.0f, 1.0f, resonance01);
         return butterworthK() - r * (2.9504896f + r * (-2.979486f + r * 1.4707224f));
     }
 
-    /** Drive 0..1 -> gain into the saturator, 1 (exactly) at 0 up to 10 at 1, exponential. */
+    /** Drive 0..1 -> D, 1 (exactly) at 0 up to sqrt 10 (10 dB) at 1, exponential. */
     static float driveToGain (float drive01) noexcept
     {
-        return std::pow (10.0f, juce::jlimit (0.0f, 1.0f, drive01));
+        return std::pow (10.0f, 0.5f * juce::jlimit (0.0f, 1.0f, drive01));
     }
+
+    /** The nonlinear damping's strength c (see the file comment); with it,
+        self-oscillation at 100% resonance peaks at about 1.05 L. */
+    static constexpr float dampingCurve = 0.1f;
+
+    /** The extra damping saturates towards this bound, so a very loud input
+        cannot make k, and with it h, jump by orders of magnitude in one step. */
+    static constexpr float maxExtraDamping = 2.0f;
 
     /** JUCE's update(), with k in place of R2. cutoffHz must be below half the sample rate. */
     void setCoefficients (float newCutoffHz, float k) noexcept
@@ -127,15 +144,25 @@ public:
         return { yLP, yBP, yHP };
     }
 
-    /** The linear step, then the band-pass state bounded by the saturator with
-        ceiling L / driveGain (see the file comment). ceiling > 0, driveGain >= 1. */
+    /** The step with amplitude-dependent damping k + c * (A / limit)^2,
+        limit = ceiling / driveGain (see the file comment). ceiling > 0, driveGain >= 1. */
     Outputs processNonlinear (float x, float ceiling, float driveGain) noexcept
     {
-        const Outputs out = processLinear (x);
         const float limit = ceiling / driveGain;
-        const float u = s1 / limit;
-        s1 = limit * (u / std::sqrt (1.0f + u * u));
-        return out;
+        const float a2 = (s1 * s1 + s2 * s2) * 0.25f / (limit * limit);   // (amplitude / limit)^2 from both states
+        const float q  = dampingCurve * a2;
+        const float k  = R2 + maxExtraDamping * q / (maxExtraDamping + q);   // c u^2 when small, never above +2
+        const float hk = 1.0f / (1.0f + k * g + g * g);
+
+        const float yHP = hk * (x - s1 * (g + k) - s2);
+
+        const float yBP = yHP * g + s1;
+        s1              = yHP * g + yBP;
+
+        const float yLP = yBP * g + s2;
+        s2              = yBP * g + yLP;
+
+        return { yLP, yBP, yHP };
     }
 
     /** Magnitude of the linear filter at hz with the current g and k: the

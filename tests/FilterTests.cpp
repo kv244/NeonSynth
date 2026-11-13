@@ -338,10 +338,10 @@ int main()
     {
         constexpr double rate = 48000.0;
         bool allBounded = true, allRinging = true, allPitched = true;
-        double worstRatio = 0.0, worstPitch = 0.0, quietest = 1.0e9;
+        double worstRatio = 0.0, worstPitch = 0.0, quietest = 1.0e9, flatLow = 1.0e9, flatHigh = 0.0;
         for (const float ceiling : { 1.0f, 0.25f })
             for (const float drive : { 0.0f, 1.0f })
-                for (const float fc : { 200.0f, 1000.0f, 5000.0f, 15000.0f })
+                for (const float fc : { 100.0f, 200.0f, 1000.0f, 5000.0f, 10000.0f, 15000.0f })
                 {
                     CytomicSvf svf;
                     svf.prepare (rate);
@@ -373,18 +373,26 @@ int main()
                     worstRatio = std::max (worstRatio, (double) (peak / limit));
                     worstPitch = std::max (worstPitch, std::abs (hz / fc - 1.0));
                     quietest = std::min (quietest, (double) (lastPeak / limit));
-                    allBounded = allBounded && peak <= 1.05f * limit;
+                    if (fc <= 5000.0f)
+                    {
+                        flatLow  = std::min (flatLow,  (double) (lastPeak / limit));
+                        flatHigh = std::max (flatHigh, (double) (lastPeak / limit));
+                    }
+                    allBounded = allBounded && peak <= 1.1f * limit;
                     allRinging = allRinging && lastPeak > 0.95f * earlyPeak && lastPeak > 0.02f * limit;
                     allPitched = allPitched && std::abs (hz / fc - 1.0) < 0.05;
                     std::printf ("    L %.2f drive %.0f%% cutoff %5.0f Hz: peak %.3f x L/D, last 0.5 s peak %.3f x L/D, %.1f Hz\n",
                                  (double) ceiling, drive * 100.0, (double) fc, (double) (peak / limit), (double) (lastPeak / limit), hz);
                 }
-        std::snprintf (what, sizeof what, "peak of all four outputs <= 1.05 x ceiling / drive gain (worst %.3f)", worstRatio);
+        std::snprintf (what, sizeof what, "peak of all four outputs <= 1.1 x ceiling / drive gain (worst %.3f)", worstRatio);
         check (allBounded, what);
         std::snprintf (what, sizeof what, "still ringing after 2 s, not decaying (last 0.5 s >= 95%% of 0.5..1 s; quietest %.3f x ceiling)", quietest);
         check (allRinging, what);
         std::snprintf (what, sizeof what, "rings at the cutoff within 5%% (worst %.2f%%)", worstPitch * 100.0);
         check (allPitched, what);
+        const double spreadDb = 20.0 * std::log10 (flatHigh / flatLow);
+        std::snprintf (what, sizeof what, "level x L/D the same at every cutoff from 100 Hz to 5 kHz, within 1 dB (spread %.2f dB)", spreadDb);
+        check (spreadDb <= 1.0, what);
     }
 
     std::printf ("\nHomogeneity (input a*x with ceiling a*L gives a * output)\n");
