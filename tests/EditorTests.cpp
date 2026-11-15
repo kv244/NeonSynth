@@ -19,6 +19,9 @@
       - envelope view: dragging A, D or R sideways changes that time, dragging S up or down
         sets the level, each in one gesture; a double-click resets a point; a click elsewhere
         does nothing;
+      - envelope tabs: AMP and FILTER show their own view and knobs (and the layout checks run
+        on both), the filter envelope's view and knobs move only their own parameters, and the
+        chosen tab survives closing and reopening the editor;
       - SCOPE / SPECTRUM and the help page switch what is shown;
       - every view paints at 75%, 100% and 150% for every source, with and without
         the help page, while notes play.
@@ -211,6 +214,36 @@ namespace
         { "foldDrive",    { true,  false, false, true  } },
         { "foldMix",      { true,  false, false, true  } },
     };
+
+    // The ENVELOPE panel's tabs: what each shows (tab 0 = AMP, 1 = FILTER).
+    constexpr const char* ampEnvControls[]    = { "adsrView", "attack", "decay", "sustain", "release" };
+    constexpr const char* filterEnvControls[] = { "filterAdsrView", "filterAttack", "filterDecay", "filterSustain", "filterRelease" };
+
+    bool isFilterEnvControl (const juce::String& id)
+    {
+        for (const auto* c : filterEnvControls)
+            if (id == c)
+                return true;
+        return false;
+    }
+
+    /** Clicks AMP (0) or FILTER (1) in the ENVELOPE panel. */
+    void showEnvTab (juce::Component& ed, int tab)
+    {
+        if (auto* button = dynamic_cast<juce::Button*> (find (ed, tab == 0 ? "ampEnvButton" : "filterEnvButton")))
+            if (! button->getToggleState())
+                button->triggerClick();
+        pump();
+    }
+
+    /** True if every listed control is showing (shown) or none is (! shown). */
+    bool allShowing (juce::Component& ed, const char* const* ids, size_t count, bool shown)
+    {
+        for (size_t i = 0; i < count; ++i)
+            if (auto* c = find (ed, ids[i]); c == nullptr || showing (*c, ed) != shown)
+                return false;
+        return true;
+    }
 }
 
 int main()
@@ -245,8 +278,9 @@ int main()
                 missing.add (ranged->getParameterID());
         check (missing.isEmpty(), "a component with each parameter's ID" + (missing.isEmpty() ? juce::String() : " (missing: " + missing.joinIntoString (", ") + ")"));
 
-        for (const auto* id : { "stepGrid", "sampleView", "shapeView", "adsrView", "scopeView", "spectrumView",
-                                "scopeButton", "spectrumButton", "loadButton", "padButton", "helpButton", "helpOverlay" })
+        for (const auto* id : { "stepGrid", "sampleView", "shapeView", "adsrView", "filterAdsrView", "scopeView", "spectrumView",
+                                "scopeButton", "spectrumButton", "ampEnvButton", "filterEnvButton",
+                                "loadButton", "padButton", "helpButton", "helpOverlay" })
             check (find (ed, id) != nullptr, juce::String ("a component with ID ") + id);
     }
 
@@ -262,32 +296,40 @@ int main()
         check (wrong.isEmpty(), juce::String (sourceNames[source]) + ": the right controls shown and hidden"
                                     + (wrong.isEmpty() ? juce::String() : " (wrong: " + wrong.joinIntoString (", ") + ")"));
 
-        // Overlaps among the shown, named controls (the help page covers everything on purpose).
-        juce::Array<juce::Component*> shown;
-        std::function<void (juce::Component&)> collect = [&] (juce::Component& c)
+        // Both envelope tabs: the filter envelope's knobs sit where the amp envelope's do.
+        for (int tab = 0; tab < 2; ++tab)
         {
-            for (auto* child : c.getChildren())
-            {
-                if (child->getComponentID().isNotEmpty() && child->getComponentID() != "helpOverlay" && showing (*child, ed))
-                    shown.add (child);
-                collect (*child);
-            }
-        };
-        collect (ed);
-        juce::StringArray overlaps;
-        for (int i = 0; i < shown.size(); ++i)
-            for (int j = i + 1; j < shown.size(); ++j)
-                if (ed.getLocalArea (shown[i], shown[i]->getLocalBounds()).intersects (ed.getLocalArea (shown[j], shown[j]->getLocalBounds())))
-                    overlaps.add (shown[i]->getComponentID() + "/" + shown[j]->getComponentID());
-        check (overlaps.isEmpty(), juce::String (sourceNames[source]) + ": no two shown controls overlap"
-                                       + (overlaps.isEmpty() ? juce::String() : " (" + overlaps.joinIntoString (", ") + ")"));
+            showEnvTab (ed, tab);
+            const auto where = juce::String (sourceNames[source]) + (tab == 0 ? ", AMP tab" : ", FILTER tab");
 
-        juce::StringArray outside;
-        for (auto* c : shown)
-            if (! ed.getLocalBounds().contains (ed.getLocalArea (c, c->getLocalBounds())))
-                outside.add (c->getComponentID());
-        check (outside.isEmpty(), juce::String (sourceNames[source]) + ": every shown control lies inside the window"
-                                      + (outside.isEmpty() ? juce::String() : " (" + outside.joinIntoString (", ") + ")"));
+            // Overlaps among the shown, named controls (the help page covers everything on purpose).
+            juce::Array<juce::Component*> shown;
+            std::function<void (juce::Component&)> collect = [&] (juce::Component& c)
+            {
+                for (auto* child : c.getChildren())
+                {
+                    if (child->getComponentID().isNotEmpty() && child->getComponentID() != "helpOverlay" && showing (*child, ed))
+                        shown.add (child);
+                    collect (*child);
+                }
+            };
+            collect (ed);
+            juce::StringArray overlaps;
+            for (int i = 0; i < shown.size(); ++i)
+                for (int j = i + 1; j < shown.size(); ++j)
+                    if (ed.getLocalArea (shown[i], shown[i]->getLocalBounds()).intersects (ed.getLocalArea (shown[j], shown[j]->getLocalBounds())))
+                        overlaps.add (shown[i]->getComponentID() + "/" + shown[j]->getComponentID());
+            check (overlaps.isEmpty(), where + ": no two shown controls overlap"
+                                           + (overlaps.isEmpty() ? juce::String() : " (" + overlaps.joinIntoString (", ") + ")"));
+
+            juce::StringArray outside;
+            for (auto* c : shown)
+                if (! ed.getLocalBounds().contains (ed.getLocalArea (c, c->getLocalBounds())))
+                    outside.add (c->getComponentID());
+            check (outside.isEmpty(), where + ": every shown control lies inside the window"
+                                          + (outside.isEmpty() ? juce::String() : " (" + outside.joinIntoString (", ") + ")"));
+        }
+        showEnvTab (ed, 0);
     }
 
     //==========================================================================
@@ -326,13 +368,15 @@ int main()
             if (slider == nullptr)
                 continue;
 
-            // Show the slider: pick a source that shows it.
+            // Show the slider: pick a source that shows it, and the envelope tab it is on.
             for (const auto& c : perSource)
                 if (ranged->getParameterID() == c.id)
                     for (int source = 0; source < 4; ++source)
                         if (c.shown[source]) { set (processor, "source", (float) source); break; }
+            showEnvTab (ed, isFilterEnvControl (ranged->getParameterID()) ? 1 : 0);
 
             const auto id = ranged->getParameterID();
+            check (showing (*slider, ed), id + ": shown");
             const float before = valueOf (processor, id);
             const auto centre = slider->getLocalBounds().getCentre().toFloat();
             gestures.clear();
@@ -344,6 +388,7 @@ int main()
                    id + ": " + juce::String (before, 3) + " -> " + juce::String (after, 3) + ", inside begin/end gestures");
             set (processor, id, before);
         }
+        showEnvTab (ed, 0);
     }
 
     //==========================================================================
@@ -602,6 +647,90 @@ int main()
     else check (false, "envelope view found");
 
     //==========================================================================
+    std::printf ("\nEnvelope tabs: AMP and FILTER\n");
+    {
+        check (allShowing (ed, ampEnvControls, std::size (ampEnvControls), true)
+                   && allShowing (ed, filterEnvControls, std::size (filterEnvControls), false),
+               "AMP (the default) shows the amp envelope's view and knobs, and not the filter envelope's");
+        showEnvTab (ed, 1);
+        check (allShowing (ed, filterEnvControls, std::size (filterEnvControls), true)
+                   && allShowing (ed, ampEnvControls, std::size (ampEnvControls), false),
+               "FILTER shows the filter envelope's view and knobs and hides the amp envelope's");
+        showEnvTab (ed, 0);
+        check (allShowing (ed, ampEnvControls, std::size (ampEnvControls), true)
+                   && allShowing (ed, filterEnvControls, std::size (filterEnvControls), false),
+               "AMP shows the amp envelope again");
+
+        // Each filter-envelope knob and point moves its own parameter and nothing else, in one gesture.
+        showEnvTab (ed, 1);
+        const auto values = [&processor]
+        {
+            std::vector<float> v;
+            for (auto* param : processor.getParameters())
+                v.push_back (param->getValue());
+            return v;
+        };
+        const auto onlyChanged = [&] (const std::vector<float>& before, int index)
+        {
+            const auto after = values();
+            for (size_t i = 0; i < after.size(); ++i)
+                if ((after[i] != before[i]) != ((int) i == index))
+                    return false;
+            return gestures.oneGesture (index) && gestures.begins.size() == 1;
+        };
+        for (const auto* id : { "filterAttack", "filterDecay", "filterSustain", "filterRelease" })
+        {
+            auto* knob = dynamic_cast<juce::Slider*> (find (ed, id));
+            if (knob == nullptr) { check (false, juce::String (id) + " is a knob"); continue; }
+            const float start = valueOf (processor, id);
+
+            // A rotary knob follows the pointer's angle round its centre: from 12 o'clock to 3 o'clock.
+            const auto centre = knob->getLocalBounds().getCentre().toFloat();
+            auto before = values();
+            gestures.clear();
+            mouse.down (*knob, centre.translated (0.0f, -18.0f));
+            mouse.drag (*knob, centre.translated (12.0f, -12.0f));
+            mouse.drag (*knob, centre.translated (18.0f, 0.0f));
+            mouse.up (*knob, centre.translated (18.0f, 0.0f), true);
+            pump();
+            check (onlyChanged (before, indexOf (processor, id)),
+                   juce::String (id) + ": dragging the knob moves it (" + juce::String (start, 3) + " -> "
+                       + juce::String (valueOf (processor, id), 3) + ") and nothing else, in one gesture");
+
+            before = values();
+            gestures.clear();
+            mouse.wheel (*knob, centre, -0.25f);
+            pump();
+            check (onlyChanged (before, indexOf (processor, id)), juce::String (id) + ": the wheel moves it and nothing else, in one gesture");
+            set (processor, id, start);
+        }
+
+        if (auto* view = dynamic_cast<AdsrView*> (find (ed, "filterAdsrView")))
+        {
+            const float start = valueOf (processor, "filterDecay");
+            const auto at = view->handlePosition (AdsrView::decayHandle);
+            const auto before = values();
+            gestures.clear();
+            mouse.down (*view, at);
+            mouse.drag (*view, at.translated (40.0f, 0.0f));
+            mouse.up (*view, at.translated (40.0f, 0.0f), true);
+            pump();
+            check (valueOf (processor, "filterDecay") > start && onlyChanged (before, indexOf (processor, "filterDecay")),
+                   "the filter envelope's D point lengthens Filter Decay and nothing else, in one gesture");
+
+            gestures.clear();
+            view->mouseDoubleClick (mouse.event (*view, view->handlePosition (AdsrView::decayHandle), juce::ModifierKeys::leftButtonModifier, false));
+            pump();
+            auto* param = parameter (processor, "filterDecay");
+            check (std::abs (param->getValue() - param->getDefaultValue()) < 1.0e-6f && gestures.oneGesture (indexOf (processor, "filterDecay")),
+                   "a double-click on it puts Filter Decay back to its default, in one gesture");
+            set (processor, "filterDecay", start);
+        }
+        else check (false, "filter envelope view found");
+        showEnvTab (ed, 0);
+    }
+
+    //==========================================================================
     std::printf ("\nView buttons and help page\n");
     {
         auto* scope = find (ed, "scopeView");
@@ -674,31 +803,43 @@ int main()
                             helpButton->triggerClick();
                         pump (70);   // two timer ticks: views refresh from the voices
 
-                        const auto image = ed.createComponentSnapshot (ed.getLocalBounds(), true, 1.0f);
-                        // Look at them: set NEONSYNTH_SNAPSHOT_DIR to a folder. (JUCE's call instead of std::getenv,
-                        // which MSVC deprecates.)
-                        if (const auto dir = juce::SystemStats::getEnvironmentVariable ("NEONSYNTH_SNAPSHOT_DIR", {}); dir.isNotEmpty() && image.isValid())
-                            if (juce::File (dir).createDirectory().wasOk())
-                            {
-                                // FileOutputStream appends to an existing file: start each image afresh.
-                                const auto file = juce::File (dir).getChildFile (juce::String (juce::roundToInt (scale * 100)) + "-" + sourceNames[source]
-                                                                                 + (view == 0 ? "-scope" : "-spectrum") + (withHelp ? "-help" : "") + ".png");
-                                file.deleteFile();
-                                if (juce::FileOutputStream out (file); out.openedOk())
-                                    juce::PNGImageFormat().writeImageToStream (image, out);
-                            }
-                        ++painted;
-                        if (! image.isValid() || image.getWidth() != ed.getWidth() || image.getHeight() != ed.getHeight())
-                            problems.add (juce::String (scale) + "x " + sourceNames[source]);
+                        // The FILTER envelope tab too, once per size and source (with the scope, without help).
+                        const int tabs = view == 0 && ! withHelp ? 2 : 1;
+                        for (int tab = 0; tab < tabs; ++tab)
+                        {
+                            if (tab == 1)
+                                showEnvTab (ed, 1);
 
-                        // A drawn editor is far from one flat colour: sample a grid of pixels.
-                        juce::Colour first = image.getPixelAt (0, 0);
-                        bool varied = false;
-                        for (int y = 0; y < image.getHeight() && ! varied; y += 17)
-                            for (int x = 0; x < image.getWidth() && ! varied; x += 13)
-                                varied = image.getPixelAt (x, y) != first;
-                        if (! varied)
-                            ++blank;
+                            const auto image = ed.createComponentSnapshot (ed.getLocalBounds(), true, 1.0f);
+                            // Look at them: set NEONSYNTH_SNAPSHOT_DIR to a folder. (JUCE's call instead of std::getenv,
+                            // which MSVC deprecates.)
+                            if (const auto dir = juce::SystemStats::getEnvironmentVariable ("NEONSYNTH_SNAPSHOT_DIR", {}); dir.isNotEmpty() && image.isValid())
+                                if (juce::File (dir).createDirectory().wasOk())
+                                {
+                                    // FileOutputStream appends to an existing file: start each image afresh.
+                                    const auto file = juce::File (dir).getChildFile (juce::String (juce::roundToInt (scale * 100)) + "-" + sourceNames[source]
+                                                                                     + (view == 0 ? "-scope" : "-spectrum") + (withHelp ? "-help" : "")
+                                                                                     + (tab == 1 ? "-filterenv" : "") + ".png");
+                                    file.deleteFile();
+                                    if (juce::FileOutputStream out (file); out.openedOk())
+                                        juce::PNGImageFormat().writeImageToStream (image, out);
+                                }
+                            ++painted;
+                            if (! image.isValid() || image.getWidth() != ed.getWidth() || image.getHeight() != ed.getHeight())
+                                problems.add (juce::String (scale) + "x " + sourceNames[source]);
+
+                            // A drawn editor is far from one flat colour: sample a grid of pixels.
+                            juce::Colour first = image.getPixelAt (0, 0);
+                            bool varied = false;
+                            for (int y = 0; y < image.getHeight() && ! varied; y += 17)
+                                for (int x = 0; x < image.getWidth() && ! varied; x += 13)
+                                    varied = image.getPixelAt (x, y) != first;
+                            if (! varied)
+                                ++blank;
+
+                            if (tab == 1)
+                                showEnvTab (ed, 0);
+                        }
                     }
                 }
                 play (processor, false);
@@ -707,9 +848,26 @@ int main()
         if (helpButton->getToggleState())
             helpButton->triggerClick();
 
-        check (problems.isEmpty(), juce::String (painted) + " snapshots (3 sizes x 4 sources x 2 views x help off/on) painted at the window's size"
+        check (problems.isEmpty(), juce::String (painted) + " snapshots (3 sizes x 4 sources x 2 views x help off/on, plus the FILTER envelope tab) painted at the window's size"
                                        + (problems.isEmpty() ? juce::String() : " (failed: " + problems.joinIntoString (", ") + ")"));
         check (blank == 0, "none of them is a blank image");
+    }
+
+    //==========================================================================
+    std::printf ("\nThe envelope tab is kept with the plugin's state\n");
+    {
+        showEnvTab (ed, 1);
+        processor.editorBeingDeleted (editor.get());   // what a host's wrapper does before deleting the editor
+        editor.reset();
+        editor.reset (processor.createEditorAndMakeActive());
+        pump();
+        auto* button = editor != nullptr ? dynamic_cast<juce::Button*> (find (*editor, "filterEnvButton")) : nullptr;
+        check (editor != nullptr && button != nullptr && button->getToggleState()
+                   && allShowing (*editor, filterEnvControls, std::size (filterEnvControls), true)
+                   && allShowing (*editor, ampEnvControls, std::size (ampEnvControls), false),
+               "a reopened editor shows the FILTER tab it was closed on");
+        if (editor != nullptr)
+            showEnvTab (*editor, 0);
     }
 
     processor.removeListener (&gestures);
