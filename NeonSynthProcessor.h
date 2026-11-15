@@ -206,7 +206,56 @@ private:
     MidiLogger  midiLogger;
     juce::int64 samplesProcessed = 0;
 
-    juce::Synthesiser synth;
+    /**
+        juce::Synthesiser limited to the first N voices (the Voices parameter, v1.9.0): 1 is mono,
+        16 is the full pool. At 16 it defers to juce::Synthesiser's own voice choice, so sessions
+        saved before v1.9.0 allocate and steal voices exactly as before. Lowering N lets the voices
+        above it finish their notes; new notes only go to the first N.
+    */
+    class LimitedSynthesiser : public juce::Synthesiser
+    {
+    public:
+        void setVoiceLimit (int newLimit) noexcept   { voiceLimit = newLimit; }
+
+    protected:
+        juce::SynthesiserVoice* findFreeVoice (juce::SynthesiserSound* sound, int midiChannel,
+                                               int midiNoteNumber, bool stealIfNoneAvailable) const override
+        {
+            const int limit = juce::jlimit (1, getNumVoices(), voiceLimit);
+            if (limit >= getNumVoices())
+                return juce::Synthesiser::findFreeVoice (sound, midiChannel, midiNoteNumber, stealIfNoneAvailable);
+
+            for (int i = 0; i < limit; ++i)
+                if (auto* v = getVoice (i); ! v->isVoiceActive() && v->canPlaySound (sound))
+                    return v;
+
+            if (! stealIfNoneAvailable)
+                return nullptr;
+
+            // Steal within the first N: the same note if it is already sounding, else the oldest
+            // voice whose key is up (in its release), else the oldest of all.
+            juce::SynthesiserVoice* oldestReleased = nullptr;
+            juce::SynthesiserVoice* oldest = nullptr;
+            for (int i = 0; i < limit; ++i)
+            {
+                auto* v = getVoice (i);
+                if (! v->canPlaySound (sound))
+                    continue;
+                if (v->getCurrentlyPlayingNote() == midiNoteNumber)
+                    return v;
+                if (! v->isKeyDown() && (oldestReleased == nullptr || v->wasStartedBefore (*oldestReleased)))
+                    oldestReleased = v;
+                if (oldest == nullptr || v->wasStartedBefore (*oldest))
+                    oldest = v;
+            }
+            return oldestReleased != nullptr ? oldestReleased : oldest;
+        }
+
+    private:
+        int voiceLimit = 16;
+    };
+
+    LimitedSynthesiser synth;
     std::vector<NeonSynthVoice*> voices;    // owned by synth; cached to avoid dynamic_cast per block
     std::array<VoiceView, numVoices> voiceViews;
 
@@ -290,6 +339,7 @@ private:
     juce::AudioParameterFloat*  lfoAmpParameter        = nullptr;
     juce::AudioParameterInt*    bendRangeParameter     = nullptr;
     juce::AudioParameterFloat*  vibratoParameter       = nullptr;
+    juce::AudioParameterInt*    voiceCountParameter    = nullptr;
 
     /** The LFO, pitch bend and mod wheel (v1.9.0), shared by all voices. */
     Modulation modulation;
