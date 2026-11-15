@@ -183,6 +183,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout NeonSynthProcessor::createPa
     layout.add (std::make_unique<AudioParameterInt>    (ParameterID { "bendRange", 1 }, "Pitch Bend Range", 0, 24, 2));   // semitones each way
     layout.add (std::make_unique<AudioParameterFloat>  (ParameterID { "vibrato", 1 }, "Vibrato Depth",
                                                          NormalisableRange<float> (0.0f, 100.0f, 0.1f), 30.0f));      // cents at the wheel's top
+
+    // Voices (v1.9.0): how many of the 16 voices may play, 1 = mono. Set by clicking the VOICES
+    // lights. The default, 16, is the full pool, so sessions saved before v1.9.0 play the same.
+    layout.add (std::make_unique<AudioParameterInt>    (ParameterID { "voiceCount", 1 }, "Voices", 1, NeonSynthProcessor::numVoices, NeonSynthProcessor::numVoices));
     return layout;
 }
 
@@ -257,6 +261,7 @@ NeonSynthProcessor::NeonSynthProcessor()
     lfoAmpParameter        = getTypedParameter<juce::AudioParameterFloat>  (apvts, "lfoAmp");
     bendRangeParameter     = getTypedParameter<juce::AudioParameterInt>    (apvts, "bendRange");
     vibratoParameter       = getTypedParameter<juce::AudioParameterFloat>  (apvts, "vibrato");
+    voiceCountParameter    = getTypedParameter<juce::AudioParameterInt>    (apvts, "voiceCount");
 
     loadDefaultPattern();
     publishSample (SampleLoader::makeDefaultSample());
@@ -350,6 +355,7 @@ void NeonSynthProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     modSettings.bendRangeSemitones = bendRangeParameter->get();
     modSettings.vibratoCents       = vibratoParameter->get();
     modulation.setSettings (modSettings);
+    synth.setVoiceLimit (voiceCountParameter->get());   // new notes use only the first N voices
     modulation.handleMidi (midiMessages, numSamples);
     const auto modulationBlock = modulation.render (numSamples, lfoTransport());
 
