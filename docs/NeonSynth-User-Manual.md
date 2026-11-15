@@ -6,16 +6,16 @@
 
 NeonSynth is a learning synthesizer: a place to hear what a waveform sounds like, see what changes when you shape it, and explore the code that makes it happen. Its oscillator, sample, random, and granular engines provide different starting points for that exploration, with source code available to read, build, and modify ([NeonSynth project](https://github.com/kv244/Synth)).
 
-For musicians, begin with one note and one waveform, without stacked oscillator layers obscuring what you are hearing. For coders, follow the same sound into the C++ implementation, from waveform generation through envelope, filter, and output; the interface and the code become two views of the same instrument ([voice architecture](https://github.com/kv244/Synth/blob/v1.7.0/NeonSynthVoice.h)).
+For musicians, begin with one note and one waveform, without stacked oscillator layers obscuring what you are hearing. For coders, follow the same sound into the C++ implementation, from waveform generation through envelope, filter, and output; the interface and the code become two views of the same instrument ([voice architecture](https://github.com/kv244/Synth/blob/v1.8.0/NeonSynthVoice.h)).
 
 **Instrument:** NeonSynth by Razvan Julian Petrescu / AudioDSP  
-**Edition:** 1.5, updated 13 November 2026 (review fixes: sample loading and replacement, Granular bracket, CI; no change to controls)<br>
-**Applies to:** NeonSynth v1.7.1, source tag `v1.7.1`  
-**Formats:** VST3 instrument and standalone application; a Windows installer is supplied for this release ([v1.7.0 release](https://github.com/kv244/Synth/releases/tag/v1.7.0)).
+**Edition:** 1.6, updated 15 November 2026 (the v1.8.0 filter: modes, resonance, drive, filter envelope and velocity)<br>
+**Applies to:** NeonSynth v1.8.0, source tag `v1.8.0`  
+**Formats:** VST3 instrument and standalone application; a Windows installer is supplied for this release ([v1.8.0 release](https://github.com/kv244/Synth/releases/tag/v1.8.0)).
 
 ### About this manual
 
-The instructions were checked against the v1.7.0 source code. Every recipe in the sound-design chapter was rendered through the v1.6.0 plugin, to confirm that it sounds, releases cleanly to silence and stays clear of the output soft clipper; v1.7.0 changes only the window, and its sound is checked to be bit-identical to v1.6.0. This is not a certification of compatibility with every audio device or DAW.
+The instructions were checked against the v1.8.0 source code. Every recipe in the sound-design chapter was rendered through the v1.6.0 plugin, to confirm that it sounds, releases cleanly to silence and stays clear of the output soft clipper; v1.7.0 and v1.8.0 keep that sound bit-identical at the settings the recipes use (v1.8.0's new filter controls start neutral), which the project's compare test checks. This is not a certification of compatibility with every audio device or DAW.
 
 Each figure is labelled by how it was made: **Actual application capture** (a screenshot of the running instrument, with numbered callouts added), **Plot derived from rendered audio** (measured from sound the plugin produced, with the settings stated), or **Explanatory schematic** (a drawing that explains an idea and is not a measurement). How to regenerate them is in [figures/README.md](figures/README.md).
 
@@ -43,13 +43,13 @@ The sound-design settings are starting points, not factory presets. Begin at a l
 
 ### Install the Windows release
 
-Download `NeonSynth-1.7.1-Windows-Setup.exe` from the [v1.7.1 release page](https://github.com/kv244/Synth/releases/tag/v1.7.1). The installer provides the VST3 instrument and an optional standalone application (see [Installation](../README.md#installation) in the README).
+Download `NeonSynth-1.8.0-Windows-Setup.exe` from the [v1.8.0 release page](https://github.com/kv244/Synth/releases/tag/v1.8.0). The installer provides the VST3 instrument and an optional standalone application (see [Installation](../README.md#installation) in the README).
 
 | Component | Default location |
 |---|---|
 | VST3 instrument | `C:\Program Files\Common Files\VST3\NeonSynth.vst3` |
 | Standalone application | `C:\Program Files\AudioDSP\Neon Synth\NeonSynth.exe` |
-| This manual as a PDF (optional; installers after v1.7.1) | `C:\Program Files\AudioDSP\Neon Synth\NeonSynth-User-Manual-x.y.z.pdf`, with a Start menu shortcut |
+| This manual as a PDF (optional) | `C:\Program Files\AudioDSP\Neon Synth\NeonSynth-User-Manual-x.y.z.pdf`, with a Start menu shortcut |
 
 These are the documented default installation locations; the standalone installation directory can be changed in the installer.
 
@@ -114,6 +114,8 @@ Keep the note and envelope unchanged, choose Sawtooth, then enable the filter an
 
 This isolates the relationship between the source and the filter: you are changing one stage while leaving the others alone. Bypass the filter periodically so your ear has an unfiltered reference.
 
+Then return to Sawtooth, set the cutoff near 800 Hz and raise **RES** slowly. A narrow band around the cutoff grows louder until, near the top of the range, the filter whistles on its own: that whistle is a sine at the cutoff frequency, and it moves when you move Cutoff, not when you play another key.
+
 ### Listening exercise: separate tone from articulation
 
 Keep one waveform and one cutoff setting, then compare a fast attack with a slow one; next compare short and long releases. Finally, lower Sustain and adjust Decay, listening to how the same source can behave like a pluck or a sustained instrument.
@@ -122,9 +124,9 @@ Only after those differences become familiar should you add chords, sequencing, 
 
 ## Finding your way around
 
-![The NeonSynth window with nine numbered regions: 1 source and waveform menus, 2 the strip and its knobs, 3 scope or spectrum, 4 envelope graph and knobs, 5 low-pass filter, 6 output gain, width and meters, 7 voice lights, 8 the help button, 9 the step sequencer.](images/fig01-interface.png)
+![The NeonSynth window with nine numbered regions: 1 source and waveform menus, 2 the strip and its knobs, 3 scope or spectrum, 4 envelope graph and knobs with the AMP and FILTER tabs, 5 filter, 6 output gain, width and meters, 7 voice lights, 8 the help button, 9 the step sequencer.](images/fig01-interface.png)
 
-Figure 1. The main window (v1.7.0 at 150%, Source set to Oscillator, Sawtooth, with the sequencer running). *Actual application capture; the numbered outlines and the key below the picture were added.* Regions 1–9 are explained in the key, and the window is described panel by panel in the table below.
+Figure 1. The main window (v1.8.0 at 150%, Source set to Oscillator, Sawtooth, with the sequencer running). *Actual application capture; the numbered outlines and the key below the picture were added.* Regions 1–9 are explained in the key, and the window is described panel by panel in the table below.
 
 The window has five panels. SOURCE, on the left, is where the sound starts: what plays, and how it is shaped before the envelope. The middle column shows the sound (scope or spectrum) above the envelope and filter. OUTPUT, on the right, sets and measures the level. SEQUENCER runs along the bottom. Colours carry the same meaning everywhere: cyan for the source and output, amber for the envelope and sequencer, and magenta for the filter and the granular controls.
 
@@ -132,8 +134,8 @@ The window has five panels. SOURCE, on the left, is where the sound starts: what
 |---|---|
 | SOURCE | Pick the sound source and waveform. For Sample and Granular, load audio, choose the loop mode, and set the markers on the waveform; for Oscillator and Random, the SHAPE strip and its knobs chop, fold and add noise to the wave. |
 | Display | Switch between SCOPE and SPECTRUM to see the mix. |
-| ENVELOPE | Set the level shape of each note: drag the points on the graph or turn ATTACK, DECAY, SUSTAIN and RELEASE. |
-| FILTER | Switch the low-pass filter in with ON and set its CUTOFF. |
+| ENVELOPE | Set the shape of each note: drag the points on the graph or turn ATTACK, DECAY, SUSTAIN and RELEASE. The **AMP** tab shapes the level, the **FILTER** tab the filter's own envelope. |
+| FILTER | Switch the filter in with ON, set its CUTOFF and mode, and the RES, DRIVE, ENV and VEL knobs. |
 | OUTPUT | Set GAIN and WIDTH, and watch the left and right meters. |
 | Header | See which of the 16 voices are sounding, and open the quick help with **?**. |
 | SEQUENCER | Start a pattern, edit its steps, and set timing and keyboard interaction. |
@@ -271,11 +273,30 @@ The value appears in the top-right corner of the graph while you drag. Double-cl
 
 Figure 4. The amplitude envelope. *Plot derived from rendered audio:* a sine at A6 was rendered at 48 kHz with ATTACK 300 ms, DECAY 300 ms, SUSTAIN 50% and RELEASE 500 ms, and the plot shows the peak level in each 2 ms frame, scaled so that 1 is the attack peak. Both curves are measured, not drawn: the sustain measures 50.1% and the early release starts from 50.0%. The labels and the dotted key-down and key-up lines were added.
 
-### Low-pass filter
+### Filter
 
-Enable **ON** to use the filter, then lower **Cutoff** to remove more high-frequency content; disable **ON** to bypass it. The cutoff range is 20 Hz–20 kHz, initially 2 kHz, although the engine limits the actual frequency to 45% of the audio sample rate when necessary.
+Enable **ON** to use the filter; disable it to bypass it (the change crossfades over 10 ms). The filter is a two-pole state-variable filter, 12 dB per octave, one per voice. With its new controls at their initial values it is the plain low-pass of earlier versions, and a session saved before v1.8.0 sounds exactly as it did.
 
-The filter is a two-pole low-pass with fixed Q, not a user-adjustable resonant ladder filter. There is no separate resonance control or dedicated filter envelope in this version.
+| Control | Meaning | Range | Initial value |
+|---|---|---|---|
+| CUTOFF | The frequency where the filter starts to act. | 20 Hz–20 kHz | 2 kHz |
+| Mode | What the filter keeps: **Low-pass** the lows, **High-pass** the highs, **Band-pass** a band around the cutoff, **Notch** everything except that band. | four choices | Low-pass |
+| RES | Resonance: boosts the frequencies at the cutoff. From about 98% the filter rings on its own. | 0–100% | 0% |
+| DRIVE | Soft-clips the sound before the filter, so new harmonics meet the resonance. | 0–100% | 0% |
+| ENV | How far the filter envelope moves the cutoff, in octaves; negative values close the filter. | −5 to +5 octaves | 0 |
+| VEL | How far a full-velocity note raises the cutoff, in octaves (softer notes less). | 0 to +4 octaves | 0 |
+
+The engine limits the actual cutoff to 20 Hz and to 45% of the audio sample rate. All four modes come from the same two internal states of the filter: low-pass and high-pass are its two ends, band-pass the middle, and notch the low-pass and high-pass added together. Changing mode while a note plays crossfades over 10 ms.
+
+**Resonance.** At 0% the filter is flat up to the cutoff (Butterworth). Raising RES lowers its damping: about Q 2 at 50% and Q 10 at 90%, so a narrow peak forms at the cutoff. From about 98% the damping is below zero and the filter oscillates by itself, a sine at the cutoff frequency. A limiter built into the filter holds that ringing at roughly the level of the note, the same at every cutoff from 100 Hz to 5 kHz, and makes it follow the note's amplitude envelope, so it fades with the release and ends in silence. The ringing pitch follows CUTOFF, not the key you play.
+
+**Drive.** DRIVE pushes the sound into a soft clipper in front of the filter, by up to 20 dB. Peaks at the note's own level stay where they are, quieter parts are raised, so the sound becomes denser and brighter rather than louder; with resonance up, the new harmonics excite the peak. Drive is smoothed and anti-aliased. It is separate from the SHAPE strip's DRIVE, which sets how hard the wavefolder folds.
+
+**Filter envelope.** Click **FILTER** in the ENVELOPE panel to show the filter's own envelope: the same graph and four knobs (ATTACK, DECAY, SUSTAIN, RELEASE; initially 10 ms, 300 ms, 50%, 300 ms), drawn in magenta, which start with every note and release with it. **ENV** sets how many octaves the envelope's peak adds to CUTOFF. With ENV at 0 the envelope does nothing, whatever its times. Click **AMP** to return to the level envelope.
+
+**Velocity.** **VEL** opens the filter for harder notes: a full-velocity note adds the VEL amount in octaves, a half-velocity note half of it. It is set when the note starts.
+
+For a classic pluck, try Sawtooth, CUTOFF about 200 Hz, RES 40%, ENV +4 octaves, and the filter envelope at 5 ms, 300 ms, 0%, 300 ms. For a dark pad that opens slowly, use a negative ENV with a slow filter attack. The SPECTRUM display draws the filter's response, peak included, for the current mode, cutoff and resonance; drive and the limiter do not change the drawn curve.
 
 ![Top: three cycles of a sawtooth at 220 Hz with the filter off (a straight ramp with a sharp drop) and with the filter on at a 1 kHz cutoff (the same ramp with rounded corners). Bottom: the spectrum of both, the filtered one falling below the unfiltered one above the 1 kHz cutoff mark.](images/fig05-filter.png)
 
@@ -391,7 +412,7 @@ The grid supports MIDI notes 0–127 and enabled-step velocities 1–127; the cy
 
 ![The 16-step grid, with numbered pointers to an enabled step, a disabled step, a note name, a velocity bar and the playhead, and a list of the mouse and wheel gestures.](images/fig08-sequencer.png)
 
-Figure 8. The step grid (v1.7.0 at 150%, sequencer running). *Actual application capture; the numbered pointers and the gesture key were added.* The gestures are those in the table above, as coded in the step view: one semitone for every 6 pixels of vertical drag, velocity changes of one for each pixel of Shift-drag or right-drag, and steps of four for Shift with the wheel.
+Figure 8. The step grid (v1.8.0 at 150%, sequencer running). *Actual application capture; the numbered pointers and the gesture key were added.* The gestures are those in the table above, as coded in the step view: one semitone for every 6 pixels of vertical drag, velocity changes of one for each pixel of Shift-drag or right-drag, and steps of four for Shift with the wheel.
 
 To create a new pattern, first switch unwanted steps off, drag the remaining steps to their pitches, and adjust their velocities for accents. There is no separate pattern-bank or pattern-length control in this version.
 
@@ -416,7 +437,7 @@ WIDTH is not chorus, delay, or a stereo image restored from an imported recordin
 ### Scope, spectrum, voices, and meters
 
 - **SCOPE:** Displays the output waveform and uses the lowest active note as its pitch reference.
-- **SPECTRUM:** Displays frequency content with the filter-response curve.
+- **SPECTRUM:** Displays frequency content with the filter's response curve for the current mode, cutoff and resonance. When resonance raises a peak above the top of the display, the curve is lowered so the peak stays in view.
 - **VOICES:** Provides one light per voice, with brightness following its envelope.
 - **Envelope graph:** Shows the note shape with moving voice-position dots.
 - **L/R meter:** Shows output levels, peak hold, and a clip indicator; click to reset the meter.
@@ -443,7 +464,7 @@ For dependable archiving, keep original samples with the DAW project even when e
 
 ### Automate controls
 
-Use the DAW's automation facilities for the exposed parameters, including source, waveform, envelope, cutoff, output controls, sample settings, granular settings, the five sculpting knobs, and sequencer timing/mode controls. The Scope/Spectrum choice, individual sequencer steps and CHOP's steps are not independent automation parameters.
+Use the DAW's automation facilities for the exposed parameters, including source, waveform, envelope, the filter's controls and its envelope, output controls, sample settings, granular settings, the five sculpting knobs, and sequencer timing/mode controls. The Scope/Spectrum choice, individual sequencer steps and CHOP's steps are not independent automation parameters.
 
 Automation follows each control's playback semantics: a source or Sample-loop change takes effect at a subsequent note, while granular changes shape newly generated grains. Do not expect every automated change to rewrite audio already sounding.
 
@@ -529,6 +550,8 @@ Work through the signal path rather than changing several settings at once. In s
 
 - **Waveform dimmed:** Select Oscillator; it does not change Sample, Granular, or Random.
 - **Cutoff dimmed:** Enable the filter.
+- **ENV or VEL does nothing:** Check that the filter is ON; ENV moves the cutoff only while its envelope changes, so a sustain at 100% leaves it fixed once the decay ends.
+- **A high whistle that does not follow the keys:** RES is near the top, so the filter is ringing at the cutoff frequency. Lower RES, or move CUTOFF to tune it.
 - **Loop selector dimmed:** You are using Granular, whose controls do not use the Sample loop mode.
 - **Source or loop edits not heard:** Release and retrigger the note.
 - **WIDTH not obvious:** Try a chord spanning notes below and above C4.
@@ -587,7 +610,7 @@ It is an editorial guide, not a requirement to read every file in this order.
 
 ### Make a small change, then test it
 
-A useful first experiment is to change a default envelope time in `createParameterLayout()`, rebuild, and open a fresh instance to hear the result. Existing saved sessions can restore their own settings, so they are not a reliable way to check that a new default has taken effect ([parameter definitions and state restoration](https://github.com/kv244/Synth/blob/v1.7.0/NeonSynthProcessor.cpp)).
+A useful first experiment is to change a default envelope time in `createParameterLayout()`, rebuild, and open a fresh instance to hear the result. Existing saved sessions can restore their own settings, so they are not a reliable way to check that a new default has taken effect ([parameter definitions and state restoration](https://github.com/kv244/Synth/blob/v1.8.0/NeonSynthProcessor.cpp)).
 
 For a deeper exercise, inspect why a waveform change waits for a cycle boundary or how grain size and density affect overlap. Make one change at a time, work on a branch, and run the relevant tests before comparing the result with the original; the developer notes' [Unit tests and benchmark](DEVELOPMENT.md#unit-tests-and-benchmark) section lists what each test checks.
 
@@ -603,7 +626,7 @@ The project identifies Claude-assisted development, but Claude is not a runtime 
 
 ### Signal path
 
-The voice engine places its amplitude envelope before the low-pass filter and panner; voices are then summed, followed by output gain and soft clipping. This is the implemented path, rather than a generic synthesis diagram ([voice engine](https://github.com/kv244/Synth/blob/v1.7.0/NeonSynthVoice.h), [processor](https://github.com/kv244/Synth/blob/v1.7.0/NeonSynthProcessor.cpp)).
+The voice engine places its amplitude envelope before the filter and panner; voices are then summed, followed by output gain and soft clipping. The filter's drive and its limiter scale with the envelope, so the filter behaves as if the envelope came after it. This is the implemented path, rather than a generic synthesis diagram ([voice engine](https://github.com/kv244/Synth/blob/v1.8.0/NeonSynthVoice.h), [filter](https://github.com/kv244/Synth/blob/v1.8.0/CytomicSvf.h), [processor](https://github.com/kv244/Synth/blob/v1.8.0/NeonSynthProcessor.cpp)).
 
 ```text
 MIDI keyboard / DAW notes ─┐
@@ -611,7 +634,7 @@ MIDI keyboard / DAW notes ─┐
 Internal step sequencer ──┘
 
 Per voice:
-selected source → (Oscillator and Random only: CHOP → noise → fold) → amplitude envelope → low-pass filter/bypass → pitch-based pan
+selected source → (Oscillator and Random only: CHOP → noise → fold) → amplitude envelope → drive → filter (mode, resonance; cutoff + filter envelope + velocity)/bypass → pitch-based pan
 
 Combined output:
 voice sum → output gain → soft clipper → mono/stereo output and visualisers
@@ -626,12 +649,13 @@ voice sum → output gain → soft clipper → mono/stereo output and visualiser
 | Granular settings | Shape subsequent grains; position remains live. |
 | Oscillator waveform changes | Applied at a cycle boundary. |
 | CHOP pattern and COMB | Applied at a cycle boundary; OVERTONE glides over 10 ms. |
-| Filter cutoff, gain, and panning | Smoothed to reduce abrupt changes. |
+| Filter cutoff, resonance, drive, gain, and panning | Smoothed to reduce abrupt changes. |
+| Filter mode | Crossfaded over 10 ms. |
 | Sequencer events | Scheduled at sample offsets and rendered at their MIDI event positions. |
 | Random / granular variation | Seeded for reproducible renders from the same reset state and event sequence. |
 | Imported sample audio | Prepared mono audio; original file is not modified. |
 
-These details follow the [voice engine](https://github.com/kv244/Synth/blob/v1.7.0/NeonSynthVoice.h), [processor](https://github.com/kv244/Synth/blob/v1.7.0/NeonSynthProcessor.cpp), [grain engine](https://github.com/kv244/Synth/blob/v1.7.0/GrainCloud.h), and [sample preparation](https://github.com/kv244/Synth/blob/v1.7.0/SampleData.h).
+These details follow the [voice engine](https://github.com/kv244/Synth/blob/v1.8.0/NeonSynthVoice.h), [processor](https://github.com/kv244/Synth/blob/v1.8.0/NeonSynthProcessor.cpp), [grain engine](https://github.com/kv244/Synth/blob/v1.8.0/GrainCloud.h), and [sample preparation](https://github.com/kv244/Synth/blob/v1.8.0/SampleData.h).
 
 ### Optional MIDI diagnostics
 
