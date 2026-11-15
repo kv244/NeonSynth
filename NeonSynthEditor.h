@@ -10,6 +10,7 @@
 #include "HelpOverlay.h"
 #include "SampleView.h"
 #include "ShapeView.h"
+#include "LfoView.h"
 
 /**
     Neon Synth editor.
@@ -20,12 +21,15 @@
     layout needs no scale arithmetic and a font size means pixels at 100%. The
     window opens at 100% if that fits the screen, otherwise at 75%.
 
-    Header: name, voice lights, help.
+    Header: name, voice lights (click one to set how many voices can play), help.
     SOURCE panel: source and waveform, the sample controls (load, built-in pad, loop
     mode), the strip (sample waveform with draggable markers, or the sculpted
     cycle) and the knob row under it. A file can also be dropped anywhere.
     Middle: scope / spectrum, envelope (shape + knobs; AMP / FILTER tabs) and filter.
-    OUTPUT panel: gain, stereo width and the stereo meter.
+    OUTPUT panel: stereo width, then the gain fader beside the stereo meter.
+    MODULATION panel (v1.9.0, green): the LFO (shape, SYNC, rate or note length, its
+    picture, and the PITCH / CUTOFF / AMP depths), then the pitch bend range and the
+    mod wheel's vibrato, each beside a bar showing where that controller is now.
     SEQUENCER panel: run / sync / rate / mode / tempo / swing / gate, then the 16 steps.
 
     The "?" button in the top-right corner opens HelpOverlay, a quick-reference
@@ -82,6 +86,14 @@ public:
         filterDecayValue   = apvts.getRawParameterValue ("filterDecay");
         filterSustainValue = apvts.getRawParameterValue ("filterSustain");
         filterReleaseValue = apvts.getRawParameterValue ("filterRelease");
+        voiceCountValue = apvts.getRawParameterValue ("voiceCount");   // v1.9.0; null in a build without it
+        lfoShapeValue  = apvts.getRawParameterValue ("lfoShape");
+        lfoRateValue   = apvts.getRawParameterValue ("lfoRate");
+        lfoPitchValue  = apvts.getRawParameterValue ("lfoPitch");
+        lfoCutoffValue = apvts.getRawParameterValue ("lfoCutoff");
+        lfoAmpValue    = apvts.getRawParameterValue ("lfoAmp");
+        bendRangeValue = apvts.getRawParameterValue ("bendRange");
+        vibratoValue   = apvts.getRawParameterValue ("vibrato");
 
         // ── Oscillator ───────────────────────────────────────────────────────
         content.addAndMakeVisible (waveformCombo);
@@ -343,6 +355,17 @@ public:
 
         // ── Voices ───────────────────────────────────────────────────────────
         content.addAndMakeVisible (voiceLeds);
+        // Click light N for N voices (v1.9.0): one gesture, so a host records it as one edit.
+        voiceLeds.onLightClicked = [this] (int count)
+        {
+            if (auto* param = apvts.getParameter ("voiceCount"))
+            {
+                param->beginChangeGesture();
+                param->setValueNotifyingHost (param->convertTo0to1 ((float) count));
+                param->endChangeGesture();
+            }
+        };
+        setUpReadout (voiceCountReadout, neon::cyan, juce::Justification::centredRight);
 
         // ── Output: display, meter, gain, width ──────────────────────────────
         content.addChildComponent (oscilloscope);
@@ -365,13 +388,90 @@ public:
         scopeButton.onClick    = [this] { if (scopeButton.getToggleState())    setView (0); };
         spectrumButton.onClick = [this] { if (spectrumButton.getToggleState()) setView (1); };
 
+        // GAIN: a vertical fader beside the meter, like a mixer's channel strip. The attachment
+        // makes a double-click return it to 0 dB; the wheel nudges it.
         setUpLinearSlider (gainSlider, neon::cyan);
+        gainSlider.setSliderStyle (juce::Slider::LinearVertical);
+        gainSlider.setTooltip ("Output level, in dB. Double-click for 0 dB");
         gainAttachment = std::make_unique<SliderAttachment> (apvts, "gain", gainSlider);
-        setUpReadout (gainReadout, neon::cyan, juce::Justification::centredRight);
+        setUpReadout (gainReadout, neon::cyan, juce::Justification::centred);
 
         setUpLinearSlider (widthSlider, neon::cyan);
+        widthSlider.setTooltip ("Stereo width: how far notes are spread left and right by pitch. 0% is mono");
         widthAttachment = std::make_unique<SliderAttachment> (apvts, "width", widthSlider);
         setUpReadout (widthReadout, neon::cyan, juce::Justification::centredRight);
+
+        // ── Modulation (v1.9.0) ──────────────────────────────────────────────
+        // Its own hue, green, for everything that moves the sound over time.
+        content.addAndMakeVisible (lfoView);
+        content.addAndMakeVisible (bendBar);
+        content.addAndMakeVisible (wheelBar);
+        bendBar.setTooltip ("Where the pitch bend is now (from any MIDI keyboard or controller)");
+        wheelBar.setTooltip ("Where the mod wheel is now (from any MIDI keyboard or controller)");
+
+        for (auto* combo : { &lfoShapeCombo, &lfoDivisionCombo })
+        {
+            for (auto id : { juce::ComboBox::outlineColourId, juce::ComboBox::textColourId, juce::ComboBox::arrowColourId })
+                combo->setColour (id, neon::green);
+            content.addAndMakeVisible (combo);
+        }
+        lfoShapeCombo.addItemList ({ "Sine", "Triangle", "Square", "Saw", "Random" }, 1);   // same order as the parameter
+        lfoDivisionCombo.addItemList ({ "4 bars", "2 bars", "1 bar", "1/2", "1/4", "1/8", "1/16", "1/8T", "1/16T" }, 1);
+        lfoShapeCombo.setTooltip ("LFO shape. Random holds a new random level each cycle");
+        lfoDivisionCombo.setTooltip ("LFO cycle as a note length, at the host's tempo (or TEMPO in the Standalone). "
+                                     "With the host playing it lines up with the bar");
+        lfoShapeAttachment    = std::make_unique<ComboBoxAttachment> (apvts, "lfoShape",    lfoShapeCombo);
+        lfoDivisionAttachment = std::make_unique<ComboBoxAttachment> (apvts, "lfoDivision", lfoDivisionCombo);
+
+        // SYNC: a latching button like the sequencer's.
+        lfoSyncButton.setClickingTogglesState (true);
+        lfoSyncButton.setColour (juce::TextButton::buttonColourId,   juce::Colours::transparentBlack);
+        lfoSyncButton.setColour (juce::TextButton::buttonOnColourId, neon::green.withAlpha (0.30f));
+        lfoSyncButton.setColour (juce::TextButton::textColourOffId,  neon::green.withAlpha (0.55f));
+        lfoSyncButton.setColour (juce::TextButton::textColourOnId,   neon::green);
+        lfoSyncButton.setColour (juce::ComboBox::outlineColourId,    neon::green.withAlpha (0.6f));
+        lfoSyncButton.setTooltip ("Set the LFO's rate as a note length that follows the tempo, instead of in Hz");
+        content.addAndMakeVisible (lfoSyncButton);
+        lfoSyncAttachment = std::make_unique<ButtonAttachment> (apvts, "lfoSync", lfoSyncButton);
+
+        setUpLinearSlider (lfoRateSlider, neon::green);
+        lfoRateSlider.setTooltip ("LFO rate in cycles per second");
+        lfoRateAttachment = std::make_unique<SliderAttachment> (apvts, "lfoRate", lfoRateSlider);
+        setUpReadout (lfoRateReadout, neon::green, juce::Justification::centredRight);
+
+        const std::pair<juce::Slider*, const char*> modKnobs[] = {
+            { &lfoPitchKnob, "lfoPitch" }, { &lfoCutoffKnob, "lfoCutoff" }, { &lfoAmpKnob, "lfoAmp" },
+            { &bendRangeKnob, "bendRange" }, { &vibratoKnob, "vibrato" } };
+        for (size_t i = 0; i < std::size (modKnobs); ++i)
+        {
+            auto* knob = modKnobs[i].first;
+            knob->setSliderStyle (juce::Slider::Rotary);
+            knob->setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+            knob->setColour (juce::Slider::rotarySliderFillColourId,    neon::green);
+            knob->setColour (juce::Slider::rotarySliderOutlineColourId, neon::green.withAlpha (0.3f));
+            knob->setColour (juce::Slider::thumbColourId,               neon::green);
+            content.addAndMakeVisible (knob);
+            modKnobAttachments[i] = std::make_unique<SliderAttachment> (apvts, modKnobs[i].second, *knob);
+        }
+        lfoPitchKnob.setTooltip ("LFO to pitch: how far the LFO bends every voice, in semitones (vibrato, sirens)");
+        lfoCutoffKnob.setTooltip ("LFO to cutoff: how far the LFO sweeps the filter, in octaves either way (wah, wobble). "
+                                  "The green band under CUTOFF shows the sweep");
+        lfoAmpKnob.setTooltip ("LFO to amp: tremolo depth. The LFO only ever turns the level down");
+        bendRangeKnob.setTooltip ("Pitch bend range: how far the pitch bend wheel bends, in semitones each way");
+        vibratoKnob.setTooltip ("Vibrato: how deep the mod wheel's vibrato is at the top of its travel, in cents");
+        for (auto* label : { &lfoPitchReadout, &lfoCutoffReadout, &lfoAmpReadout, &bendRangeReadout, &vibratoReadout })
+            setUpReadout (*label, neon::green, juce::Justification::centred);
+
+        // SYNC swaps the rate slider (Hz) for the note length, in the same place.
+        lfoSyncListener = std::make_unique<juce::ParameterAttachment> (
+            *apvts.getParameter ("lfoSync"),
+            [this] (float value)
+            {
+                const bool sync = value >= 0.5f;
+                lfoRateSlider.setVisible (! sync);
+                lfoDivisionCombo.setVisible (sync);
+            });
+        lfoSyncListener->sendInitialUpdate();
 
         // ── Step sequencer ───────────────────────────────────────────────────
         // RUN and SYNC are latching buttons (lit = on) rather than tick boxes,
@@ -455,7 +555,11 @@ public:
             { &filterEnvAmtKnob, "filterEnvAmt" }, { &filterVelKnob, "filterVel" },
             { &filterAttackKnob, "filterAttack" }, { &filterDecayKnob, "filterDecay" },
             { &filterSustainKnob, "filterSustain" }, { &filterReleaseKnob, "filterRelease" },
-            { &gainSlider, "gain" }, { &widthSlider, "width" },
+            { &gainSlider, "gain" }, { &widthSlider, "width" }, { &meter, "meter" },
+            { &lfoShapeCombo, "lfoShape" }, { &lfoSyncButton, "lfoSync" }, { &lfoRateSlider, "lfoRate" },
+            { &lfoDivisionCombo, "lfoDivision" }, { &lfoPitchKnob, "lfoPitch" }, { &lfoCutoffKnob, "lfoCutoff" },
+            { &lfoAmpKnob, "lfoAmp" }, { &bendRangeKnob, "bendRange" }, { &vibratoKnob, "vibrato" },
+            { &lfoView, "lfoView" }, { &bendBar, "bendBar" }, { &wheelBar, "wheelBar" },
             { &seqOnButton, "seqOn" }, { &seqSyncButton, "seqSync" }, { &seqTempoSlider, "seqTempo" },
             { &seqRateCombo, "seqRate" }, { &seqModeCombo, "seqMode" }, { &seqSwingSlider, "seqSwing" },
             { &seqGateSlider, "seqGate" },
@@ -464,7 +568,7 @@ public:
             { &ampEnvButton, "ampEnvButton" }, { &filterEnvButton, "filterEnvButton" }, { &oscilloscope, "scopeView" }, { &spectrum, "spectrumView" },
             { &scopeButton, "scopeButton" }, { &spectrumButton, "spectrumButton" },
             { &loadButton, "loadButton" }, { &padButton, "padButton" },
-            { &helpButton, "helpButton" }, { &helpOverlay, "helpOverlay" } };
+            { &voiceLeds, "voiceCount" }, { &helpButton, "helpButton" }, { &helpOverlay, "helpOverlay" } };
         for (const auto& [component, id] : ids)
             component->setComponentID (id);
 
@@ -585,15 +689,6 @@ private:
         return { edge (i), edge (i + 1) };
     }
 
-    /** A panel, as the design draws it: dark fill, thin edge, rounded. */
-    static void drawSection (juce::Graphics& g, juce::Rectangle<int> r)
-    {
-        g.setColour (neon::section);
-        g.fillRoundedRectangle (r.toFloat(), 10.0f);
-        g.setColour (neon::sectionEdge);
-        g.drawRoundedRectangle (r.toFloat().reduced (0.5f), 10.0f, 1.0f);
-    }
-
     void layoutKnobRow()
     {
         for (const auto& slot : allKnobSlots())
@@ -617,6 +712,7 @@ private:
     {
         // Header
         voiceLeds.setBounds (880, 33, 288, 18);
+        voiceCountReadout.setBounds (764, 33, 110, 18);
         helpButton.setBounds (1212, 26, 40, 32);
 
         // SOURCE panel (16, 82, 400 x 548)
@@ -668,12 +764,37 @@ private:
         filterEnvAmtReadout.setBounds (786, filterKnobRow2 + 56, 70, 14);
         filterVelReadout.setBounds (866, filterKnobRow2 + 56, 70, 14);
 
-        // OUTPUT panel (964, 82, 300 x 548)
-        gainSlider.setBounds (1030, 126, 150, 28);
-        gainReadout.setBounds (1184, 132, 64, 16);
-        widthSlider.setBounds (1030, 160, 150, 28);
-        widthReadout.setBounds (1184, 166, 64, 16);
-        meter.setBounds (1040, 214, 160, 396);
+        // OUTPUT panel (the top of the right-hand column): WIDTH across the top, then a channel
+        // strip: the GAIN fader (dB marks to its left, readout under it) beside the L / R meter.
+        widthSlider.setBounds (1030, 126, 150, 28);
+        widthReadout.setBounds (1184, 132, 64, 16);
+        gainSlider.setBounds (1014, 178, 36, 146);
+        gainReadout.setBounds (976, 326, 82, 14);
+        meter.setBounds (1072, 164, 176, outputPanel.getBottom() - 8 - 164);
+
+        // MODULATION panel (the bottom of the right-hand column): a label column (980), a control
+        // column (1022 to 1172) and a readout column (1176 to 1248); then the LFO picture beside
+        // the three depth knobs, then the two wheels.
+        const int m = modPanel.getY();
+        lfoShapeCombo.setBounds (1022, m + 36, 150, 24);
+        lfoSyncButton.setBounds (1176, m + 36, 72, 24);
+        lfoRateSlider.setBounds (1022, m + 64, 150, 26);
+        lfoDivisionCombo.setBounds (1022, m + 65, 150, 24);
+        lfoRateReadout.setBounds (1176, m + 69, 72, 16);
+        lfoView.setBounds (980, m + modKnobRow1, 84, 70);
+        juce::Slider* depthKnobs[] = { &lfoPitchKnob, &lfoCutoffKnob, &lfoAmpKnob };
+        juce::Label*  depthReads[] = { &lfoPitchReadout, &lfoCutoffReadout, &lfoAmpReadout };
+        for (int i = 0; i < 3; ++i)
+        {
+            depthKnobs[i]->setBounds (1068 + 60 * i, m + modKnobRow1, 60, 42);
+            depthReads[i]->setBounds (1068 + 60 * i, m + modKnobRow1 + 56, 60, 14);
+        }
+        bendRangeKnob.setBounds (980, m + modKnobRow2, 60, 42);
+        bendRangeReadout.setBounds (980, m + modKnobRow2 + 56, 60, 14);
+        bendBar.setBounds (1044, m + modKnobRow2 + 14, 64, 12);
+        vibratoKnob.setBounds (1120, m + modKnobRow2, 60, 42);
+        vibratoReadout.setBounds (1120, m + modKnobRow2 + 56, 60, 14);
+        wheelBar.setBounds (1184, m + modKnobRow2 + 14, 64, 12);
 
         // SEQUENCER panel (16, 642, 1248 x 204)
         seqOnButton.setBounds (150, 652, 72, 28);
@@ -693,44 +814,103 @@ private:
         // Every readout is 12 px or more at 100%.
         for (auto* label : { &attackReadout, &decayReadout, &sustainReadout, &releaseReadout,
                              &filterAttackReadout, &filterDecayReadout, &filterSustainReadout, &filterReleaseReadout,
-                             &cutoffReadout, &gainReadout, &widthReadout, &filterResReadout, &filterDriveReadout,
+                             &cutoffReadout, &gainReadout, &widthReadout, &voiceCountReadout, &filterResReadout, &filterDriveReadout,
+                             &lfoRateReadout, &lfoPitchReadout, &lfoCutoffReadout, &lfoAmpReadout, &bendRangeReadout, &vibratoReadout,
                              &filterEnvAmtReadout, &filterVelReadout,
                              &seqTempoReadout, &seqSwingReadout, &seqGateReadout, &sampleNameLabel, &sampleStatusLabel,
                              &smpRootReadout, &smpStartReadout, &smpLoopStartReadout, &smpLoopEndReadout, &smpXfadeReadout,
                              &grPosReadout, &grScanReadout, &grSizeReadout, &grDensityReadout, &grSprayReadout, &grJitterReadout,
                              &chopOvertoneReadout, &chopCombReadout, &noiseReadout, &foldDriveReadout, &foldMixReadout })
             label->setFont (neon::font (12.0f));
+        voiceCountReadout.setFont (neon::font (12.0f, true));   // it names the lights, as the panel labels do
     }
 
     // Top of the filter panel's two knob rows; each knob's label sits 42 px below its top, the readout 56 px.
     static constexpr int filterKnobRow1 = 474, filterKnobRow2 = 550;
 
+    // The right-hand column (964, 82, 300 x 548), split in two: OUTPUT on top, MODULATION below.
+    static inline const juce::Rectangle<int> outputPanel { 964, 82, 300, 266 };
+    static inline const juce::Rectangle<int> modPanel    { 964, 360, 300, 270 };
+    // The MODULATION panel's two knob rows, from its top; labels and readouts as in the filter panel.
+    static constexpr int modKnobRow1 = 100, modKnobRow2 = 184;
+
+    // The cutoff slider's LFO band: a thin strip between the slider and the mode box.
+    static inline const juce::Rectangle<int> cutoffBandArea { 780, 438, 162, 6 };
+
+    /** Where the band and its tick are drawn, in content x; empty while LFO CUTOFF is 0. */
+    struct CutoffBand
+    {
+        float low = 0.0f, high = 0.0f, now = 0.0f;
+        bool  shown = false;
+        bool operator!= (const CutoffBand& o) const noexcept
+        {
+            return shown != o.shown || low != o.low || high != o.high || now != o.now;
+        }
+    };
+
+    /** How far the LFO swings the cutoff: CUTOFF's octaves either way around the cutoff, and
+        where the LFO has it now. The voices add the filter envelope and velocity on top, so
+        this is the LFO's share alone. */
+    CutoffBand cutoffBandNow() const
+    {
+        CutoffBand band;
+        const float octaves = lfoCutoffValue->load();
+        if (octaves == 0.0f || cutoffSlider.getWidth() <= 0)
+            return band;
+
+        const auto range = cutoffSlider.getRange();
+        const auto xFor = [this, range] (double hz)
+        {
+            return (float) cutoffSlider.getX() + cutoffSlider.getPositionOfValue (range.clipValue (hz));
+        };
+        const double cutoff = cutoffValue->load(), swing = std::exp2 (std::abs ((double) octaves));
+        band.shown = true;
+        band.low   = xFor (cutoff / swing);
+        band.high  = xFor (cutoff * swing);
+        band.now   = xFor (cutoff * std::exp2 ((double) (octaves * processor.getModulation().getLfoValue())));
+        return band;
+    }
+
+    void paintCutoffBand (juce::Graphics& g) const
+    {
+        if (! cutoffBand.shown)
+            return;
+        const float alpha = filterValue->load() >= 0.5f ? 1.0f : 0.4f;   // dimmed with the filter, like the slider
+        const auto area = cutoffBandArea.toFloat();
+        const float left = juce::jlimit (area.getX(), area.getRight(), cutoffBand.low);
+        const float right = juce::jlimit (area.getX(), area.getRight(), cutoffBand.high);
+        g.setColour (neon::green.withAlpha (0.55f * alpha));
+        g.fillRoundedRectangle (left, area.getY() + 1.5f, juce::jmax (2.0f, right - left), 3.0f, 1.5f);
+        g.setColour (neon::green.withAlpha (alpha));
+        g.fillRect (juce::jlimit (area.getX(), area.getRight() - 2.0f, cutoffBand.now - 1.0f), area.getY(), 2.0f, area.getHeight());
+    }
+
     /** The panels and the static labels, drawn on the design grid (under the controls). */
     void paintContent (juce::Graphics& g)
     {
         g.fillAll (neon::background);
-        for (const auto r : { juce::Rectangle<int> (16, 14, 1248, 56),    // header
-                              juce::Rectangle<int> (16, 82, 400, 548),    // source
-                              juce::Rectangle<int> (428, 82, 524, 262),   // view
-                              juce::Rectangle<int> (428, 356, 330, 274),  // envelope
-                              juce::Rectangle<int> (770, 356, 182, 274),  // filter
-                              juce::Rectangle<int> (964, 82, 300, 548),   // output
-                              juce::Rectangle<int> (16, 642, 1248, 204) }) // sequencer
-            drawSection (g, r);
+        // Each panel glows in its own colour, with a header strip behind its title (neon::drawSection).
+        struct Panel { juce::Rectangle<int> area; juce::Colour colour; int header; };
+        for (const auto& p : { Panel { { 16, 14, 1248, 56 },   neon::cyan,    0 },    // header
+                               Panel { { 16, 82, 400, 548 },   neon::cyan,    30 },   // source
+                               Panel { { 428, 82, 524, 262 },  neon::cyan,    42 },   // view
+                               Panel { { 428, 356, 330, 274 }, envTab == 1 ? neon::magenta : neon::amber, 30 },   // envelope: the tab's colour
+                               Panel { { 770, 356, 182, 274 }, neon::magenta, 30 },   // filter
+                               Panel { outputPanel,            neon::cyan,    30 },   // output
+                               Panel { modPanel,               neon::green,   30 },   // modulation (v1.9.0)
+                               Panel { { 16, 642, 1248, 204 }, neon::amber,   46 } }) // sequencer: its control row
+            neon::drawSection (g, p.area.toFloat(), p.colour, (float) p.header);
 
         // Header
         juce::AttributedString name;
         name.append ("NEON ", neon::font (22.0f, true), neon::text);
         name.append ("SYNTH", neon::font (22.0f, true), neon::cyan);
         name.draw (g, juce::Rectangle<float> (32.0f, 29.0f, 300.0f, 28.0f));
-        g.setColour (neon::muted);
-        g.setFont (neon::font (12.0f, true));
-        g.drawText ("VOICES", 810, 33, 64, 18, juce::Justification::centredRight);
 
         const auto title = [&g] (const char* text, juce::Colour colour, int x, int y, int w = 150)
         {
             g.setColour (colour);
-            g.setFont (neon::font (13.0f, true));
+            g.setFont (neon::font (14.0f, true));
             g.drawText (text, x, y, w, 18, juce::Justification::left);
         };
         const auto label = [&g] (const char* text, juce::Colour colour, int x, int y, int w, int h, juce::Justification j = juce::Justification::left)
@@ -770,8 +950,38 @@ private:
 
         // Output
         title ("OUTPUT", neon::cyan, 980, 92);
-        label ("GAIN",  neon::cyan, 980, 132, 48, 16);
-        label ("WIDTH", neon::cyan, 980, 166, 48, 16);
+        label ("WIDTH", neon::cyan, 980, 132, 48, 16);
+        label ("GAIN",  neon::cyan, 976, 162, 82, 14, juce::Justification::centred);
+
+        // The fader's groove and its dB marks, at the fader's own positions for those values.
+        neon::drawPanel (g, gainSlider.getBounds().toFloat().expanded (4.0f, 2.0f), neon::cyan);
+        g.setFont (neon::font (12.0f));
+        for (const float db : { 6.0f, 0.0f, -12.0f, -24.0f, -48.0f })
+        {
+            const float y = (float) gainSlider.getY() + gainSlider.getPositionOfValue (db);
+            g.setColour (db == 0.0f ? neon::cyan : neon::cyan.withAlpha (0.5f));
+            g.fillRect (1002.0f, y - 0.5f, db == 0.0f ? 8.0f : 5.0f, 1.0f);
+            g.setColour (db == 0.0f ? neon::cyan : neon::muted);
+            g.drawText (db > 0.0f ? "+6" : juce::String (juce::roundToInt (db)), 972, juce::roundToInt (y) - 7, 28, 14,
+                        juce::Justification::centredRight);
+        }
+
+        // Modulation
+        const int m = modPanel.getY();
+        title ("MODULATION", neon::green, 980, m + 10);
+        label ("LFO",  neon::green, 980, m + 39, 40, 18);
+        label ("RATE", neon::green, 980, m + 69, 40, 16);
+        const char* depthNames[] = { "PITCH", "CUTOFF", "AMP" };
+        for (int i = 0; i < 3; ++i)
+            label (depthNames[i], neon::green, 1068 + 60 * i, m + modKnobRow1 + 42, 60, 14, juce::Justification::centred);
+        label ("BEND",    neon::green, 980,  m + modKnobRow2 + 42, 60, 14, juce::Justification::centred);
+        label ("VIBRATO", neon::green, 1120, m + modKnobRow2 + 42, 60, 14, juce::Justification::centred);
+        g.setColour (neon::muted);
+        g.setFont (neon::font (12.0f));
+        g.drawText ("pitch bend", 1044, m + modKnobRow2 + 30, 64, 14, juce::Justification::centred);
+        g.drawText ("mod wheel",  1184, m + modKnobRow2 + 30, 64, 14, juce::Justification::centred);
+
+        paintCutoffBand (g);
 
         // Sequencer
         title ("SEQUENCER", neon::amber, 32, 657, 110);
@@ -906,7 +1116,13 @@ private:
         filterEnvButton.setToggleState (filter, juce::dontSendNotification);
         apvts.state.setProperty (envTabPropertyId, tab, nullptr);
         if (std::exchange (envTab, tab) != tab)
-            content.repaint (428, 356, 330, 274);   // the knob names change colour
+            content.repaint (juce::Rectangle<int> (428, 356, 330, 274).expanded (4));   // the knob names and the panel's glow change colour
+    }
+
+    /** The Voices parameter: how many voices may play (16 if this build has no such parameter). */
+    int voiceCount() const
+    {
+        return voiceCountValue != nullptr ? juce::roundToInt (voiceCountValue->load()) : NeonSynthProcessor::numVoices;
     }
 
     void updateReadouts()
@@ -942,6 +1158,23 @@ private:
                                   : juce::String (seqTempoValue->load(), 1) + " BPM");
         set (seqSwingReadout, juce::String (juce::roundToInt (seqSwingValue->load() * 100.0f)) + "%");
         set (seqGateReadout,  juce::String (juce::roundToInt (seqGateValue->load() * 100.0f)) + "%");
+
+        set (voiceCountReadout, voiceCount() == 1 ? juce::String ("MONO") : juce::String (voiceCount()) + " VOICES");
+
+        // Modulation. Signed values are rounded first, so a hair either side of 0 reads "0.00", not "-0.00".
+        const auto signedText = [] (float v, const char* unit)
+        {
+            const float rounded = (float) juce::roundToInt (v * 100.0f) / 100.0f;
+            return (rounded > 0.0f ? "+" : "") + juce::String (rounded, 2) + unit;
+        };
+        const float lfoHz = lfoRateValue->load();
+        set (lfoRateReadout,   lfoDivisionCombo.isVisible() ? juce::String ("to tempo")
+                                                           : juce::String (lfoHz, lfoHz < 10.0f ? 2 : 1) + " Hz");
+        set (lfoPitchReadout,  signedText (lfoPitchValue->load(), " st"));
+        set (lfoCutoffReadout, signedText (lfoCutoffValue->load(), " oct"));
+        set (lfoAmpReadout,    juce::String (juce::roundToInt (lfoAmpValue->load())) + "%");
+        set (bendRangeReadout, juce::String (juce::CharPointer_UTF8 ("\xc2\xb1")) + juce::String (juce::roundToInt (bendRangeValue->load())) + " st");
+        set (vibratoReadout,   juce::String (juce::roundToInt (vibratoValue->load())) + " ct");
 
         const auto percent = [] (float v) { return juce::String (juce::roundToInt (v * 100.0f)) + "%"; };
         set (smpRootReadout,      juce::MidiMessage::getMidiNoteName (juce::roundToInt (smpRootValue->load()), true, true, 4));
@@ -1008,6 +1241,19 @@ private:
         filterAdsrView.update (filterAttackValue->load(), filterDecayValue->load(), filterSustainValue->load(),
                                filterReleaseValue->load(), nullptr);   // no voice dots: the voices report the amp envelope only
         voiceLeds.update (voices);
+        voiceLeds.setLimit (voiceCount());
+
+        const auto& modulation = processor.getModulation();
+        const bool lfoActive = lfoPitchValue->load() != 0.0f || lfoCutoffValue->load() != 0.0f || lfoAmpValue->load() != 0.0f;
+        lfoView.update ((Lfo::Shape) juce::jlimit (0, 4, juce::roundToInt (lfoShapeValue->load())),
+                        modulation.getLfoPhase(), modulation.getLfoValue(), lfoActive);
+        bendBar.update (modulation.getBendPosition());
+        wheelBar.update (modulation.getWheelPosition());
+        if (const auto band = cutoffBandNow(); band != cutoffBand)
+        {
+            cutoffBand = band;
+            content.repaint (cutoffBandArea);
+        }
         stepGrid.refresh();   // pattern + playhead
         sampleView.refresh(); // sample, markers, playheads
         shapeView.refresh();  // the sculpted cycle, CHOP's steps
@@ -1062,6 +1308,14 @@ private:
     std::atomic<float>* filterDecayValue = nullptr;
     std::atomic<float>* filterSustainValue = nullptr;
     std::atomic<float>* filterReleaseValue = nullptr;
+    std::atomic<float>* voiceCountValue = nullptr;
+    std::atomic<float>* lfoShapeValue = nullptr;
+    std::atomic<float>* lfoRateValue = nullptr;
+    std::atomic<float>* lfoPitchValue = nullptr;
+    std::atomic<float>* lfoCutoffValue = nullptr;
+    std::atomic<float>* lfoAmpValue = nullptr;
+    std::atomic<float>* bendRangeValue = nullptr;
+    std::atomic<float>* vibratoValue = nullptr;
 
     // Visualisers and their data
     SignalHistory    history;
@@ -1080,6 +1334,7 @@ private:
     juce::Slider   attackKnob, decayKnob, sustainKnob, releaseKnob;
     juce::Slider   cutoffSlider, gainSlider, widthSlider;
     juce::ToggleButton filterToggle;
+    juce::Label voiceCountReadout;   // "16 VOICES" or "MONO", beside the lights
     juce::Label attackReadout, decayReadout, sustainReadout, releaseReadout,
                 cutoffReadout, gainReadout, widthReadout;
 
@@ -1134,11 +1389,25 @@ private:
     std::unique_ptr<SliderAttachment>   seqTempoAttachment, seqSwingAttachment, seqGateAttachment;
     std::unique_ptr<ComboBoxAttachment> seqRateAttachment, seqModeAttachment;
 
+    // Modulation (v1.9.0)
+    LfoView          lfoView;
+    ControllerBar    bendBar { true }, wheelBar { false };
+    juce::ComboBox   lfoShapeCombo, lfoDivisionCombo;
+    juce::TextButton lfoSyncButton { "SYNC" };
+    juce::Slider     lfoRateSlider, lfoPitchKnob, lfoCutoffKnob, lfoAmpKnob, bendRangeKnob, vibratoKnob;
+    juce::Label      lfoRateReadout, lfoPitchReadout, lfoCutoffReadout, lfoAmpReadout, bendRangeReadout, vibratoReadout;
+    std::unique_ptr<ComboBoxAttachment> lfoShapeAttachment, lfoDivisionAttachment;
+    std::unique_ptr<ButtonAttachment>   lfoSyncAttachment;
+    std::unique_ptr<SliderAttachment>   lfoRateAttachment;
+    std::array<std::unique_ptr<SliderAttachment>, 5> modKnobAttachments;
+    CutoffBand cutoffBand;   // as last drawn under the cutoff slider
+
     // Help
     juce::TextButton helpButton { "?" };
     HelpOverlay      helpOverlay { baseWidth, baseHeight };
 
     std::unique_ptr<juce::ParameterAttachment> sourceListener;
+    std::unique_ptr<juce::ParameterAttachment> lfoSyncListener;
     std::unique_ptr<juce::ParameterAttachment> filterEnabledListener;   // last: destroyed first
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (NeonSynthEditor)

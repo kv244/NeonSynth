@@ -136,13 +136,18 @@ private:
             "OVERTONE: how far the shaded steps are cut (100% silences them, 200% turns them upside down). COMB repeats the pattern within each cycle.",
             "NOISE fades the wave into white noise. FOLD folds it back on itself for brighter harmonics; DRIVE sets how hard." } }, neon::cyan);
 
+        addSection (columns[0], { "MOVEMENT (MODULATION panel)", {
+            "LFO: a slow wave (Sine, Triangle, Square, Saw, or Random: a new level each cycle). RATE sets its speed in Hz; with SYNC it is a note length that follows the tempo.",
+            "PITCH, CUTOFF and AMP set how far it moves the pitch (semitones), the filter (octaves; the green band under CUTOFF) and the level (tremolo). At 0 it does nothing.",
+            "Pitch bend and mod wheel work from any MIDI keyboard or controller. BEND: the range in semitones each way. VIBRATO: the wheel's vibrato depth at the top, in cents." } }, neon::green);
+
         // Right column: the synth and getting sound out.
         addSection (columns[1], { "SOUND", {
             "SOURCE: the oscillator (its Waveform), Random (16 drifting steps), the sample, or Granular: grains of it.",
             "ENVELOPE: attack, decay, sustain and release of every note. AMP shows the loudness envelope, FILTER the cutoff's. Drag the points on the shape or turn the knobs; double-click a point to reset it.",
             "FILTER: CUTOFF and the mode (low-pass, high-pass, band-pass or notch); ON switches it in. RES boosts the cutoff; near 100% the filter rings on its own. Its DRIVE soft-clips the sound before the filter. ENV: how many octaves the filter envelope moves the cutoff (up or down); VEL: how far harder notes open it.",
             "GAIN: output level. WIDTH: stereo spread of the voices.",
-            "VOICES lights the 16 voices in use. SCOPE / SPECTRUM switch the display." } }, neon::cyan);
+            "VOICES lights the voices in use. Click a light to set how many voices can play: 1 = mono. SCOPE / SPECTRUM switch the display." } }, neon::cyan);
 
         addSection (columns[1], { "SAMPLE", {
             "LOAD a WAV, AIFF or FLAC file, or drop one anywhere on the synth. PAD goes back to the built-in pad.",
