@@ -275,11 +275,10 @@ void NeonSynthProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     juce::ScopedNoDenormals noDenormals;
     const int numSamples = buffer.getNumSamples();
 
-    // TODO: the plugin has no input bus, so the buffer arrives with no incoming
-    // audio. Add an input bus if you want to mix or modulate external sound here.
+    // The plugin has no input bus: the buffer arrives with no incoming audio.
     buffer.clear();
     midiLogger.push (midiMessages, samplesProcessed);   // lock-free; formatting/I/O happen elsewhere
-    blockSample = sampleSlot.beginBlock();   // the voices' sample for this block (used by the sample sources from P2)
+    blockSample = sampleSlot.beginBlock();   // the voices' sample for this block (Sample and Granular sources)
 
     NeonSynthVoice::Params params;
     params.waveform = waveformParameter->getIndex();
@@ -305,7 +304,7 @@ void NeonSynthProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     params.chop = { chopPattern.load (std::memory_order_relaxed), chopCombParameter->get(), chopOvertoneParameter->get() * 0.01f };
     params.sculpt = { noiseLevelParameter->get() * 0.01f, foldDriveParameter->get(), foldMixParameter->get() * 0.01f };
 
-    // Every voice shares the same settings. TODO: per-voice detune for unison, or extra harmonics.
+    // Every voice shares the same settings.
     for (auto* v : voices)
         v->setParameters (params);
 

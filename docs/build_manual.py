@@ -8,7 +8,8 @@
 
 The check fails (exit 1) when the manual does not match the code it ships with:
   * "Applies to" and the source tag must name the version in CMakeLists.txt;
-  * every relative link and image must point at a file that exists;
+  * every relative link and image must point at a file that exists, and a link to
+    a #section (in the manual or another Markdown file) at a heading that exists;
   * the cover (docs/images/cover.json) must have been redrawn for that version.
 The manual in the repository is never changed. The PDF is built from a copy that
 gets a line stating the version, the commit and the build date (the edition
@@ -48,11 +49,19 @@ def check(md, version):
                                 f"update 'Applies to' (and the edition) for this release")
                 break
     for link in re.findall(r"\]\(([^)\s]+)\)", md):
-        if re.match(r"[a-z]+:", link) or link.startswith("#"):
+        if re.match(r"[a-z]+:", link):
             continue
-        target = link.split("#")[0]
-        if target and not (MANUAL.parent / target).exists():
+        target, _, fragment = link.partition("#")
+        path = MANUAL.parent / target if target else MANUAL
+        if target and not path.exists():
             problems.append(f"broken relative link: {link}")
+            continue
+        # A section link must name a heading that exists: the file alone is not enough
+        # (five manual links once pointed at README sections that had been removed).
+        if fragment and path.suffix == ".md":
+            text = md if path == MANUAL else path.read_text(encoding="utf-8")
+            if fragment not in heading_anchors(text):
+                problems.append(f"link to a missing section: {link}")
     cover = HERE / "images" / "cover.json"
     if cover.exists():
         drawn = json.loads(cover.read_text(encoding="utf-8")).get("version")
@@ -60,6 +69,20 @@ def check(md, version):
             problems.append(f"the cover says v{drawn} but CMakeLists.txt says v{version}: run "
                             f"docs/figures/cover.py --date \"<release date>\"")
     return problems
+
+
+def heading_anchors(md):
+    """The #anchors GitHub gives a Markdown file's headings: the slug of each heading,
+    with -1, -2 ... added to repeats (code blocks are skipped)."""
+    anchors, seen = set(), {}
+    text = re.sub(r"^```.*?^```", "", md, flags=re.S | re.M)
+    for heading in re.findall(r"^#{1,6}\s+(.+?)\s*#*\s*$", text, flags=re.M):
+        plain = re.sub(r"[`*_]|\[([^\]]*)\]\([^)]*\)", lambda m: m.group(1) or "", heading)
+        slug = github_slug(plain)
+        count = seen.get(slug, 0)
+        anchors.add(slug if count == 0 else f"{slug}-{count}")
+        seen[slug] = count + 1
+    return anchors
 
 
 def github_slug(value, separator="-"):

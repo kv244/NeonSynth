@@ -78,7 +78,7 @@ public:
         });
 
         const Markers m { startValue->load(), loopStartValue->load(), loopEndValue->load(),
-                          (int) loopModeValue->load(), (int) sourceValue->load(),
+                          (int) loopModeValue->load(), (NeonSynthVoice::Source) (int) sourceValue->load(),
                           grainPosValue->load(), grainSprayValue->load() };
         if (! (m == markers)) { markers = m; changed = true; }
 
@@ -103,11 +103,12 @@ public:
         const auto bounds = getLocalBounds().toFloat();
         neon::drawPanel (g, bounds, neon::cyan);
 
-        const bool active = markers.source == 1 || markers.source == 2;   // dimmed while the oscillator or Random plays
+        const bool active = markers.source == NeonSynthVoice::Source::sample
+                         || markers.source == NeonSynthVoice::Source::granular;   // dimmed while the oscillator or Random plays
         const float alpha = active ? 1.0f : 0.35f;
         const auto inner = bounds.reduced (4.0f, 3.0f);
 
-        const bool granular = markers.source == 2;
+        const bool granular = markers.source == NeonSynthVoice::Source::granular;
 
         // Granular: the band Spray can reach around Position
         if (granular)
@@ -166,7 +167,7 @@ public:
     {
         const float x = (float) e.x;
         const float grab = 8.0f;
-        const bool granular = markers.source == 2;
+        const bool granular = markers.source == NeonSynthVoice::Source::granular;
         const bool loopShown = ! granular && markers.loopMode != SampleReader::oneShot;   // as paint() draws the brackets
 
         dragging = granular ? "grPos" : "smpStart";   // Granular: anywhere moves the cloud
@@ -201,7 +202,8 @@ private:
     struct Markers
     {
         float start = 0.0f, loopStart = 0.0f, loopEnd = 1.0f;
-        int loopMode = 1, source = 0;
+        int loopMode = 1;
+        NeonSynthVoice::Source source = NeonSynthVoice::Source::oscillator;
         float grainPos = 0.5f, spray = 0.1f;
         bool operator== (const Markers& o) const noexcept
         {
