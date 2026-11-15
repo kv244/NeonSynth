@@ -10,6 +10,7 @@ Figures written (SVG + 300 dpi PNG):
     fig05-filter                      a sawtooth before and after the low-pass filter
     fig07-sample-granular-schematic  sample and granular guide (schematic over the
                                       built-in pad's rendered waveform)
+    fig09-lfo-shapes                  the five LFO shapes, as tremolo on a held sine
 
 Every render: 48 kHz, a fresh plugin instance (reset), velocity 100, GAIN 0 dB,
 WIDTH 0% (both channels identical; the left one is analysed), RUN off.
@@ -394,6 +395,68 @@ def fig06(vst, out):
     return fs.save(fig, out, "fig07-sample-granular-schematic"), meas
 
 
+# ---------------------------------------------------------------- figure 9
+LFO_SHAPES = ["Sine", "Triangle", "Square", "Saw", "Random"]
+FIG9 = dict(note=69, hz=440.0, seconds=1.8, hold=1.6, attack=0.005, decay=0.100, sustain=1.0, release=0.150,
+            filter_enabled=False, lfo_rate_hz=2.0, lfo_amp_percent=100.0, frame_ms=2.0, shown=(0.3, 1.3))
+
+
+def fig09(vst, out):
+    p = FIG9
+    frame = int(SR * p["frame_ms"] / 1000)
+    base = dict(waveform="Sine", attack=p["attack"], decay=p["decay"], sustain=p["sustain"], release=p["release"],
+                filter_enabled=False, lfo_rate=p["lfo_rate_hz"])
+    notes = [(p["note"], 0.0, p["hold"])]
+    t0, t1 = p["shown"]
+    flat, t = envelope_of(render(vst, {**base, "lfo_amp": 0.0}, notes, p["seconds"]), frame)
+    sel = (t >= t0) & (t <= t1)
+    ref = float(np.median(flat[sel]))       # the unmodulated sustain level: 1 on the plot
+    envs, meas = {}, dict(unmodulated_level_fs=ref, unmodulated_ripple=float(np.ptp(flat[sel]) / ref))
+    for shape in LFO_SHAPES:
+        env, _ = envelope_of(render(vst, {**base, "lfo_shape": shape, "lfo_amp": p["lfo_amp_percent"]},
+                                    notes, p["seconds"]), frame)
+        env = env / ref
+        envs[shape] = env
+        e = env[sel]
+        m = dict(min=float(e.min()), max=float(e.max()))
+        ts = t[sel]
+        if shape == "Random":               # held levels: time between steps
+            steps = ts[1:][np.abs(np.diff(e)) > 0.05]
+            steps = steps[np.concatenate(([True], np.diff(steps) > 0.05))] if len(steps) else steps
+            m["step_times_s"] = [round(float(x), 3) for x in steps]
+            m["period_s"] = float(np.median(np.diff(steps))) if len(steps) > 1 else None
+        else:                               # upward crossings of the midpoint, interpolated
+            mid = (e.min() + e.max()) / 2
+            k = np.nonzero((e[:-1] < mid) & (e[1:] >= mid))[0]
+            cross = ts[k] + (mid - e[k]) / (e[k + 1] - e[k]) * (ts[k + 1] - ts[k])
+            m["period_s"] = float(np.mean(np.diff(cross))) if len(cross) > 1 else None
+        meas[shape] = m
+
+    fig = fs.figure(150)
+    gs = fig.add_gridspec(len(LFO_SHAPES), 1, hspace=0.75, left=0.1, right=0.985, top=0.91, bottom=0.085)
+    axes = []
+    for row, shape in enumerate(LFO_SHAPES):
+        ax = fig.add_subplot(gs[row], sharex=axes[0] if axes else None)
+        axes.append(ax)
+        ax.axhline(1.0, color=fs.GREY, ls=(0, (4, 2)), lw=0.8)
+        ax.plot(t[sel], envs[shape][sel], color=fs.INK, lw=1.3)
+        ax.set_ylim(-0.05, 1.12)
+        ax.set_yticks([0, 0.5, 1.0])
+        ax.set_yticklabels(["0", "0.5", "1"])
+        ax.set_title(shape, loc="left", pad=2)
+        if row != len(LFO_SHAPES) - 1:
+            ax.tick_params(labelbottom=False)
+    axes[0].text(1.0, 1.25, "dashed: the level with LFO AMP at 0", transform=axes[0].transAxes, ha="right",
+                 va="bottom", fontsize=8.5, color=fs.GREY)
+    axes[-1].set_xlim(t0, t1)
+    axes[-1].set_xlabel("Time from key down (s)")
+    fig.text(0.015, (0.91 + 0.085) / 2, "Level (1 = without the LFO)", rotation=90, ha="left", va="center", fontsize=9)
+    fig.suptitle(f"A4 sine held; LFO AMP 100%, RATE {p['lfo_rate_hz']:g} Hz (a cycle every "
+                 f"{1 / p['lfo_rate_hz']:g} s); peak per 2 ms; same scales",
+                 x=0.01, ha="left", y=0.985, fontsize=9, fontweight="normal")
+    return fs.save(fig, out, "fig09-lfo-shapes"), meas
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--vst3", required=True)
@@ -405,7 +468,8 @@ def main():
     record = dict(revision=args.revision, pedalboard=pedalboard.__version__, sample_rate=SR, velocity=VELOCITY,
                   common=BASE, figures={})
     for name, fn, settings in [("fig02-waveforms", fig02, FIG2), ("fig04-envelope", fig04, FIG4),
-                               ("fig05-filter", fig05, FIG5), ("fig07-sample-granular-schematic", fig06, FIG6)]:
+                               ("fig05-filter", fig05, FIG5), ("fig07-sample-granular-schematic", fig06, FIG6),
+                               ("fig09-lfo-shapes", fig09, FIG9)]:
         files, meas = fn(args.vst3, out)
         record["figures"][name] = dict(settings=settings, measured=meas)
         print(name, json.dumps(meas))
