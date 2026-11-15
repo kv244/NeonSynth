@@ -130,7 +130,7 @@ option(NEONSYNTH_BUILD_TESTS "Build the unit tests and the render benchmark" OFF
 
 if(NEONSYNTH_BUILD_TESTS)
     enable_testing()
-    set(NEONSYNTH_UNIT_TESTS StepSequencerTests VoiceEnvelopeTests OscillatorTests ChopTests SculptTests SampleDataTests SampleReaderTests GranularTests FilterTests LfoTests PitchTests ModulationTests)
+    set(NEONSYNTH_UNIT_TESTS StepSequencerTests VoiceEnvelopeTests OscillatorTests ChopTests SculptTests SampleDataTests SampleReaderTests GranularTests FilterTests LfoTests ModulationTests)
     add_custom_target(unit_tests)
 
     foreach(test ${NEONSYNTH_UNIT_TESTS})
@@ -159,7 +159,7 @@ if(NEONSYNTH_BUILD_TESTS)
     #   SessionStateTests     saving and restoring the sample with a session (ctest)
     #   EditorTests           drives the editor offscreen with mouse events and paints it (ctest;
     #                         on Linux it needs an X display, e.g. xvfb-run)
-    foreach(program RenderBenchmark RealtimeSafetyTests ParameterLayoutTests SessionStateTests EditorTests)
+    foreach(program RenderBenchmark RealtimeSafetyTests ParameterLayoutTests SessionStateTests EditorTests PitchTests MidiModulationTests)
         juce_add_console_app(${program} PRODUCT_NAME "${program}")
         juce_generate_juce_header(${program})
         target_sources(${program} PRIVATE tests/${program}.cpp NeonSynthProcessor.cpp)
@@ -179,7 +179,7 @@ if(NEONSYNTH_BUILD_TESTS)
             neonsynth_warning_tweaks)
     endforeach()
 
-    foreach(program RealtimeSafetyTests ParameterLayoutTests SessionStateTests EditorTests)
+    foreach(program RealtimeSafetyTests ParameterLayoutTests SessionStateTests EditorTests PitchTests MidiModulationTests)
         add_dependencies(unit_tests ${program})
         add_test(NAME ${program} COMMAND ${program})
     endforeach()

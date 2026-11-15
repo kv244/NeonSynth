@@ -3,7 +3,9 @@
 // Licensed under the GNU Affero General Public License v3; see LICENSE.
 
 #pragma once
-#include <JuceHeader.h>
+#include <juce_core/juce_core.h>
+#include <cmath>
+#include <algorithm>
 
 /**
     The LFO (v1.9.0): one for the whole synth, free-running, rendered once per

@@ -3,7 +3,9 @@
 // Licensed under the GNU Affero General Public License v3; see LICENSE.
 
 #pragma once
-#include <JuceHeader.h>
+#include <juce_audio_basics/juce_audio_basics.h>
+#include <atomic>
+#include <vector>
 #include "Lfo.h"
 
 /**
