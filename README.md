@@ -26,12 +26,14 @@ lead. [`docs/demo/make_demo.py`](docs/demo/make_demo.py) renders it from the VST
 - **Waveform sculpting**: CHOP cuts or flips steps of every cycle (after the Roland S-1), NOISE fades the
   wave into white noise, and FOLD folds it back on itself.
 - **Envelope, filter and output**: an ADSR you can drag on its own graph; a state-variable filter with four
-  modes, resonance up to self-oscillation, drive, its own envelope and velocity; 16 voices panned by pitch,
-  and a soft clipper that keeps the output under −1 dBFS.
+  modes, resonance up to self-oscillation, drive, its own envelope and velocity; up to 16 voices panned by
+  pitch (click the voice lights for fewer, down to mono), and a soft clipper that keeps the output under −1 dBFS.
+- **Movement**: one LFO (sine, triangle, square, saw, random; free or synced to the tempo) on pitch, cutoff
+  and level; pitch bend with a range of up to 24 semitones; and a mod-wheel vibrato, all from MIDI.
 - **16-step sequencer**: sample-accurate, synced to the DAW or its own tempo, with swing, gate and three
   keyboard modes.
 - **You see what you hear**: oscilloscope, spectrum with the filter curve, envelope with a dot per voice,
-  voice lights and a stereo meter, in a window that scales from 75% to 150%.
+  the LFO's shape and position, the bend and mod-wheel positions, voice lights and a stereo meter, in a window that scales from 75% to 150%.
 - **Sessions keep everything**: the sample, the sequencer pattern and the CHOP pattern are saved with the
   DAW project, and every parameter can be automated.
 
@@ -73,6 +75,7 @@ MIDI logging and the layout of the source.
 
 | Version | Date | What changed |
 |---|---|---|
+| [v1.9.0](https://github.com/kv244/Synth/releases/tag/v1.9.0) | 16 Nov 2026 | Movement: one LFO (five shapes, free or synced) on pitch, cutoff and level; pitch bend and a mod-wheel vibrato from MIDI, for keyboard and sequencer notes alike; click the voice lights to set how many voices play (1 = mono); a vertical GAIN fader beside the meters and a glow around every panel. Old sessions sound bit-identical; projects with recorded bend or mod-wheel data now respond to it |
 | [v1.8.0](https://github.com/kv244/Synth/releases/tag/v1.8.0) | 15 Nov 2026 | The filter: low-pass, high-pass, band-pass and notch; resonance up to self-oscillation that follows the envelope; drive; a filter envelope (AMP / FILTER tabs) and velocity to cutoff; the spectrum draws the real response. Old sessions sound bit-identical |
 | [v1.7.1](https://github.com/kv244/Synth/releases/tag/v1.7.1) | 13 Nov 2026 | Review fixes: sample loading and replacement, Granular bracket, CI runs once per commit, code statistics report; no change to controls or sound |
 | [v1.6.0](https://github.com/kv244/Synth/releases/tag/v1.6.0) | 11 Nov 2026 | Waveform sculpting: CHOP, Noise and Fold, with the SHAPE strip; cleaner band-limited oscillators; the illustrated manual and its PDF |

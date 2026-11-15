@@ -13,7 +13,7 @@
     block into a buffer of values from -1 to +1. Modulation.h scales it by the
     PITCH, CUTOFF and AMP depths and hands the results to the voices.
 
-    CONTRACT (v1.9.0 shared contract; agent A implements the body):
+    How it behaves:
       - Shapes: Sine, Triangle, Square, Saw (rising) and Random (sample and hold,
         a new value each cycle). Square and Random are slewed over 2 ms so their
         jumps don't click; a shape change crossfades over 10 ms.

@@ -194,8 +194,8 @@ public:
     /** Audio thread, once per block after setParameters(): this block's modulation buffers (v1.9.0).
         Indexed like the block, so renderNextBlock()'s startSample is the index of its first sample.
         Null buffers mean nothing modulates; the voice then renders exactly as v1.8.0 did.
-        CONTRACT: agent B reads modulation.pitchRatio in the source path (oscillators, sample,
-        grains); agent C reads modulation.cutoffOctaves in modulatedCutoffHz(). */
+        The source path reads modulation.pitchRatio (oscillators, sample, grains);
+        modulatedCutoffHz() reads modulation.cutoffOctaves. */
     void setModulation (const ModulationBlock& block) noexcept   { modulation = block; modulationIndex = 0; }
 
     void startNote (int midiNote, float velocity, juce::SynthesiserSound*, int) override

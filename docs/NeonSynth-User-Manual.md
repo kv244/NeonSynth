@@ -6,16 +6,16 @@
 
 NeonSynth is a learning synthesizer: a place to hear what a waveform sounds like, see what changes when you shape it, and explore the code that makes it happen. Its oscillator, sample, random, and granular engines provide different starting points for that exploration, with source code available to read, build, and modify ([NeonSynth project](https://github.com/kv244/Synth)).
 
-For musicians, begin with one note and one waveform, without stacked oscillator layers obscuring what you are hearing. For coders, follow the same sound into the C++ implementation, from waveform generation through envelope, filter, and output; the interface and the code become two views of the same instrument ([voice architecture](https://github.com/kv244/Synth/blob/v1.8.0/NeonSynthVoice.h)).
+For musicians, begin with one note and one waveform, without stacked oscillator layers obscuring what you are hearing. For coders, follow the same sound into the C++ implementation, from waveform generation through envelope, filter, and output; the interface and the code become two views of the same instrument ([voice architecture](https://github.com/kv244/Synth/blob/v1.9.0/NeonSynthVoice.h)).
 
 **Instrument:** NeonSynth by Razvan Julian Petrescu / AudioDSP  
-**Edition:** 1.6, updated 15 November 2026 (the v1.8.0 filter: modes, resonance, drive, filter envelope and velocity)<br>
-**Applies to:** NeonSynth v1.8.0, source tag `v1.8.0`  
-**Formats:** VST3 instrument and standalone application; a Windows installer is supplied for this release ([v1.8.0 release](https://github.com/kv244/Synth/releases/tag/v1.8.0)).
+**Edition:** 1.7, updated 16 November 2026 (v1.9.0: the LFO, pitch bend and the mod wheel, the Voices limit, and the new MODULATION panel)<br>
+**Applies to:** NeonSynth v1.9.0, source tag `v1.9.0`  
+**Formats:** VST3 instrument and standalone application; a Windows installer is supplied for this release ([v1.9.0 release](https://github.com/kv244/Synth/releases/tag/v1.9.0)).
 
 ### About this manual
 
-The instructions were checked against the v1.8.0 source code. Every recipe in the sound-design chapter was rendered through the v1.6.0 plugin, to confirm that it sounds, releases cleanly to silence and stays clear of the output soft clipper; v1.7.0 and v1.8.0 keep that sound bit-identical at the settings the recipes use (v1.8.0's new filter controls start neutral), which the project's compare test checks. This is not a certification of compatibility with every audio device or DAW.
+The instructions were checked against the v1.9.0 source code. Every recipe in the sound-design chapter was rendered through the plugin, to confirm that it sounds, releases cleanly to silence and stays clear of the output soft clipper: the first six through v1.6.0, which v1.7.0 to v1.9.0 keep bit-identical at the settings they use (each version's new controls start neutral), as the project's compare test checks; the wind recipe through v1.9.0. This is not a certification of compatibility with every audio device or DAW.
 
 Each figure is labelled by how it was made: **Actual application capture** (a screenshot of the running instrument, with numbered callouts added), **Plot derived from rendered audio** (measured from sound the plugin produced, with the settings stated), or **Explanatory schematic** (a drawing that explains an idea and is not a measurement). How to regenerate them is in [figures/README.md](figures/README.md).
 
@@ -29,6 +29,7 @@ The sound-design settings are starting points, not factory presets. Begin at a l
 - [Choosing a sound source](#choosing-a-sound-source)
 - [Sculpting a waveform](#sculpting-a-waveform)
 - [Shaping a sound](#shaping-a-sound)
+- [Movement: LFO, pitch bend and mod wheel](#movement-lfo-pitch-bend-and-mod-wheel)
 - [Sample playback](#sample-playback)
 - [Granular synthesis](#granular-synthesis)
 - [Step sequencer](#step-sequencer)
@@ -43,7 +44,7 @@ The sound-design settings are starting points, not factory presets. Begin at a l
 
 ### Install the Windows release
 
-Download `NeonSynth-1.8.0-Windows-Setup.exe` from the [v1.8.0 release page](https://github.com/kv244/Synth/releases/tag/v1.8.0). The installer provides the VST3 instrument and an optional standalone application (see [Installation](../README.md#installation) in the README).
+Download `NeonSynth-1.9.0-Windows-Setup.exe` from the [v1.9.0 release page](https://github.com/kv244/Synth/releases/tag/v1.9.0). The installer provides the VST3 instrument and an optional standalone application (see [Installation](../README.md#installation) in the README).
 
 | Component | Default location |
 |---|---|
@@ -124,11 +125,11 @@ Only after those differences become familiar should you add chords, sequencing, 
 
 ## Finding your way around
 
-![The NeonSynth window with nine numbered regions: 1 source and waveform menus, 2 the strip and its knobs, 3 scope or spectrum, 4 envelope graph and knobs with the AMP and FILTER tabs, 5 filter, 6 output gain, width and meters, 7 voice lights, 8 the help button, 9 the step sequencer.](images/fig01-interface.png)
+![The NeonSynth window with ten numbered regions: 1 source and waveform menus, 2 the strip and its knobs, 3 scope or spectrum, 4 envelope graph and knobs with the AMP and FILTER tabs, 5 filter, 6 output with the width slider, gain fader and meters, 7 modulation, 8 voice lights, 9 the help button, 10 the step sequencer.](images/fig01-interface.png)
 
-Figure 1. The main window (v1.8.0 at 150%, Source set to Oscillator, Sawtooth, with the sequencer running). *Actual application capture; the numbered outlines and the key below the picture were added.* Regions 1–9 are explained in the key, and the window is described panel by panel in the table below.
+Figure 1. The main window (v1.9.0 at 150%, Source set to Oscillator, Sawtooth, with the sequencer running and the LFO moving the cutoff). *Actual application capture; the numbered outlines and the key below the picture were added.* Regions 1–10 are explained in the key, and the window is described panel by panel in the table below.
 
-The window has five panels. SOURCE, on the left, is where the sound starts: what plays, and how it is shaped before the envelope. The middle column shows the sound (scope or spectrum) above the envelope and filter. OUTPUT, on the right, sets and measures the level. SEQUENCER runs along the bottom. Colours carry the same meaning everywhere: cyan for the source and output, amber for the envelope and sequencer, and magenta for the filter and the granular controls.
+The window has six panels, each outlined in its own colour. SOURCE, on the left, is where the sound starts: what plays, and how it is shaped before the envelope. The middle column shows the sound (scope or spectrum) above the envelope and filter. On the right, OUTPUT sets and measures the level, and MODULATION below it makes the sound move. SEQUENCER runs along the bottom. Colours carry the same meaning everywhere: cyan for the source and output, amber for the envelope and sequencer, magenta for the filter and the granular controls, and green for modulation.
 
 | Panel | What you do there |
 |---|---|
@@ -136,8 +137,9 @@ The window has five panels. SOURCE, on the left, is where the sound starts: what
 | Display | Switch between SCOPE and SPECTRUM to see the mix. |
 | ENVELOPE | Set the shape of each note: drag the points on the graph or turn ATTACK, DECAY, SUSTAIN and RELEASE. The **AMP** tab shapes the level, the **FILTER** tab the filter's own envelope. |
 | FILTER | Switch the filter in with ON, set its CUTOFF and mode, and the RES, DRIVE, ENV and VEL knobs. |
-| OUTPUT | Set GAIN and WIDTH, and watch the left and right meters. |
-| Header | See which of the 16 voices are sounding, and open the quick help with **?**. |
+| OUTPUT | Set WIDTH, raise or lower the volume with the GAIN fader beside the meters, and watch the left and right levels. |
+| MODULATION | Set the LFO (shape, rate, sync) and how far it moves the pitch, cutoff and level; set the pitch-bend range and the mod wheel's vibrato. |
+| Header | See which of the 16 voices are sounding, click a light to set how many voices can play, and open the quick help with **?**. |
 | SEQUENCER | Start a pattern, edit its steps, and set timing and keyboard interaction. |
 
 ### Window size
@@ -302,6 +304,62 @@ For a classic pluck, try Sawtooth, CUTOFF about 200 Hz, RES 40%, ENV +4 octaves,
 
 Figure 5. What the low-pass filter removes. *Plot derived from rendered audio:* a sawtooth at A3 (220 Hz) rendered at 48 kHz, velocity 100, once with the filter bypassed and once with the cutoff at 1 kHz; the same scales are used in every panel and nothing is normalised. The measured attenuation is about 3 dB at the cutoff and about 24 dB at 4 kHz, which is what a two-pole low-pass (12 dB per octave) gives.
 
+## Movement: LFO, pitch bend and mod wheel
+
+A sound that never changes soon sounds static, however rich it is. The green MODULATION panel (region 7 in Figure 1) makes it move: an LFO that sweeps the pitch, the cutoff or the level by itself, and the pitch bend and mod wheels of your keyboard or controller. Every control in it starts at a value where it does nothing, so a session saved before v1.9.0 sounds exactly as it did.
+
+### The LFO
+
+An LFO, low-frequency oscillator, is a wave too slow to hear as a note, from one cycle every 50 seconds to 20 cycles a second. Instead of being heard, it moves a control up and down. NeonSynth has one LFO for the whole instrument, and it runs freely: every note shares it, so the notes of a chord move together, and a note that starts later joins the wave wherever it is.
+
+| Control | Meaning | Range | Initial value |
+|---|---|---|---|
+| Shape | **Sine** and **Triangle** swing smoothly; **Square** jumps between two values; **Saw** rises, then drops back; **Random** holds a new random value for each cycle (sample and hold). | five choices | Sine |
+| RATE | Cycles per second. | 0.02–20 Hz | 1 Hz |
+| SYNC | Replaces RATE with a note length, so the LFO follows the tempo. | 4 bars, 2 bars, 1 bar, 1/2, 1/4, 1/8, 1/16, 1/8T, 1/16T | off (1/4 when on) |
+| PITCH | How far the LFO moves the pitch of every note, up and down. | −12 to +12 semitones | 0 |
+| CUTOFF | How far it moves the filter's cutoff, up and down. The filter must be ON to hear it. | −5 to +5 octaves | 0 |
+| AMP | How deep it dips the level (tremolo). | 0–100% | 0% |
+
+With all three depths at 0 the LFO does nothing, and the LFO view in the panel is drawn dimmed. A negative depth turns the shape upside down: a rising saw becomes a falling one. The view draws one cycle of the shape with a dot at the current point, and while CUTOFF is not 0 a green band under the filter's CUTOFF slider shows how far the LFO swings it.
+
+**Sync.** With SYNC on and a DAW playing, the LFO takes its position from the song position, so it lands on the beat after you jump or loop. When the transport is stopped, and in the Standalone, it runs freely at the tempo: the DAW's when there is one, otherwise the sequencer's TEMPO.
+
+**Without clicks.** The sudden jumps of Square, Random and Saw are smoothed over 2 ms, enough to stop a click on the level or a resonant filter, too short to soften the rhythm. Changing the shape crossfades over 10 ms, and the three depths glide over 20 ms when you turn them.
+
+**Tremolo only dips.** AMP lowers the level from where it is and never raises it: at 100% the level swings between full and silence, at 50% between full and half. So turning AMP up never pushes the output into the soft clipper.
+
+![Five rows, one for each LFO shape at 2 Hz with AMP at 100%: the level of a held sine note rises and falls as a smooth wave for Sine, as straight ramps for Triangle, jumps between full and silence for Square, rises steadily then drops for Saw, and steps between held levels for Random.](images/fig09-lfo-shapes.png)
+
+Figure 9. The five LFO shapes, heard as tremolo. FIG9_FACTS
+
+### Pitch bend and mod wheel
+
+Pitch bend and the mod wheel respond to MIDI: the pitch-bend wheel and the modulation wheel (controller 1) of any keyboard or controller, on any MIDI channel, and the same messages recorded in a DAW. Both reach every note that is sounding, keyboard notes and the sequencer's alike, so holding a key in Transpose mode and bending bends the whole pattern.
+
+| Control | Meaning | Range | Initial value |
+|---|---|---|---|
+| BEND | How far the pitch-bend wheel moves the pitch at its ends, up and down. | 0–24 semitones | ±2 semitones |
+| VIBRATO | How deep the mod wheel's vibrato is with the wheel at the top. | 0–100 cents | 30 cents |
+
+The bend glides over 5 ms so a wheel that sends coarse steps doesn't sound stepped. The mod wheel adds a vibrato at 5.5 Hz, a typical rate for a singer or a violinist, from none at the bottom of the wheel to VIBRATO at the top; it is separate from the LFO, so you can have both. A **Reset All Controllers** message (controller 121) centres the bend and returns the wheel to zero.
+
+Beside each knob a small bar shows where the wheel is. If you move a wheel and its bar stays still, the controller's messages aren't reaching NeonSynth: check its MIDI channel and the DAW's MIDI routing.
+
+All four sources follow the pitch. A Sample note bent far upwards switches to one of its prepared lower-rate copies with a short crossfade, so it stays clean; Granular starts new grains at the bent pitch and moves the running ones with it.
+
+Earlier versions ignored pitch bend and the mod wheel. A project that contains such messages, recorded with an older version, now responds to them.
+
+### Voices: from mono to 16
+
+The 16 voice lights at the top of the window also set how many voices can play. Click a light: click the fourth for four voices, the first for one. With one voice NeonSynth is monophonic (the readout says MONO): each new note takes over the voice that is playing. When all the allowed voices are busy, a new note takes over one of them, preferring one already in its release. The lights above the limit are drawn as faint dots. Notes already sounding on them finish normally, so lowering the limit never cuts a note off. The limit is the automatable parameter **Voices**; the initial value is 16.
+
+### Listening exercise: three kinds of movement
+
+1. Choose Oscillator and Sawtooth, switch the filter ON, and set CUTOFF to about 800 Hz with RES at 40%. Set the LFO to Sine at 0.5 Hz and CUTOFF to +2 octaves, then hold a chord: the sound opens and closes slowly. Raise RATE to 6 Hz for a wobble, then try Square (the tone jumps between dark and bright) and Random (a different brightness on each step).
+2. Return CUTOFF to 0. Set AMP to 60% with Triangle at 5 Hz: that is tremolo. Return AMP to 0 and set PITCH to 0.3 semitones at 6 Hz: the LFO's vibrato. Compare it with the mod wheel's.
+3. Turn SYNC on, choose 1/8, and run the sequencer with CUTOFF at +2 octaves: the sweeps now land on the steps.
+
 ## Sample playback
 
 ![The SOURCE panel with Sample and with Granular selected. Panel a, Source Sample: numbered outlines on the LOAD, PAD and loop menu, the waveform, and the ROOT, START, L.START, L.END and XFADE knobs. Panel b, Source Granular: the same for the waveform with its POS line and SPRAY band, and the ROOT, POS, SCAN, SIZE, DENS, SPRAY and JITTER knobs.](images/fig06-sample-granular-ui.png)
@@ -412,7 +470,7 @@ The grid supports MIDI notes 0–127 and enabled-step velocities 1–127; the cy
 
 ![The 16-step grid, with numbered pointers to an enabled step, a disabled step, a note name, a velocity bar and the playhead, and a list of the mouse and wheel gestures.](images/fig08-sequencer.png)
 
-Figure 8. The step grid (v1.8.0 at 150%, sequencer running). *Actual application capture; the numbered pointers and the gesture key were added.* The gestures are those in the table above, as coded in the step view: one semitone for every 6 pixels of vertical drag, velocity changes of one for each pixel of Shift-drag or right-drag, and steps of four for Shift with the wheel.
+Figure 8. The step grid (v1.9.0 at 150%, sequencer running). *Actual application capture; the numbered pointers and the gesture key were added.* The gestures are those in the table above, as coded in the step view: one semitone for every 6 pixels of vertical drag, velocity changes of one for each pixel of Shift-drag or right-drag, and steps of four for Shift with the wheel.
 
 To create a new pattern, first switch unwanted steps off, drag the remaining steps to their pitches, and adjust their velocities for accents. There is no separate pattern-bank or pattern-length control in this version.
 
@@ -430,7 +488,7 @@ If RUN is lit but Transpose mode is silent, hold a key and, with host synchronis
 
 ### Gain and stereo width
 
-**GAIN** controls output level from −48 dB to +6 dB, initially 0 dB; **WIDTH** controls pitch-based voice placement from 0% to 100%, initially 60%. At zero width, voices are centred; increasing width places notes below C4 towards the left and notes above C4 towards the right, reaching the extremes two octaves either side at full width.
+**GAIN** is the vertical fader beside the meters: it sets the output level from −48 dB to +6 dB, initially 0 dB, with the value shown under it. Drag it, nudge it with the mouse wheel, or double-click it to return to 0 dB. **WIDTH**, the slider at the top of the panel, controls pitch-based voice placement from 0% to 100%, initially 60%. At zero width, voices are centred; increasing width places notes below C4 towards the left and notes above C4 towards the right, reaching the extremes two octaves either side at full width.
 
 WIDTH is not chorus, delay, or a stereo image restored from an imported recording. A single C4 note remains centred even at full width, so try notes on either side of it or a chord when evaluating the control.
 
@@ -438,7 +496,7 @@ WIDTH is not chorus, delay, or a stereo image restored from an imported recordin
 
 - **SCOPE:** Displays the output waveform and uses the lowest active note as its pitch reference.
 - **SPECTRUM:** Displays frequency content with the filter's response curve for the current mode, cutoff and resonance. When resonance raises a peak above the top of the display, the curve is lowered so the peak stays in view.
-- **VOICES:** Provides one light per voice, with brightness following its envelope.
+- **VOICES:** Provides one light per voice, with brightness following its envelope. Click a light to set how many voices can play (see [Voices: from mono to 16](#voices-from-mono-to-16)); the lights above the limit are drawn as faint dots.
 - **Envelope graph:** Shows the note shape with moving voice-position dots.
 - **L/R meter:** Shows output levels, peak hold, and a clip indicator; click to reset the meter.
 
@@ -450,7 +508,7 @@ The output soft clipper leaves signals below −6 dBFS unchanged and constrains 
 
 ### Save the sound and pattern
 
-In a DAW, save your project or use the host's plugin-state/preset facilities to retain NeonSynth's settings. Its saved state includes the parameters, the 16-step pattern, CHOP's pattern, the selected Scope/Spectrum view, and sample information; individual step values are saved state rather than separate automatable host parameters.
+In a DAW, save your project or use the host's plugin-state/preset facilities to retain NeonSynth's settings. Its saved state includes the parameters (the LFO, BEND, VIBRATO and Voices among them), the 16-step pattern, CHOP's pattern, the selected Scope/Spectrum view, and sample information; individual step values are saved state rather than separate automatable host parameters.
 
 The custom editor has no dedicated patch browser or Save Patch button. Use the host's facilities where available, and verify a saved project by closing and reopening it before relying on it for an important session.
 
@@ -464,19 +522,19 @@ For dependable archiving, keep original samples with the DAW project even when e
 
 ### Automate controls
 
-Use the DAW's automation facilities for the exposed parameters, including source, waveform, envelope, the filter's controls and its envelope, output controls, sample settings, granular settings, the five sculpting knobs, and sequencer timing/mode controls. The Scope/Spectrum choice, individual sequencer steps and CHOP's steps are not independent automation parameters.
+Use the DAW's automation facilities for the exposed parameters, including source, waveform, envelope, the filter's controls and its envelope, the LFO and its three depths, BEND, VIBRATO, Voices, output controls, sample settings, granular settings, the five sculpting knobs, and sequencer timing/mode controls. The Scope/Spectrum choice, individual sequencer steps and CHOP's steps are not independent automation parameters.
 
 Automation follows each control's playback semantics: a source or Sample-loop change takes effect at a subsequent note, while granular changes shape newly generated grains. Do not expect every automated change to rewrite audio already sounding.
 
 ### MIDI scope and limitations
 
-NeonSynth responds to MIDI note pitch and velocity, with up to 16 simultaneous voices and voice stealing when that pool is occupied. Incoming keyboard channels are consolidated internally so keyboard notes and sequencer notes do not cut each other off solely because they share a pitch.
+NeonSynth responds to MIDI note pitch and velocity, with up to 16 simultaneous voices (or fewer, set with the voice lights) and voice stealing when that pool is occupied. Incoming keyboard channels are consolidated internally so keyboard notes and sequencer notes do not cut each other off solely because they share a pitch.
 
-Pitch-wheel and general controller callbacks do not provide voice-level modulation in this version, so do not expect pitch bend or the modulation wheel to alter the sound. There is no dedicated MIDI-learn interface or external MIDI-output function exposed by the instrument.
+It also responds to pitch bend, the modulation wheel (controller 1, with controller 33 for 14-bit wheels) and Reset All Controllers (controller 121), on any channel; see [Pitch bend and mod wheel](#pitch-bend-and-mod-wheel). Other controllers are ignored. There is no dedicated MIDI-learn interface or external MIDI-output function exposed by the instrument; map a controller's knobs in the DAW, through its automation.
 
 ## Sound-design starting points
 
-These are suggested manual settings, not supplied factory presets. Each was rendered through NeonSynth v1.6.0 with GAIN at 0 dB: all of them peak between about −20 and −10 dBFS, below the point where the output soft clipper starts to act, so leave GAIN at 0 dB, keep your monitors modest, and adjust each sound to the recording, notes, and mix you are using.
+These are suggested manual settings, not supplied factory presets. Each was rendered with GAIN at 0 dB (the first six through NeonSynth v1.6.0, the wind through v1.9.0): all of them peak between about −20 and −10 dBFS, below the point where the output soft clipper starts to act, so leave GAIN at 0 dB, keep your monitors modest, and adjust each sound to the recording, notes, and mix you are using.
 
 ### Rounded sequencer bass
 
@@ -535,6 +593,16 @@ Let the pattern repeat before deciding how much variation you want. Try opening 
 
 Play a single-note melody around C4. Click steps open or closed in the SHAPE strip while you play to hear the colour change, then try OVERTONE 200% for a harder, ring-modulated edge.
 
+### Gusting wind
+
+- **Source:** Oscillator (any waveform); Shape: NOISE 100%.
+- **Envelope:** ATTACK 2.5 s, SUSTAIN 100%, RELEASE 3 s.
+- **Filter:** On; Band-pass; CUTOFF 400 Hz; RES 40%; ENV +1.5 octaves; VEL 1 octave. Filter envelope (FILTER tab): ATTACK 3 s, DECAY 4 s, SUSTAIN 30%, RELEASE 3 s.
+- **Modulation:** LFO Random at 0.2 Hz, CUTOFF +1 octave.
+- **Output:** WIDTH 80%.
+
+Hold one low note for several seconds: the wind rises into a whistle as the filter envelope opens, then settles while the Random LFO pushes it in gusts. Play harder for a stronger blow. A second held note adds a second gust and about 3 dB, so lower GAIN a little if you play two. Rendered through v1.9.0 with one note held for 8 seconds, it peaks at about −12 dBFS and releases to silence.
+
 ## Troubleshooting
 
 ### No sound
@@ -543,7 +611,7 @@ Work through the signal path rather than changing several settings at once. In s
 
 - **No voice lights:** Check that MIDI notes are arriving, or select Layer, turn SYNC off, and press RUN for an internal-clock test.
 - **RUN on but silent:** Check for Transpose mode waiting for a held key, or SYNC waiting for the DAW transport.
-- **Voice lights but little output:** Raise Cutoff, check GAIN, and check for a very slow Attack or zero Sustain after the decay has completed.
+- **Voice lights but little output:** Raise Cutoff, check GAIN and the LFO's AMP depth (at 100% on a slow Square, every other half-cycle is silent), and check for a very slow Attack or zero Sustain after the decay has completed.
 - **Very low notes barely audible:** Try a higher octave or Sawtooth/Square instead of Sine/Triangle, particularly on laptop speakers.
 
 ### A control seems to do nothing
@@ -558,7 +626,9 @@ Work through the signal path rather than changing several settings at once. In s
 - **OVERTONE has no effect:** No steps are chopped; click some steps in the SHAPE strip.
 - **DRIVE has no effect:** FOLD is at 0%, which switches the folder off.
 - **SHAPE knobs have no effect:** They act on Oscillator and Random only.
-- **Pitch/modulation wheel has no effect:** These are not implemented as voice modulation controls.
+- **LFO does nothing:** All three depths (PITCH, CUTOFF, AMP) are at 0, which the dimmed LFO view shows; LFO CUTOFF also needs the filter ON.
+- **Pitch bend or mod wheel has no effect:** Watch the bars beside BEND and VIBRATO while you move the wheel. If they stay still, the messages aren't arriving (check the MIDI routing); if they move, check that BEND or VIBRATO is not at 0.
+- **Only one note plays at a time:** The voice limit is set to MONO; click a higher voice light.
 
 These are expected behaviours, not faults.
 
@@ -610,7 +680,7 @@ It is an editorial guide, not a requirement to read every file in this order.
 
 ### Make a small change, then test it
 
-A useful first experiment is to change a default envelope time in `createParameterLayout()`, rebuild, and open a fresh instance to hear the result. Existing saved sessions can restore their own settings, so they are not a reliable way to check that a new default has taken effect ([parameter definitions and state restoration](https://github.com/kv244/Synth/blob/v1.8.0/NeonSynthProcessor.cpp)).
+A useful first experiment is to change a default envelope time in `createParameterLayout()`, rebuild, and open a fresh instance to hear the result. Existing saved sessions can restore their own settings, so they are not a reliable way to check that a new default has taken effect ([parameter definitions and state restoration](https://github.com/kv244/Synth/blob/v1.9.0/NeonSynthProcessor.cpp)).
 
 For a deeper exercise, inspect why a waveform change waits for a cycle boundary or how grain size and density affect overlap. Make one change at a time, work on a branch, and run the relevant tests before comparing the result with the original; the developer notes' [Unit tests and benchmark](DEVELOPMENT.md#unit-tests-and-benchmark) section lists what each test checks.
 
@@ -626,18 +696,21 @@ The project identifies Claude-assisted development, but Claude is not a runtime 
 
 ### Signal path
 
-The voice engine places its amplitude envelope before the filter and panner; voices are then summed, followed by output gain and soft clipping. The filter's drive and its limiter scale with the envelope, so the filter behaves as if the envelope came after it. This is the implemented path, rather than a generic synthesis diagram ([voice engine](https://github.com/kv244/Synth/blob/v1.8.0/NeonSynthVoice.h), [filter](https://github.com/kv244/Synth/blob/v1.8.0/CytomicSvf.h), [processor](https://github.com/kv244/Synth/blob/v1.8.0/NeonSynthProcessor.cpp)).
+The voice engine places its amplitude envelope before the filter and panner; voices are then summed, followed by output gain and soft clipping. The filter's drive and its limiter scale with the envelope, so the filter behaves as if the envelope came after it. This is the implemented path, rather than a generic synthesis diagram ([voice engine](https://github.com/kv244/Synth/blob/v1.9.0/NeonSynthVoice.h), [filter](https://github.com/kv244/Synth/blob/v1.9.0/CytomicSvf.h), [processor](https://github.com/kv244/Synth/blob/v1.9.0/NeonSynthProcessor.cpp)).
 
 ```text
 MIDI keyboard / DAW notes ─┐
                           ├─> voice allocation, up to 16 voices
 Internal step sequencer ──┘
 
+Shared by all voices, once per block:
+LFO, pitch bend, mod wheel vibrato → pitch ratio, LFO cutoff, tremolo
+
 Per voice:
-selected source → (Oscillator and Random only: CHOP → noise → fold) → amplitude envelope → drive → filter (mode, resonance; cutoff + filter envelope + velocity)/bypass → pitch-based pan
+selected source (pitch × pitch ratio) → (Oscillator and Random only: CHOP → noise → fold) → amplitude envelope → drive → filter (mode, resonance; cutoff + filter envelope + velocity + LFO)/bypass → pitch-based pan
 
 Combined output:
-voice sum → output gain → soft clipper → mono/stereo output and visualisers
+voice sum → tremolo → output gain → soft clipper → mono/stereo output and visualisers
 ```
 
 ### Behaviour worth remembering
@@ -651,11 +724,14 @@ voice sum → output gain → soft clipper → mono/stereo output and visualiser
 | CHOP pattern and COMB | Applied at a cycle boundary; OVERTONE glides over 10 ms. |
 | Filter cutoff, resonance, drive, gain, and panning | Smoothed to reduce abrupt changes. |
 | Filter mode | Crossfaded over 10 ms. |
+| LFO | One for the whole instrument, free-running; shape changes crossfade over 10 ms, depths glide over 20 ms, and jumps are smoothed over 2 ms. |
+| Pitch bend and mod wheel | Read from the incoming MIDI at their exact sample, for every sounding voice; the bend glides over 5 ms, the wheel over 20 ms. |
+| Voices limit | New notes use only the first N voices; voices above the limit finish their notes. |
 | Sequencer events | Scheduled at sample offsets and rendered at their MIDI event positions. |
 | Random / granular variation | Seeded for reproducible renders from the same reset state and event sequence. |
 | Imported sample audio | Prepared mono audio; original file is not modified. |
 
-These details follow the [voice engine](https://github.com/kv244/Synth/blob/v1.8.0/NeonSynthVoice.h), [processor](https://github.com/kv244/Synth/blob/v1.8.0/NeonSynthProcessor.cpp), [grain engine](https://github.com/kv244/Synth/blob/v1.8.0/GrainCloud.h), and [sample preparation](https://github.com/kv244/Synth/blob/v1.8.0/SampleData.h).
+These details follow the [voice engine](https://github.com/kv244/Synth/blob/v1.9.0/NeonSynthVoice.h), [modulation](https://github.com/kv244/Synth/blob/v1.9.0/Modulation.h), [LFO](https://github.com/kv244/Synth/blob/v1.9.0/Lfo.h), [processor](https://github.com/kv244/Synth/blob/v1.9.0/NeonSynthProcessor.cpp), [grain engine](https://github.com/kv244/Synth/blob/v1.9.0/GrainCloud.h), and [sample preparation](https://github.com/kv244/Synth/blob/v1.9.0/SampleData.h).
 
 ### Optional MIDI diagnostics
 

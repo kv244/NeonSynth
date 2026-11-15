@@ -31,7 +31,7 @@ struct ModulationBlock
     All the synth's modulation (v1.9.0), shared by every voice: the LFO, MIDI
     pitch bend, and the mod wheel's vibrato. The processor owns one.
 
-    CONTRACT (v1.9.0 shared contract; agent C implements the body, agent A the Lfo):
+    How it behaves:
       - handleMidi() reads pitch bend (any channel), CC 1 + CC 33 (mod wheel, 7 or
         14 bit) and CC 121 (reset all controllers) with their sample positions,
         from the block's incoming MIDI, before render().
