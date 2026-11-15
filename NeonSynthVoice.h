@@ -56,6 +56,11 @@ public:
         float filterResonance = 0.0f;  // 0..1
         float filterDrive = 0.0f;      // 0..1
 
+        // Filter envelope and velocity (v1.8.0), in octaves added to the cutoff; 0 = none.
+        float filterEnvOctaves = 0.0f;           // -5..+5, at the envelope's peak
+        VoiceEnvelope::Parameters filterEnv { 0.01f, 0.3f, 0.5f, 0.3f };
+        float filterVelOctaves = 0.0f;           // 0..+4, at full velocity
+
         float width = 0.0f;            // stereo width, 0 = mono .. 1 = full spread
         juce::ADSR::Parameters adsr;
 
@@ -121,6 +126,8 @@ public:
         sampleRate = newSampleRate;
         adsr.setSampleRate (newSampleRate);
         adsr.reset();
+        filterEnvelope.setSampleRate (newSampleRate);
+        filterEnvelope.reset();
         oscillator.prepare (newSampleRate);        // CHOP's Overtone glide
         randomOscillator.prepare (newSampleRate);
         sculpt.prepare (newSampleRate);
@@ -137,6 +144,11 @@ public:
         resonance.setCurrentAndTargetValue (resonance.getTargetValue());
         drive.reset (newSampleRate, 0.02);
         drive.setCurrentAndTargetValue (drive.getTargetValue());
+        for (auto* amount : { &filterEnvOctaves, &filterVelOctaves })   // 20 ms: automating them doesn't step the cutoff
+        {
+            amount->reset (newSampleRate, 0.02);
+            amount->setCurrentAndTargetValue (amount->getTargetValue());
+        }
         modeFade.reset (newSampleRate, 0.01);     // 10 ms crossfade when the mode changes
         modeFade.setCurrentAndTargetValue (1.0f);
         setFilterCoefficients();
@@ -164,6 +176,9 @@ public:
         resonance.setTargetValue (juce::jlimit (0.0f, 1.0f, p.filterResonance));
         drive.setTargetValue (juce::jlimit (0.0f, 1.0f, p.filterDrive));
         setFilterMode (juce::jlimit (0, 3, p.filterMode));
+        filterEnvelope.setParameters (p.filterEnv);
+        filterEnvOctaves.setTargetValue (juce::jlimit (-5.0f, 5.0f, p.filterEnvOctaves));
+        filterVelOctaves.setTargetValue (juce::jlimit (0.0f, 4.0f, p.filterVelOctaves));
 
         width = p.width;
         pan.setTargetValue (notePan * width);
@@ -193,6 +208,12 @@ public:
         notePan = juce::jlimit (-1.0f, 1.0f, (float) (midiNote - 60) / 24.0f);
         const float newLevel = velocity * voiceGain;
 
+        // The filter envelope attacks from its current level, like the amp envelope. Both it and
+        // the velocity enter modulatedCutoffHz(): a silent voice sets its coefficients from them
+        // below, at once; a sounding one picks them up at the next 16-sample update.
+        noteVelocity = juce::jlimit (0.0f, 1.0f, velocity);
+        filterEnvelope.noteOn();
+
         if (adsr.isActive())
         {
             level.setTargetValue (newLevel);
@@ -206,6 +227,8 @@ public:
             cutoff.setCurrentAndTargetValue (cutoff.getTargetValue());
             resonance.setCurrentAndTargetValue (resonance.getTargetValue());
             drive.setCurrentAndTargetValue (drive.getTargetValue());
+            filterEnvOctaves.setCurrentAndTargetValue (filterEnvOctaves.getTargetValue());
+            filterVelOctaves.setCurrentAndTargetValue (filterVelOctaves.getTargetValue());
             modeFade.setCurrentAndTargetValue (1.0f);
             setFilterCoefficients();   // at once, not at the next 16-sample boundary
             filterMix.setCurrentAndTargetValue (filterMix.getTargetValue());
@@ -230,11 +253,15 @@ public:
         {
             reader.keyReleased();   // Loop until release: play on to the end
             adsr.noteOff();
+            filterEnvelope.noteOff();
             return;
         }
 
         // Hard stop (voice stolen, all sound off): 5 ms fade instead of a cut.
         // juce::Synthesiser keeps calling renderNextBlock() on free voices, so the fade still plays.
+        // The filter envelope is left as it is: a sweep during a 5 ms fade would only be heard as
+        // a click, a stolen voice's next note retriggers it from where it is, and when the fade
+        // ends the voice resets it.
         hardStopping = true;
         adsr.setParameters ({ 0.001f, 0.001f, 1.0f, 0.005f });
         adsr.noteOff();
@@ -251,7 +278,8 @@ public:
         two versions:
 
           steady   nothing is gliding (velocity level, cutoff, filter on/off
-                   mix and pan all at rest, and the filter's coefficients
+                   mix and pan all at rest, the filter envelope constant or
+                   set to amount 0, and the filter's coefficients
                    already match the cutoff - almost always the case): their
                    values are read once and every "is it smoothing?" branch
                    is out of the loop;
@@ -307,9 +335,24 @@ public:
 
         const bool steady = ! level.isSmoothing() && ! cutoff.isSmoothing() && ! filterMix.isSmoothing() && ! pan.isSmoothing()
                          && ! resonance.isSmoothing() && ! drive.isSmoothing() && ! modeFade.isSmoothing()
-                         && ! filterUpdatePending();
+                         && ! filterEnvelopeMovesCutoff() && ! filterUpdatePending();
+        // The filter envelope advances one step per sample whichever version renders, so its
+        // timing never depends on which one ran - also at amount 0, so it is in step if the
+        // amount is turned up mid-note. A constant envelope (sustaining, or idle) is skipped:
+        // getNextSample() would change nothing, and it stays constant for the whole call (it
+        // only starts to move at a note-on or note-off, or with new parameters, all between
+        // calls). The gliding version steps it inside its loop, where the coefficient updates
+        // read it. The steady version never reads it (it runs only while the envelope is
+        // constant or its amount is 0), so it is stepped here, after the loop: the steady
+        // loop stays exactly what it was before the filter envelope existed.
+        const bool stepFilterEnvelopeAfter = steady && ! filterEnvelope.isConstant();
+
         const int rendered = steady ? renderSamples<true>  (left, right, startSample, numSamples, cloudSounds)
                                     : renderSamples<false> (left, right, startSample, numSamples, cloudSounds);
+
+        if (stepFilterEnvelopeAfter && adsr.isActive())   // (a voice that ended has reset it)
+            for (int n = 0; n < rendered; ++n)
+                filterEnvelope.getNextSample();
 
         // The gliding version counts down per sample; the steady one skips ahead here.
         if (steady)
@@ -333,25 +376,14 @@ private:
         const float steadyMix   = steady ? filterMix.getNextValue() : 0.0f;
         const float steadyLeft = gainLeft, steadyRight = gainRight;
 
+        // The filter envelope (see renderNextBlock()); constant ones are skipped.
+        const bool advanceFilterEnvelope = ! steady && ! filterEnvelope.isConstant();
+
         int rendered = 0;
         for (int i = startSample; i < startSample + numSamples; ++i, ++rendered)
         {
             if constexpr (! steady)
-            {
-                if (cutoff.isSmoothing())
-                    cutoff.getNextValue();   // per sample, so the glide's timing is unchanged
-                if (resonance.isSmoothing())
-                    resonance.getNextValue();
-                if (drive.isSmoothing())
-                    drive.getNextValue();
-
-                if (--coefficientCountdown == 0)
-                {
-                    coefficientCountdown = coefficientInterval;
-                    if (filterUpdatePending())
-                        setFilterCoefficients();
-                }
-            }
+                advanceFilterControls (advanceFilterEnvelope);
 
             lastEnvelope    = adsr.getNextSample();
             const float levelNow = steady ? steadyLevel : level.getNextValue();
@@ -375,15 +407,7 @@ private:
 
             if (! adsr.isActive())
             {
-                if (isVoiceActive())
-                    clearCurrentNote();
-                filter.reset();
-                modeFade.setCurrentAndTargetValue (1.0f);
-                lastEnvelope = 0.0f;
-                reader.end();          // silent now: let go of the sample
-                fadingReader.end();
-                fadingSamplesLeft = 0;
-                cloud.end();
+                endVoice();
                 break;
             }
 
@@ -392,6 +416,46 @@ private:
                 stopNote (0.0f, false);
         }
         return rendered;
+    }
+
+    /** The gliding version's per-sample control work: the smoothers that feed the filter
+        advance one step, and every 16th sample the coefficients follow them. */
+    void advanceFilterControls (bool advanceFilterEnvelope) noexcept
+    {
+        if (cutoff.isSmoothing())
+            cutoff.getNextValue();   // per sample, so the glide's timing is unchanged
+        if (resonance.isSmoothing())
+            resonance.getNextValue();
+        if (drive.isSmoothing())
+            drive.getNextValue();
+        if (filterEnvOctaves.isSmoothing())
+            filterEnvOctaves.getNextValue();
+        if (filterVelOctaves.isSmoothing())
+            filterVelOctaves.getNextValue();
+        if (advanceFilterEnvelope)
+            filterEnvelope.getNextSample();   // per sample; read only at the update points below
+
+        if (--coefficientCountdown == 0)
+        {
+            coefficientCountdown = coefficientInterval;
+            if (filterUpdatePending())
+                setFilterCoefficients();
+        }
+    }
+
+    /** The amp envelope has ended: the voice goes silent and lets go of what it holds. */
+    void endVoice() noexcept
+    {
+        if (isVoiceActive())
+            clearCurrentNote();
+        filter.reset();
+        filterEnvelope.reset();
+        modeFade.setCurrentAndTargetValue (1.0f);
+        lastEnvelope = 0.0f;
+        reader.end();          // silent now: let go of the sample
+        fadingReader.end();
+        fadingSamplesLeft = 0;
+        cloud.end();
     }
 
     /** Constant-power pan law, scaled so the centre is unity gain on both sides. */
@@ -418,10 +482,13 @@ private:
         const float knobHz = cutoff.getCurrentValue();   // already clamped by setParameters()
 
         // Modulation, in octaves, adds up here: the filter envelope and velocity
-        // (v1.8), the LFO and pitch bend (v1.9). Nothing yet. Anything that can
-        // move it per sample must also count as "moving" in renderNextBlock(),
-        // so that block renders in the gliding version.
-        const float modulationOctaves = 0.0f;
+        // (v1.8), the LFO and pitch bend (v1.9). Anything that can move it per
+        // sample must also count as "moving" in renderNextBlock() (see
+        // filterEnvelopeMovesCutoff()), so that block renders in the gliding
+        // version. Velocity is constant for a note: a retriggered voice's new
+        // velocity is seen by filterUpdatePending() and applied at the next update.
+        const float modulationOctaves = filterEnvOctaves.getCurrentValue() * filterEnvelope.getLevel()
+                                      + filterVelOctaves.getCurrentValue() * noteVelocity;
 
         // Unmodulated, the knob value goes through untouched: a round trip through
         // log2 and exp2 can move it by a bit, and the default sound must not change.
@@ -429,6 +496,15 @@ private:
             return knobHz;
 
         return clampCutoff (std::exp2 (std::log2 (knobHz) + modulationOctaves));
+    }
+
+    /** True while the filter envelope sweeps the cutoff (it is in its attack, decay or release,
+        or its sustain level slews, and its amount isn't 0), or either amount glides to a new
+        setting: coefficients must follow. */
+    bool filterEnvelopeMovesCutoff() const noexcept
+    {
+        return (filterEnvOctaves.getCurrentValue() != 0.0f && ! filterEnvelope.isConstant())
+            || filterEnvOctaves.isSmoothing() || filterVelOctaves.isSmoothing();
     }
 
     /** True if the coefficients lag the cutoff, resonance or drive (one of them moved since the last update). */
@@ -611,6 +687,9 @@ private:
 
     VoiceEnvelope adsr;
     VoiceEnvelope::Parameters adsrParams;
+    VoiceEnvelope filterEnvelope;                    // gated with adsr, but never ends the voice
+    juce::SmoothedValue<float> filterEnvOctaves { 0.0f }, filterVelOctaves { 0.0f };   // octaves at the envelope's peak / full velocity
+    float noteVelocity = 0.0f;                       // the current note's velocity, 0..1
     juce::SmoothedValue<float> level { 0.0f };   // velocity * voiceGain
     CytomicSvf filter;
     juce::SmoothedValue<float> resonance { 0.0f }, drive { 0.0f };   // 0..1

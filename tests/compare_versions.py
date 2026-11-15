@@ -86,6 +86,11 @@ SESSIONS = {
                                            filter_resonance=100.0), CHORD, 2.2),
     "filter-drive-saw": (dict(waveform="Sawtooth", cutoff=1500.0, filter_resonance=70.0,
                               filter_drive=100.0), CHORD, 2.2),
+    # The filter envelope and velocity (v1.8.0), new-build only as above. LINE's velocities rise.
+    "filter-env-pluck": (dict(waveform="Sawtooth", cutoff=200.0, filter_env_amount=4.0,
+                              filter_resonance=40.0), LINE, 2.5),
+    "filter-env-negative": (dict(cutoff=4000.0, filter_env_amount=-3.0), CHORD, 2.2),
+    "filter-velocity": (dict(cutoff=300.0, filter_velocity=3.0), LINE, 2.5),
 }
 
 

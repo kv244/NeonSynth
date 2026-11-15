@@ -628,6 +628,10 @@ private:
 
     Segment widths follow the square root of each time so a 10 s release does
     not squash a 10 ms attack into nothing.
+
+    The editor has two: the amp envelope (amber, with the voice dots) and the
+    filter envelope (magenta). The voices report where they are in the amp
+    envelope only, so the filter's view draws the shape without dots.
 */
 class AdsrView : public juce::Component,
                  public juce::SettableTooltipClient
@@ -720,7 +724,16 @@ public:
         }
     }
 
-    void update (float attack, float decay, float sustain, float release, const VoiceViews& voices)
+    /** The colour of the shape, the points and the text (amber unless set). */
+    void setAccent (juce::Colour colour)
+    {
+        accent = colour;
+        repaint();
+    }
+
+    /** Reshapes the view from the four values; voices: where each voice is in this envelope, or
+        nullptr for no dots (the filter envelope: the voices report the amp envelope only). */
+    void update (float attack, float decay, float sustain, float release, const VoiceViews* voices)
     {
         constexpr float sustainWidth = 0.22f;
         const float a = std::sqrt (attack), d = std::sqrt (decay), r = std::sqrt (release);
@@ -737,8 +750,9 @@ public:
         const int  previousCount   = numMarkers;
 
         numMarkers = 0;
-        for (const auto& v : voices)
+        for (size_t i = 0; voices != nullptr && i < voices->size(); ++i)
         {
+            const auto& v = (*voices)[i];
             if (! v.active.load (std::memory_order_relaxed))
                 continue;
 
@@ -769,7 +783,7 @@ public:
     void paint (juce::Graphics& g) override
     {
         const auto bounds = getLocalBounds().toFloat();
-        neon::drawPanel (g, bounds, neon::amber);
+        neon::drawPanel (g, bounds, accent);
         const auto area = plotArea();
 
         const auto pointAt = [&] (float x01, float level)
@@ -787,19 +801,19 @@ public:
 
         auto fill = shape;
         fill.closeSubPath();
-        g.setColour (neon::amber.withAlpha (0.10f));
+        g.setColour (accent.withAlpha (0.10f));
         g.fillPath (fill);
 
-        g.setColour (neon::amber.withAlpha (0.15f));
+        g.setColour (accent.withAlpha (0.15f));
         for (const float x : { attackW, sustainStart(), releaseStart() })
             g.drawVerticalLine (juce::roundToInt (pointAt (x, 0.0f).x), area.getY(), area.getBottom());
 
-        neon::strokeGlow (g, shape, neon::amber, 1.3f);
+        neon::strokeGlow (g, shape, accent, 1.3f);
 
         for (int i = 0; i < numMarkers; ++i)
         {
             const auto p = pointAt (markers[(size_t) i].x, markers[(size_t) i].level);
-            g.setColour (neon::amber.withAlpha (0.25f));
+            g.setColour (accent.withAlpha (0.25f));
             g.fillEllipse (juce::Rectangle<float> (12.0f, 12.0f).withCentre (p));
             g.setColour (juce::Colours::white);
             g.fillEllipse (juce::Rectangle<float> (5.0f, 5.0f).withCentre (p));
@@ -813,10 +827,10 @@ public:
             const auto p = handlePosition (i);
             const bool active = i == hover || i == dragging;
             const auto box = juce::Rectangle<float> (handleSize, handleSize).withCentre (p);
-            g.setColour (active ? neon::amber : neon::background);
+            g.setColour (active ? accent : neon::background);
             if (i == sustainHandle) g.fillRoundedRectangle (box, 2.5f);
             else                    g.fillEllipse (box);
-            g.setColour (neon::amber);
+            g.setColour (accent);
             if (i == sustainHandle) g.drawRoundedRectangle (box, 2.5f, 2.0f);
             else                    g.drawEllipse (box, 2.0f);
 
@@ -825,7 +839,7 @@ public:
                                     .withCentre (i == attackHandle  ? p.translated (14.0f, 10.0f)
                                                : i == releaseHandle ? p.translated (-14.0f, -10.0f)
                                                :                      p.translated (0.0f, p.y - area.getY() > 24.0f ? -15.0f : 15.0f));
-            g.setColour (neon::amber.withAlpha (active ? 1.0f : 0.7f));
+            g.setColour (accent.withAlpha (active ? 1.0f : 0.7f));
             g.drawText (letters[i], letter, juce::Justification::centred);
         }
 
@@ -835,7 +849,7 @@ public:
         {
             static constexpr const char* names[numHandles] = { "ATTACK", "DECAY", "SUSTAIN", "RELEASE" };
             const float value = param->convertFrom0to1 (param->getValue());
-            g.setColour (neon::amber);
+            g.setColour (accent);
             g.setFont (neon::font (12.0f));
             g.drawText (juce::String (names[shown]) + "  " + (shown == sustainHandle ? juce::String (juce::roundToInt (value * 100.0f)) + "%"
                                                                                       : neon::formatTime (value)),
@@ -892,6 +906,7 @@ private:
     float shownAttackW = -1.0f, shownDecayW = -1.0f, shownReleaseW = -1.0f, shownSustain = -1.0f;   // last repainted shape
     std::array<Marker, NeonSynthProcessor::numVoices> markers {};
     int numMarkers = 0;
+    juce::Colour accent = neon::amber;
 };
 
 //==============================================================================

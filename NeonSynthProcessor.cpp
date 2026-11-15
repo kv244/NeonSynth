@@ -149,6 +149,17 @@ juce::AudioProcessorValueTreeState::ParameterLayout NeonSynthProcessor::createPa
                                                          NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f));         // %: self-oscillates near the top
     layout.add (std::make_unique<AudioParameterFloat>  (ParameterID { "filterDrive", 1 }, "Filter Drive",
                                                          NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f));         // %: 0 keeps the filter linear
+
+    // Filter envelope and velocity (v1.8.0): octaves added to the cutoff. Both amounts default
+    // to 0, where the cutoff is the knob's alone; the envelope's times then change nothing.
+    layout.add (std::make_unique<AudioParameterFloat>  (ParameterID { "filterEnvAmt", 1 }, "Filter Env Amount",
+                                                         NormalisableRange<float> (-5.0f, 5.0f, 0.01f), 0.0f));        // octaves at the envelope's peak
+    layout.add (std::make_unique<AudioParameterFloat>  (ParameterID { "filterAttack",  1 }, "Filter Attack",  timeRange (5.0f),  0.01f));
+    layout.add (std::make_unique<AudioParameterFloat>  (ParameterID { "filterDecay",   1 }, "Filter Decay",   timeRange (5.0f),  0.30f));
+    layout.add (std::make_unique<AudioParameterFloat>  (ParameterID { "filterSustain", 1 }, "Filter Sustain", 0.0f, 1.0f, 0.5f));
+    layout.add (std::make_unique<AudioParameterFloat>  (ParameterID { "filterRelease", 1 }, "Filter Release", timeRange (10.0f), 0.30f));
+    layout.add (std::make_unique<AudioParameterFloat>  (ParameterID { "filterVel", 1 }, "Filter Velocity",
+                                                         NormalisableRange<float> (0.0f, 4.0f, 0.01f), 0.0f));         // octaves at full velocity
     return layout;
 }
 
@@ -208,6 +219,12 @@ NeonSynthProcessor::NeonSynthProcessor()
     filterModeParameter    = getTypedParameter<juce::AudioParameterChoice> (apvts, "filterMode");
     filterResParameter     = getTypedParameter<juce::AudioParameterFloat>  (apvts, "filterRes");
     filterDriveParameter   = getTypedParameter<juce::AudioParameterFloat>  (apvts, "filterDrive");
+    filterEnvAmtParameter  = getTypedParameter<juce::AudioParameterFloat>  (apvts, "filterEnvAmt");
+    filterAttackParameter  = getTypedParameter<juce::AudioParameterFloat>  (apvts, "filterAttack");
+    filterDecayParameter   = getTypedParameter<juce::AudioParameterFloat>  (apvts, "filterDecay");
+    filterSustainParameter = getTypedParameter<juce::AudioParameterFloat>  (apvts, "filterSustain");
+    filterReleaseParameter = getTypedParameter<juce::AudioParameterFloat>  (apvts, "filterRelease");
+    filterVelParameter     = getTypedParameter<juce::AudioParameterFloat>  (apvts, "filterVel");
 
     loadDefaultPattern();
     publishSample (SampleLoader::makeDefaultSample());
@@ -271,6 +288,10 @@ void NeonSynthProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     params.filterMode      = filterModeParameter->getIndex();
     params.filterResonance = filterResParameter->get() * 0.01f;
     params.filterDrive     = filterDriveParameter->get() * 0.01f;
+    params.filterEnvOctaves = filterEnvAmtParameter->get();
+    params.filterEnv        = { filterAttackParameter->get(), filterDecayParameter->get(),
+                                filterSustainParameter->get(), filterReleaseParameter->get() };
+    params.filterVelOctaves = filterVelParameter->get();
     params.width    = widthParameter->get();
     params.adsr     = { attackParameter->get(), decayParameter->get(),
                         sustainParameter->get(), releaseParameter->get() };
