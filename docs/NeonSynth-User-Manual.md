@@ -127,7 +127,7 @@ Only after those differences become familiar should you add chords, sequencing, 
 
 ![The NeonSynth window with ten numbered regions: 1 source and waveform menus, 2 the strip and its knobs, 3 scope or spectrum, 4 envelope graph and knobs with the AMP and FILTER tabs, 5 filter, 6 output with the width slider, gain fader and meters, 7 modulation, 8 voice lights, 9 the help button, 10 the step sequencer.](images/fig01-interface.png)
 
-Figure 1. The main window (v1.9.0 at 150%, Source set to Oscillator, Sawtooth, with the sequencer running and the LFO moving the cutoff). *Actual application capture; the numbered outlines and the key below the picture were added.* Regions 1–10 are explained in the key, and the window is described panel by panel in the table below.
+Figure 1. The main window (v1.9.0 at 150%, Source set to Oscillator, Sawtooth, with the sequencer running, and LFO CUTOFF at +1.5 octaves at 2 Hz, so the green band under CUTOFF and the dot in the LFO view show). *Actual application capture; the numbered outlines and the key below the picture were added.* Regions 1–10 are explained in the key, and the window is described panel by panel in the table below.
 
 The window has six panels, each outlined in its own colour. SOURCE, on the left, is where the sound starts: what plays, and how it is shaped before the envelope. The middle column shows the sound (scope or spectrum) above the envelope and filter. On the right, OUTPUT sets and measures the level, and MODULATION below it makes the sound move. SEQUENCER runs along the bottom. Colours carry the same meaning everywhere: cyan for the source and output, amber for the envelope and sequencer, magenta for the filter and the granular controls, and green for modulation.
 
@@ -185,7 +185,7 @@ With **Source** set to **Oscillator** or **Random**, three stages can reshape th
 
 ![The SOURCE panel with a sawtooth: in the SHAPE strip every second step is shaded amber and cut to the centre line at OVERTONE 100%, the wave between them is folded at FOLD 100%, and the five sculpting knobs are below.](images/fig03-shape-strip.png)
 
-Figure 3. The SOURCE panel with the SHAPE strip: a sawtooth, OVERTONE 100% and FOLD 100% (v1.7.0 at 150%). *Actual application capture.* The shaded steps are chopped, so the wave is cut to the centre line there; the folded curve between them is the sawtooth after FOLD. Every second step is chopped, which is the pattern a new instance starts with.
+Figure 3. The SOURCE panel with the SHAPE strip: a sawtooth, OVERTONE 100% and FOLD 100% (v1.9.0 at 150%). *Actual application capture.* The shaded steps are chopped, so the wave is cut to the centre line there; the folded curve between them is the sawtooth after FOLD. Every second step is chopped, which is the pattern a new instance starts with.
 
 ### The SHAPE strip
 
@@ -331,7 +331,7 @@ With all three depths at 0 the LFO does nothing, and the LFO view in the panel i
 
 ![Five rows, one for each LFO shape at 2 Hz with AMP at 100%: the level of a held sine note rises and falls as a smooth wave for Sine, as straight ramps for Triangle, jumps between full and silence for Square, rises steadily then drops for Saw, and steps between held levels for Random.](images/fig09-lfo-shapes.png)
 
-Figure 9. The five LFO shapes, heard as tremolo. FIG9_FACTS
+Figure 9. The five LFO shapes, heard as tremolo. *Plot derived from rendered audio:* a sine at A4 held, filter off, rendered at 48 kHz with LFO AMP at 100% and RATE 2 Hz (a cycle every 0.5 s); the level is the peak of each 2 ms frame, with 1 the level when AMP is 0 (the dashed line), and every row has the same scales. The measured cycle is 0.499 s; Sine, Triangle, Square and Saw reach from 0.00 to 1.00 (Triangle's lowest point 0.003, Saw's 0.007), and Random held 0.24, then 0.93, then 0.53, changing at each new cycle. The level never rises above the dashed line, and the 2 ms smoothing shows as the slight slope on each jump.
 
 ### Pitch bend and mod wheel
 
@@ -364,7 +364,7 @@ The 16 voice lights at the top of the window also set how many voices can play. 
 
 ![The SOURCE panel with Sample and with Granular selected. Panel a, Source Sample: numbered outlines on the LOAD, PAD and loop menu, the waveform, and the ROOT, START, L.START, L.END and XFADE knobs. Panel b, Source Granular: the same for the waveform with its POS line and SPRAY band, and the ROOT, POS, SCAN, SIZE, DENS, SPRAY and JITTER knobs.](images/fig06-sample-granular-ui.png)
 
-Figure 6. The SOURCE panel with **Source** set to **Sample** (a) and to **Granular** (b), with the built-in pad loaded (v1.7.0 at 150%). *Actual application capture; the numbered outlines and keys were added.* The same strip serves both sources, and the knob row changes with the source. Figure 7 draws what these controls do.
+Figure 6. The SOURCE panel with **Source** set to **Sample** (a) and to **Granular** (b), with the built-in pad loaded (v1.9.0 at 150%). *Actual application capture; the numbered outlines and keys were added.* The same strip serves both sources, and the knob row changes with the source. Figure 7 draws what these controls do.
 
 ### Load a recording
 
