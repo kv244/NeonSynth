@@ -12,6 +12,11 @@
     (file loads, the default pad, embedded FLAC via state), as the GUI or a
     host would. Any allocation or free on the audio thread is a failure.
 
+    It also holds the processor-level check of the filter envelope (v1.8.0),
+    since this is the program that already renders the whole processor: a
+    note gets brighter during the envelope's attack and decay than at sustain,
+    and at amount 0 the envelope's times change nothing, bit for bit.
+
     Build with CMake:  cmake -B build -DJUCE_DIR=... -DNEONSYNTH_BUILD_TESTS=ON
                        cmake --build build --target RealtimeSafetyTests
     Run the resulting RealtimeSafetyTests executable; it exits non-zero on failure.
@@ -20,8 +25,10 @@
 #include <atomic>
 #include <cstdio>
 #include <cstdlib>
+#include <functional>
 #include <new>
 #include <thread>
+#include <vector>
 
 //==============================================================================
 // Allocation hooks
@@ -124,6 +131,49 @@ namespace
             b.setSample (0, i, 0.5f * (float) std::sin (juce::MathConstants<double>::twoPi * 330.0 * i / 44100.0));
         writer->writeFromAudioSampleBuffer (b, 0, b.getNumSamples());
         return file;
+    }
+
+    /** Renders one sawtooth note (C3, velocity 100, held 0.6 s) through a fresh processor
+        and returns the left channel. `configure` sets the parameters first. */
+    std::vector<float> renderNote (const std::function<void (juce::AudioProcessor&)>& configure, double seconds)
+    {
+        NeonSynthProcessor p;
+        setParameter (p, "waveform", 3.0f);   // sawtooth: plenty of harmonics for the filter to open up
+        setParameter (p, "cutoff", 200.0f);
+        configure (p);
+        p.setRateAndBufferSizeDetails (testRate, testBlockSize);
+        p.prepareToPlay (testRate, testBlockSize);
+
+        juce::AudioBuffer<float> buffer (2, testBlockSize);
+        juce::MidiBuffer midi;
+        std::vector<float> out;
+        const auto noteOff = (juce::int64) (0.6 * testRate);
+        for (juce::int64 start = 0; start < (juce::int64) (seconds * testRate); start += testBlockSize)
+        {
+            midi.clear();
+            if (start == 0)
+                midi.addEvent (juce::MidiMessage::noteOn (1, 48, (juce::uint8) 100), 0);
+            if (noteOff >= start && noteOff < start + testBlockSize)
+                midi.addEvent (juce::MidiMessage::noteOff (1, 48), (int) (noteOff - start));
+            p.processBlock (buffer, midi);
+            out.insert (out.end(), buffer.getReadPointer (0), buffer.getReadPointer (0) + testBlockSize);
+        }
+        p.releaseResources();
+        return out;
+    }
+
+    /** Brightness of a 20 ms window: energy of the first difference over the energy of the
+        signal (a high-pass weighting, independent of the level). */
+    double brightness (const std::vector<float>& x, double fromSeconds)
+    {
+        const auto first = (size_t) (fromSeconds * testRate), count = (size_t) (0.020 * testRate);
+        double diff = 0.0, total = 1.0e-30;
+        for (size_t i = first + 1; i < first + count; ++i)
+        {
+            diff  += (double) (x[i] - x[i - 1]) * (double) (x[i] - x[i - 1]);
+            total += (double) x[i] * (double) x[i];
+        }
+        return diff / total;
     }
 }
 
@@ -263,6 +313,35 @@ int main()
                    audioThreadAllocations.load(), audioThreadFrees.load(), blocks, swaps.load());
     check (audioThreadAllocations.load() == 0 && audioThreadFrees.load() == 0, what);
     check (swaps.load() > 10, "the other thread really did replace the sample while audio ran");
+
+    // Not about allocation: the filter envelope (v1.8.0) through the whole processor.
+    std::printf ("\nFilter envelope\n");
+    {
+        const auto pluck = renderNote ([] (juce::AudioProcessor& p)
+        {
+            setParameter (p, "filterEnvAmt", 4.0f);    // +4 octaves at the peak: 200 Hz -> 3.2 kHz
+            setParameter (p, "filterAttack", 0.005f);
+            setParameter (p, "filterDecay", 0.2f);
+            setParameter (p, "filterSustain", 0.0f);
+        }, 0.8);
+        const double early = brightness (pluck, 0.010), sustained = brightness (pluck, 0.450);
+        std::printf ("    brightness 10-30 ms %.4f, at sustain %.4f\n", early, sustained);
+        check (early > 4.0 * sustained, "with +4 octaves the note is much brighter during attack and decay than at sustain");
+
+        // At amount 0 the envelope's times must change nothing, bit for bit (release included).
+        const auto times = [] (float attack, float decay, float sustain, float release)
+        {
+            return [=] (juce::AudioProcessor& p)
+            {
+                setParameter (p, "filterAttack", attack);
+                setParameter (p, "filterDecay", decay);
+                setParameter (p, "filterSustain", sustain);
+                setParameter (p, "filterRelease", release);
+            };
+        };
+        check (renderNote (times (0.01f, 0.3f, 0.5f, 0.3f), 1.0) == renderNote (times (2.0f, 0.02f, 1.0f, 5.0f), 1.0),
+               "at amount 0 the filter envelope's times don't change the output");
+    }
 
     std::printf ("\n%s (%d failure%s)\n", failures == 0 ? "ALL PASSED" : "FAILED", failures, failures == 1 ? "" : "s");
     return failures == 0 ? 0 : 1;

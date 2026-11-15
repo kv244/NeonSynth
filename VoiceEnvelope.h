@@ -100,6 +100,16 @@ public:
 
     bool isActive() const noexcept   { return state != State::idle; }
 
+    /** The level the last getNextSample() returned (0 when idle). */
+    float getLevel() const noexcept   { return level; }
+
+    /** True while getNextSample() would change nothing: idle or sustaining, with the sustain
+        level not slewing. A caller may then skip calling it without the state drifting. */
+    bool isConstant() const noexcept
+    {
+        return (state == State::idle || state == State::sustain) && sustainLevel == parameters.sustain;
+    }
+
     float getNextSample() noexcept
     {
         if (sustainLevel != parameters.sustain)   // only while Sustain is moving
