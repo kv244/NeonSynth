@@ -11,11 +11,11 @@ For musicians, begin with one note and one waveform, without stacked oscillator 
 **Instrument:** NeonSynth by Razvan Julian Petrescu / AudioDSP  
 **Edition:** 1.6, updated 15 November 2026 (the v1.8.0 filter: modes, resonance, drive, filter envelope and velocity)<br>
 **Applies to:** NeonSynth v1.8.0, source tag `v1.8.0`  
-**Formats:** VST3 instrument and standalone application; a Windows installer is supplied for this release ([v1.7.0 release](https://github.com/kv244/Synth/releases/tag/v1.7.0)).
+**Formats:** VST3 instrument and standalone application; a Windows installer is supplied for this release ([v1.8.0 release](https://github.com/kv244/Synth/releases/tag/v1.8.0)).
 
 ### About this manual
 
-The instructions were checked against the v1.7.0 source code. Every recipe in the sound-design chapter was rendered through the v1.6.0 plugin, to confirm that it sounds, releases cleanly to silence and stays clear of the output soft clipper; v1.7.0 changes only the window, and its sound is checked to be bit-identical to v1.6.0. This is not a certification of compatibility with every audio device or DAW.
+The instructions were checked against the v1.8.0 source code. Every recipe in the sound-design chapter was rendered through the v1.6.0 plugin, to confirm that it sounds, releases cleanly to silence and stays clear of the output soft clipper; v1.7.0 and v1.8.0 keep that sound bit-identical at the settings the recipes use (v1.8.0's new filter controls start neutral), which the project's compare test checks. This is not a certification of compatibility with every audio device or DAW.
 
 Each figure is labelled by how it was made: **Actual application capture** (a screenshot of the running instrument, with numbered callouts added), **Plot derived from rendered audio** (measured from sound the plugin produced, with the settings stated), or **Explanatory schematic** (a drawing that explains an idea and is not a measurement). How to regenerate them is in [figures/README.md](figures/README.md).
 
@@ -43,13 +43,13 @@ The sound-design settings are starting points, not factory presets. Begin at a l
 
 ### Install the Windows release
 
-Download `NeonSynth-1.7.1-Windows-Setup.exe` from the [v1.7.1 release page](https://github.com/kv244/Synth/releases/tag/v1.7.1). The installer provides the VST3 instrument and an optional standalone application (see [Installation](../README.md#installation) in the README).
+Download `NeonSynth-1.8.0-Windows-Setup.exe` from the [v1.8.0 release page](https://github.com/kv244/Synth/releases/tag/v1.8.0). The installer provides the VST3 instrument and an optional standalone application (see [Installation](../README.md#installation) in the README).
 
 | Component | Default location |
 |---|---|
 | VST3 instrument | `C:\Program Files\Common Files\VST3\NeonSynth.vst3` |
 | Standalone application | `C:\Program Files\AudioDSP\Neon Synth\NeonSynth.exe` |
-| This manual as a PDF (optional; installers after v1.7.1) | `C:\Program Files\AudioDSP\Neon Synth\NeonSynth-User-Manual-x.y.z.pdf`, with a Start menu shortcut |
+| This manual as a PDF (optional) | `C:\Program Files\AudioDSP\Neon Synth\NeonSynth-User-Manual-x.y.z.pdf`, with a Start menu shortcut |
 
 These are the documented default installation locations; the standalone installation directory can be changed in the installer.
 
@@ -610,7 +610,7 @@ It is an editorial guide, not a requirement to read every file in this order.
 
 ### Make a small change, then test it
 
-A useful first experiment is to change a default envelope time in `createParameterLayout()`, rebuild, and open a fresh instance to hear the result. Existing saved sessions can restore their own settings, so they are not a reliable way to check that a new default has taken effect ([parameter definitions and state restoration](https://github.com/kv244/Synth/blob/v1.7.0/NeonSynthProcessor.cpp)).
+A useful first experiment is to change a default envelope time in `createParameterLayout()`, rebuild, and open a fresh instance to hear the result. Existing saved sessions can restore their own settings, so they are not a reliable way to check that a new default has taken effect ([parameter definitions and state restoration](https://github.com/kv244/Synth/blob/v1.8.0/NeonSynthProcessor.cpp)).
 
 For a deeper exercise, inspect why a waveform change waits for a cycle boundary or how grain size and density affect overlap. Make one change at a time, work on a branch, and run the relevant tests before comparing the result with the original; the developer notes' [Unit tests and benchmark](DEVELOPMENT.md#unit-tests-and-benchmark) section lists what each test checks.
 
@@ -655,7 +655,7 @@ voice sum → output gain → soft clipper → mono/stereo output and visualiser
 | Random / granular variation | Seeded for reproducible renders from the same reset state and event sequence. |
 | Imported sample audio | Prepared mono audio; original file is not modified. |
 
-These details follow the [voice engine](https://github.com/kv244/Synth/blob/v1.7.0/NeonSynthVoice.h), [processor](https://github.com/kv244/Synth/blob/v1.7.0/NeonSynthProcessor.cpp), [grain engine](https://github.com/kv244/Synth/blob/v1.7.0/GrainCloud.h), and [sample preparation](https://github.com/kv244/Synth/blob/v1.7.0/SampleData.h).
+These details follow the [voice engine](https://github.com/kv244/Synth/blob/v1.8.0/NeonSynthVoice.h), [processor](https://github.com/kv244/Synth/blob/v1.8.0/NeonSynthProcessor.cpp), [grain engine](https://github.com/kv244/Synth/blob/v1.8.0/GrainCloud.h), and [sample preparation](https://github.com/kv244/Synth/blob/v1.8.0/SampleData.h).
 
 ### Optional MIDI diagnostics
 

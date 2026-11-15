@@ -25,8 +25,9 @@ lead. [`docs/demo/make_demo.py`](docs/demo/make_demo.py) renders it from the VST
   a granular cloud of that sample, and Random, a pitched wave of 16 drifting steps.
 - **Waveform sculpting**: CHOP cuts or flips steps of every cycle (after the Roland S-1), NOISE fades the
   wave into white noise, and FOLD folds it back on itself.
-- **Envelope, filter and output**: an ADSR you can drag on its own graph, a low-pass filter, 16 voices panned
-  by pitch, and a soft clipper that keeps the output under −1 dBFS.
+- **Envelope, filter and output**: an ADSR you can drag on its own graph; a state-variable filter with four
+  modes, resonance up to self-oscillation, drive, its own envelope and velocity; 16 voices panned by pitch,
+  and a soft clipper that keeps the output under −1 dBFS.
 - **16-step sequencer**: sample-accurate, synced to the DAW or its own tempo, with swing, gate and three
   keyboard modes.
 - **You see what you hear**: oscilloscope, spectrum with the filter curve, envelope with a dot per voice,
@@ -47,7 +48,7 @@ Windows 10 or 11, 64-bit. Download `NeonSynth-x.y.z-Windows-Setup.exe` from the
 |---|---|
 | VST3 instrument | `C:\Program Files\Common Files\VST3\NeonSynth.vst3` |
 | Standalone application (optional) | `C:\Program Files\AudioDSP\Neon Synth\NeonSynth.exe` |
-| User manual as a PDF (optional; installers after v1.7.1) | `C:\Program Files\AudioDSP\Neon Synth\NeonSynth-User-Manual-x.y.z.pdf`, with a Start menu shortcut |
+| User manual as a PDF (optional) | `C:\Program Files\AudioDSP\Neon Synth\NeonSynth-User-Manual-x.y.z.pdf`, with a Start menu shortcut |
 
 In a DAW, rescan your VST3 plugins and look for **NeonSynth** under the manufacturer **AudioDSP**. In the
 Standalone, choose your audio output and MIDI input under **Options → Audio/MIDI Settings**; with no MIDI
@@ -72,7 +73,8 @@ MIDI logging and the layout of the source.
 
 | Version | Date | What changed |
 |---|---|---|
-| [v1.7.1](https://github.com/kv244/Synth/releases/tag/v1.7.1) | 13 Nov 2026 | Review fixes: sample loading and replacement, Granular bracket, CI runs once per commit, code statistics report; no change to controls or sound | A new 1280 × 860 window that scales from 75% to 150%; the envelope's four points can be dragged on its graph; Esc closes the help page from any control |
+| [v1.8.0](https://github.com/kv244/Synth/releases/tag/v1.8.0) | 15 Nov 2026 | The filter: low-pass, high-pass, band-pass and notch; resonance up to self-oscillation that follows the envelope; drive; a filter envelope (AMP / FILTER tabs) and velocity to cutoff; the spectrum draws the real response. Old sessions sound bit-identical |
+| [v1.7.1](https://github.com/kv244/Synth/releases/tag/v1.7.1) | 13 Nov 2026 | Review fixes: sample loading and replacement, Granular bracket, CI runs once per commit, code statistics report; no change to controls or sound |
 | [v1.6.0](https://github.com/kv244/Synth/releases/tag/v1.6.0) | 11 Nov 2026 | Waveform sculpting: CHOP, Noise and Fold, with the SHAPE strip; cleaner band-limited oscillators; the illustrated manual and its PDF |
 | [v1.5.0](https://github.com/kv244/Synth/releases/tag/v1.5.0) | 5 Nov 2026 | Sample, Granular and Random sources; the sample is saved inside the session |
 | [v1.4.0](https://github.com/kv244/Synth/releases/tag/v1.4.0) | 5 Nov 2026 | Hardening: sample-accurate notes, the output soft clipper, a new envelope, no stuck notes. Renamed from BasicSynth to NeonSynth (old projects still open); licence changed from MIT to AGPLv3 |

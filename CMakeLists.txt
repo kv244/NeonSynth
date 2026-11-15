@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(NeonSynth VERSION 1.7.1 LANGUAGES C CXX)
+project(NeonSynth VERSION 1.8.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -41,7 +41,7 @@ if(NEONSYNTH_WARNINGS_AS_ERRORS)
 endif()
 
 juce_add_plugin(NeonSynth
-    VERSION                     1.7.1
+    VERSION                     1.8.0
     COMPANY_NAME                "AudioDSP"
     COMPANY_WEBSITE             "https://audiodsp.com"
     BUNDLE_ID                   "com.audiodsp.neonsynth"
