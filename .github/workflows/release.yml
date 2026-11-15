@@ -173,7 +173,7 @@ jobs:
 
             ### Requirements
             - Windows 10 / 11 (64-bit)
-            - A VST3 host for the plugin. Tested in Ableton Live, Reason and Renoise
+            - A VST3 host for the plugin. Tested in Ableton Live and Renoise
 
             ### What's new
           files: NeonSynth-${{ steps.version.outputs.tag }}-Windows-Setup.exe
