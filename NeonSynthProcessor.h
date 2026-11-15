@@ -137,7 +137,7 @@ public:
     struct SampleStatus
     {
         juce::String name;       ///< file name, or "Default pad"
-        juce::String problem;    ///< why the last load failed, or "sample missing: <name>"; empty when fine
+        juce::String problem;    ///< why the last load failed, "sample missing: <name>" or "sample changed"; empty when fine
         bool loading = false;    ///< a background load is in progress
         double seconds = 0.0;
         double sampleRate = 0.0; ///< the file's own sample rate (playback converts to the host's)
@@ -173,6 +173,9 @@ public:
     /** Calls `fn (const SampleData*)` with the current sample, safely against a concurrent load. Not for the audio thread. */
     template <typename Fn>
     auto withCurrentSample (Fn&& fn) const   { return sampleSlot.withCurrent (std::forward<Fn> (fn)); }
+
+    /** How many times getStateInformation() has had to base64-encode an embedded sample (for tests). */
+    int getNumEmbeddedSampleEncodes() const noexcept   { return numEmbeddedSampleEncodes.load(); }
 
     //==========================================================================
     // CHOP's pattern (v1.6.0): 16 steps, saved with the session, not host parameters.
@@ -284,13 +287,30 @@ private:
     // Sample. sampleSlot must outlive sampleLoader (whose jobs publish into it), so it is declared first.
     SampleSlot sampleSlot;
     const SampleData* blockSample = nullptr;   // audio thread: the sample for the current block
-    void publishSample (std::unique_ptr<SampleData> sample, const SampleData::Origin* missing = nullptr);
+    void publishSample (std::unique_ptr<SampleData> sample, const SampleData::Origin* missing = nullptr, bool changedSinceSaved = false);
     void restoreSample (const juce::ValueTree& sampleTree);   // setStateInformation()
 
-    mutable juce::CriticalSection sampleInfoLock;   // guards the three fields below; never taken by the audio thread
+    mutable juce::CriticalSection sampleInfoLock;   // guards the fields below; never taken by the audio thread
     SampleData::Origin missingSample;          // a session's sample that couldn't be found (kept so saving doesn't lose it)
     juce::String missingSampleHash;
     juce::String sampleProblem;
+
+    // The current sample's embedded FLAC as base64 text, exactly as it goes into the saved state
+    // (up to about 13 MB). Kept from the session it was loaded from, or from the first save, so
+    // later saves don't encode it again. It belongs to the sample with this hash and sample rate.
+    struct EmbeddedSampleText
+    {
+        juce::String text, hash;
+        double sampleRate = 0.0;
+
+        bool isFor (const SampleData& sample) const noexcept
+        {
+            // An identity check, not arithmetic: both rates come from the same file header.
+            return text.isNotEmpty() && hash == sample.getHash() && juce::exactlyEqual (sampleRate, sample.getSampleRate());
+        }
+    };
+    EmbeddedSampleText embeddedSampleText;
+    std::atomic<int> numEmbeddedSampleEncodes { 0 };
 
     // Every request to change the sample (a load, PAD, a session) takes the next generation,
     // and only the newest may publish. backgroundLoadGeneration is the generation of the
