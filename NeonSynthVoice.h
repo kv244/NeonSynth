@@ -195,7 +195,7 @@ public:
         Null buffers mean nothing modulates; the voice then renders exactly as v1.8.0 did.
         CONTRACT: agent B reads modulation.pitchRatio in the source path (oscillators, sample,
         grains); agent C reads modulation.cutoffOctaves in modulatedCutoffHz(). */
-    void setModulation (const ModulationBlock& block) noexcept   { modulation = block; }
+    void setModulation (const ModulationBlock& block) noexcept   { modulation = block; modulationIndex = 0; }
 
     void startNote (int midiNote, float velocity, juce::SynthesiserSound*, int) override
     {
@@ -328,8 +328,15 @@ public:
     */
     void renderNextBlock (juce::AudioBuffer<float>& output, int startSample, int numSamples) override
     {
+        // Where the block stands after this call: a note started before the next call sets its
+        // filter coefficients there, with the LFO cutoff of that sample (v1.9.0).
+        const int nextModulationIndex = startSample + numSamples;
+
         if (! adsr.isActive())
+        {
+            modulationIndex = nextModulationIndex;
             return;
+        }
 
         auto* left  = output.getWritePointer (0);
         auto* right = output.getNumChannels() > 1 ? output.getWritePointer (1) : nullptr;
@@ -369,6 +376,7 @@ public:
         samplesSinceOn += rendered;
         if (samplesSinceOff >= 0)
             samplesSinceOff += rendered;
+        modulationIndex = nextModulationIndex;
     }
 
 private:
@@ -389,6 +397,9 @@ private:
         int rendered = 0;
         for (int i = startSample; i < startSample + numSamples; ++i, ++rendered)
         {
+            if constexpr (! steady)
+                modulationIndex = i;   // the coefficient updates read the LFO cutoff of this sample (v1.9.0)
+
             if constexpr (! steady)
                 advanceFilterControls (advanceFilterEnvelope);
 
@@ -489,13 +500,18 @@ private:
         const float knobHz = cutoff.getCurrentValue();   // already clamped by setParameters()
 
         // Modulation, in octaves, adds up here: the filter envelope and velocity
-        // (v1.8), the LFO and pitch bend (v1.9). Anything that can move it per
+        // (v1.8) and the LFO (v1.9). Anything that can move it per
         // sample must also count as "moving" in renderNextBlock() (see
         // filterEnvelopeMovesCutoff()), so that block renders in the gliding
         // version. Velocity is constant for a note: a retriggered voice's new
         // velocity is seen by filterUpdatePending() and applied at the next update.
-        const float modulationOctaves = filterEnvOctaves.getCurrentValue() * filterEnvelope.getLevel()
-                                      + filterVelOctaves.getCurrentValue() * noteVelocity;
+        float modulationOctaves = filterEnvOctaves.getCurrentValue() * filterEnvelope.getLevel()
+                                + filterVelOctaves.getCurrentValue() * noteVelocity;
+
+        // The LFO CUTOFF (v1.9), at the sample being rendered. With no LFO cutoff this block the
+        // buffer is null and nothing is added: the sum above is v1.8's, bit for bit.
+        if (modulation.cutoffOctaves != nullptr && modulation.numSamples > 0)
+            modulationOctaves += modulation.cutoffOctaves[juce::jlimit (0, modulation.numSamples - 1, modulationIndex)];
 
         // Unmodulated, the knob value goes through untouched: a round trip through
         // log2 and exp2 can move it by a bit, and the default sound must not change.
@@ -507,11 +523,12 @@ private:
 
     /** True while the filter envelope sweeps the cutoff (it is in its attack, decay or release,
         or its sustain level slews, and its amount isn't 0), or either amount glides to a new
-        setting: coefficients must follow. */
+        setting, or the LFO moves the cutoff this block (v1.9): coefficients must follow. */
     bool filterEnvelopeMovesCutoff() const noexcept
     {
         return (filterEnvOctaves.getCurrentValue() != 0.0f && ! filterEnvelope.isConstant())
-            || filterEnvOctaves.isSmoothing() || filterVelOctaves.isSmoothing();
+            || filterEnvOctaves.isSmoothing() || filterVelOctaves.isSmoothing()
+            || modulation.cutoffOctaves != nullptr;
     }
 
     /** True if the coefficients lag the cutoff, resonance or drive (one of them moved since the last update). */
@@ -713,4 +730,5 @@ private:
 
     // This block's modulation (v1.9.0), from setModulation().
     ModulationBlock modulation;
+    int modulationIndex = 0;   // the sample of the block being rendered (or about to be): where modulatedCutoffHz() reads the LFO
 };
