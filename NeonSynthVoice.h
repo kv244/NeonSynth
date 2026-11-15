@@ -187,7 +187,6 @@ public:
         blockSample    = p.sample;
         sampleSettings = p.sampleSettings;
         cloud.setSettings (p.grainSettings);
-        pendingGrainSettings = p.grainSettings;
     }
 
     void startNote (int midiNote, float velocity, juce::SynthesiserSound*, int) override
@@ -603,15 +602,13 @@ private:
         {
             const auto seed = (juce::uint32) midiNote * 2654435761u ^ (juce::uint32) (voiceIndex + 1) * 40503u
                             ^ (juce::uint32) noteCounter * 2246822519u;
-            cloud.begin (blockSample, midiNote, sampleSettings.rootNote, sampleRate, cloudSettings(), seed);
+            cloud.begin (blockSample, midiNote, sampleSettings.rootNote, sampleRate, cloud.getSettings(), seed);
         }
         else
         {
             cloud.stopSpawning();   // grains still sounding play out
         }
     }
-
-    GrainCloud::Settings cloudSettings() const noexcept   { return pendingGrainSettings; }
 
     /** Renders the cloud into cloudBuffer, in chunks if the host's block is larger than prepared. */
     void renderCloud (int numSamples) noexcept
@@ -661,7 +658,6 @@ private:
 
     // Granular source
     GrainCloud cloud;
-    GrainCloud::Settings pendingGrainSettings;
     std::vector<float> cloudBuffer = std::vector<float> (512, 0.0f);   // sized in prepare()
     int cloudSamples = 0, cloudRead = 0;
     int voiceIndex = 0, noteCounter = 0;   // seed the grains, so the same MIDI renders the same audio

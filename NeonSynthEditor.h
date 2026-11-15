@@ -203,9 +203,10 @@ public:
             *apvts.getParameter ("source"),
             [this] (float value)
             {
-                const int source = juce::roundToInt (value);
-                const auto mode = source == 1 ? StripMode::sample : source == 2 ? StripMode::granular : StripMode::shape;
-                waveformCombo.setAlpha (source == 0 ? 1.0f : 0.45f);
+                using Source = NeonSynthVoice::Source;
+                const auto source = (Source) juce::roundToInt (value);
+                const auto mode = source == Source::sample ? StripMode::sample : source == Source::granular ? StripMode::granular : StripMode::shape;
+                waveformCombo.setAlpha (source == Source::oscillator ? 1.0f : 0.45f);
                 smpLoopCombo.setAlpha (mode == StripMode::sample ? 1.0f : 0.45f);
                 sampleNameLabel.setAlpha (mode == StripMode::shape ? 0.45f : 1.0f);
                 sampleView.setVisible (mode != StripMode::shape);

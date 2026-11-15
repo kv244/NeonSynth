@@ -275,11 +275,10 @@ void NeonSynthProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     juce::ScopedNoDenormals noDenormals;
     const int numSamples = buffer.getNumSamples();
 
-    // TODO: the plugin has no input bus, so the buffer arrives with no incoming
-    // audio. Add an input bus if you want to mix or modulate external sound here.
+    // The plugin has no input bus: the buffer arrives with no incoming audio.
     buffer.clear();
     midiLogger.push (midiMessages, samplesProcessed);   // lock-free; formatting/I/O happen elsewhere
-    blockSample = sampleSlot.beginBlock();   // the voices' sample for this block (used by the sample sources from P2)
+    blockSample = sampleSlot.beginBlock();   // the voices' sample for this block (Sample and Granular sources)
 
     NeonSynthVoice::Params params;
     params.waveform = waveformParameter->getIndex();
@@ -305,7 +304,7 @@ void NeonSynthProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     params.chop = { chopPattern.load (std::memory_order_relaxed), chopCombParameter->get(), chopOvertoneParameter->get() * 0.01f };
     params.sculpt = { noiseLevelParameter->get() * 0.01f, foldDriveParameter->get(), foldMixParameter->get() * 0.01f };
 
-    // Every voice shares the same settings. TODO: per-voice detune for unison, or extra harmonics.
+    // Every voice shares the same settings.
     for (auto* v : voices)
         v->setParameters (params);
 
@@ -609,13 +608,16 @@ void NeonSynthProcessor::buildPlayMidi (const juce::MidiBuffer& input, int numSa
 //==============================================================================
 // Sample
 
-void NeonSynthProcessor::publishSample (std::unique_ptr<SampleData> sample, const SampleData::Origin* missing)
+void NeonSynthProcessor::publishSample (std::unique_ptr<SampleData> sample, const SampleData::Origin* missing, bool changedSinceSaved)
 {
     {
         const juce::ScopedLock sl (sampleInfoLock);
-        missingSample     = missing != nullptr ? *missing : SampleData::Origin{};
-        missingSampleHash = {};
-        sampleProblem     = missing != nullptr ? "sample missing: " + missing->name : juce::String();
+        missingSample      = missing != nullptr ? *missing : SampleData::Origin{};
+        missingSampleHash  = {};
+        sampleProblem      = missing != nullptr ? "sample missing: " + missing->name
+                           : changedSinceSaved  ? juce::String ("sample changed")
+                                                : juce::String();
+        embeddedSampleText = {};   // belongs to the sample being replaced (restoreSample() sets it again for an embedded one)
     }
     sampleSlot.publish (std::move (sample));
 }
@@ -695,11 +697,9 @@ void NeonSynthProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
     // Parameters and GUI state come from the APVTS; the pattern is added as a
     // child tree because its 16 steps are not host parameters.
+    // (apvts.state holds no Pattern, Chop or Sample child: setStateInformation() leaves them out.)
     auto state = apvts.copyState();
     state.setProperty (stateVersionId, currentStateVersion, nullptr);
-
-    if (auto previous = state.getChildWithName (patternId); previous.isValid())
-        state.removeChild (previous, nullptr);
 
     juce::ValueTree pattern (patternId);
     for (int i = 0; i < StepSequencer::numSteps; ++i)
@@ -713,14 +713,9 @@ void NeonSynthProcessor::getStateInformation (juce::MemoryBlock& destData)
     }
     state.appendChild (pattern, nullptr);
 
-    if (auto previous = state.getChildWithName (chopId); previous.isValid())
-        state.removeChild (previous, nullptr);
     juce::ValueTree chop (chopId);
     chop.setProperty (chopPatternId, chopPatternToString (chopPattern.load()), nullptr);
     state.appendChild (chop, nullptr);
-
-    if (auto previous = state.getChildWithName (sampleId); previous.isValid())
-        state.removeChild (previous, nullptr);
 
     juce::ValueTree sampleTree (sampleId);
     sampleSlot.withCurrent ([&] (const SampleData* sample)
@@ -745,7 +740,15 @@ void NeonSynthProcessor::getStateInformation (juce::MemoryBlock& destData)
             sampleTree.setProperty (samplePathId, sample->getOrigin().path, nullptr);
             sampleTree.setProperty (sampleHashId, sample->getHash(), nullptr);
             if (sample->getEmbeddedFlac().getSize() > 0)
-                sampleTree.setProperty (sampleFlacId, sample->getEmbeddedFlac().toBase64Encoding(), nullptr);
+            {
+                // Encoded once per sample; the tree shares the kept text (juce::String is reference-counted).
+                if (! embeddedSampleText.isFor (*sample))
+                {
+                    embeddedSampleText = { sample->getEmbeddedFlac().toBase64Encoding(), sample->getHash(), sample->getSampleRate() };
+                    ++numEmbeddedSampleEncodes;
+                }
+                sampleTree.setProperty (sampleFlacId, embeddedSampleText.text, nullptr);
+            }
         }
     });
     state.appendChild (sampleTree, nullptr);
@@ -761,7 +764,16 @@ void NeonSynthProcessor::setStateInformation (const void* data, int sizeInBytes)
         return;
 
     const auto tree = juce::ValueTree::fromXml (*xml);
-    apvts.replaceState (tree);
+
+    // The pattern, CHOP and sample children are read into the sequencer, chopPattern and the
+    // sample slot below, and getStateInformation() writes them from there. apvts.state keeps
+    // only what the APVTS and the editor use (the parameters and the editor's view properties):
+    // the Sample child can carry about 13 MB of base64 FLAC that would otherwise stay in memory.
+    auto parameters = tree.createCopy();   // cheap: juce::String values are shared, not copied
+    for (int i = parameters.getNumChildren(); --i >= 0;)
+        if (const auto type = parameters.getChild (i).getType(); type == patternId || type == chopId || type == sampleId)
+            parameters.removeChild (i, nullptr);
+    apvts.replaceState (parameters);
 
     // A state without a pattern (sessions saved before v1.3, or a preset that
     // only carries parameters) gets the default pattern, so loading it always
@@ -838,7 +850,11 @@ void NeonSynthProcessor::restoreSample (const juce::ValueTree& sampleTree)
         {
             if (auto result = SampleLoader::loadEmbeddedFlac (flac, origin); result.sample != nullptr)
             {
+                // Keep the session's text for saving, so it isn't encoded again.
+                EmbeddedSampleText text { encoded, result.sample->getHash(), result.sample->getSampleRate() };
                 publishSample (std::move (result.sample));
+                const juce::ScopedLock sl (sampleInfoLock);
+                embeddedSampleText = std::move (text);
                 return;
             }
         }
@@ -849,7 +865,10 @@ void NeonSynthProcessor::restoreSample (const juce::ValueTree& sampleTree)
     {
         if (auto result = SampleLoader::loadFile (juce::File (origin.path)); result.sample != nullptr)
         {
-            publishSample (std::move (result.sample));
+            // A different file may be there now (edited, or replaced). Load it anyway, since the
+            // user may have changed it on purpose, but say so rather than change the sound silently.
+            const bool changed = hash.isNotEmpty() && result.sample->getHash() != hash;
+            publishSample (std::move (result.sample), nullptr, changed);
             return;
         }
     }

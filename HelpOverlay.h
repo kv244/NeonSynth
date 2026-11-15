@@ -10,9 +10,9 @@
     Quick-reference help for Neon Synth, shown over the whole editor when the
     "?" button is pressed.
 
-    The text is laid out on the editor's 1280 x 860 design grid (the overlay is a
-    child of the scaled content, so it stays legible at any
-    window size without re-flowing. It is plain static text, built once.
+    The text is laid out on the editor's 1280 x 860 design grid. The overlay is a
+    child of the scaled content, so it stays legible at any window size without
+    re-flowing. It is plain static text, built once.
 
     Closing: click anywhere on the overlay or press Escape. The editor's "?"
     button also toggles it. Hosts do not always give the overlay keyboard focus,

@@ -43,7 +43,7 @@ endif()
 juce_add_plugin(NeonSynth
     VERSION                     1.8.0
     COMPANY_NAME                "AudioDSP"
-    COMPANY_WEBSITE             "https://audiodsp.com"
+    COMPANY_WEBSITE             "https://github.com/kv244/Synth"   # until a company site is decided (A12)
     BUNDLE_ID                   "com.audiodsp.neonsynth"
     PLUGIN_MANUFACTURER_CODE    AuDs
     PLUGIN_CODE                 BaSy
@@ -154,9 +154,10 @@ if(NEONSYNTH_BUILD_TESTS)
     #   RenderBenchmark       times processBlock for a few load scenarios
     #   RealtimeSafetyTests   fails if processBlock allocates (also run by ctest)
     #   ParameterLayoutTests  fails if a parameter changed other than by being appended (ctest)
+    #   SessionStateTests     saving and restoring the sample with a session (ctest)
     #   EditorTests           drives the editor offscreen with mouse events and paints it (ctest;
     #                         on Linux it needs an X display, e.g. xvfb-run)
-    foreach(program RenderBenchmark RealtimeSafetyTests ParameterLayoutTests EditorTests)
+    foreach(program RenderBenchmark RealtimeSafetyTests ParameterLayoutTests SessionStateTests EditorTests)
         juce_add_console_app(${program} PRODUCT_NAME "${program}")
         juce_generate_juce_header(${program})
         target_sources(${program} PRIVATE tests/${program}.cpp NeonSynthProcessor.cpp)
@@ -176,7 +177,7 @@ if(NEONSYNTH_BUILD_TESTS)
             neonsynth_warning_tweaks)
     endforeach()
 
-    foreach(program RealtimeSafetyTests ParameterLayoutTests EditorTests)
+    foreach(program RealtimeSafetyTests ParameterLayoutTests SessionStateTests EditorTests)
         add_dependencies(unit_tests ${program})
         add_test(NAME ${program} COMMAND ${program})
     endforeach()

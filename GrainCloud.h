@@ -136,6 +136,9 @@ public:
     /** Settings for the grains that start from now on (Position and Scan act immediately). */
     void setSettings (const Settings& newSettings) noexcept   { settings = newSettings; }
 
+    /** The settings set last: begin() takes them for a new note. */
+    const Settings& getSettings() const noexcept   { return settings; }
+
     /** Ends the note at once: drops every grain and releases the sample. Safe when idle. */
     void end() noexcept
     {

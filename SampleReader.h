@@ -26,7 +26,7 @@
     clicks, wherever its points are, and needs nothing before loopStart.
 
     Loop modes:
-      oneShot           plays to the end and finishes (the voice then fades out in 2 ms)
+      oneShot           plays to the end and finishes (the voice then fades out in 5 ms, as for a steal)
       loop              loops for as long as the note sounds, release tail included
       loopUntilRelease  loops while the key is held, then plays on to the end
 
