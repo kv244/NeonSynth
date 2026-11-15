@@ -122,6 +122,9 @@ public:
     /** Step that most recently started, or -1 while the sequencer is stopped. Any thread. */
     int getSequencerPlayhead() const noexcept   { return sequencer.getCurrentStep(); }
 
+    /** The modulation's state for the MODULATION panel (v1.9.0): LFO phase and value, bend and wheel positions. Any thread. */
+    const Modulation& getModulation() const noexcept   { return modulation; }
+
     /** Tempo the sequencer followed in the last block (host or internal), for display. */
     float getSequencerTempo() const noexcept    { return sequencerTempo.load (std::memory_order_relaxed); }
 
@@ -278,6 +281,21 @@ private:
     juce::AudioParameterFloat*  filterSustainParameter = nullptr;
     juce::AudioParameterFloat*  filterReleaseParameter = nullptr;
     juce::AudioParameterFloat*  filterVelParameter     = nullptr;
+    juce::AudioParameterChoice* lfoShapeParameter      = nullptr;
+    juce::AudioParameterFloat*  lfoRateParameter       = nullptr;
+    juce::AudioParameterBool*   lfoSyncParameter       = nullptr;
+    juce::AudioParameterChoice* lfoDivisionParameter   = nullptr;
+    juce::AudioParameterFloat*  lfoPitchParameter      = nullptr;
+    juce::AudioParameterFloat*  lfoCutoffParameter     = nullptr;
+    juce::AudioParameterFloat*  lfoAmpParameter        = nullptr;
+    juce::AudioParameterInt*    bendRangeParameter     = nullptr;
+    juce::AudioParameterFloat*  vibratoParameter       = nullptr;
+
+    /** The LFO, pitch bend and mod wheel (v1.9.0), shared by all voices. */
+    Modulation modulation;
+
+    /** The musical time the LFO follows this block (host song position, or free-running). Audio thread. */
+    Lfo::Transport lfoTransport() const;
 
     /** CHOP's pattern, bit k = step k chopped. Written by the editor, read once per block; lock-free. */
     std::atomic<juce::uint16> chopPattern { ChopSettings().pattern };

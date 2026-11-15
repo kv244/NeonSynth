@@ -10,6 +10,7 @@
 #include "SampleReader.h"
 #include "GrainCloud.h"
 #include "CytomicSvf.h"
+#include "Modulation.h"
 
 class NeonSynthSound : public juce::SynthesiserSound
 {
@@ -188,6 +189,13 @@ public:
         sampleSettings = p.sampleSettings;
         cloud.setSettings (p.grainSettings);
     }
+
+    /** Audio thread, once per block after setParameters(): this block's modulation buffers (v1.9.0).
+        Indexed like the block, so renderNextBlock()'s startSample is the index of its first sample.
+        Null buffers mean nothing modulates; the voice then renders exactly as v1.8.0 did.
+        CONTRACT: agent B reads modulation.pitchRatio in the source path (oscillators, sample,
+        grains); agent C reads modulation.cutoffOctaves in modulatedCutoffHz(). */
+    void setModulation (const ModulationBlock& block) noexcept   { modulation = block; }
 
     void startNote (int midiNote, float velocity, juce::SynthesiserSound*, int) override
     {
@@ -702,4 +710,7 @@ private:
     // Stereo placement
     float notePan = 0.0f, width = 0.0f, gainLeft = 1.0f, gainRight = 1.0f;
     juce::SmoothedValue<float> pan { 0.0f };
+
+    // This block's modulation (v1.9.0), from setModulation().
+    ModulationBlock modulation;
 };

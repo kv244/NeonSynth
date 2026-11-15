@@ -82,6 +82,8 @@ target_sources(NeonSynth
         GrainCloud.h
         SampleView.h
         ShapeView.h
+        Lfo.h
+        Modulation.h
 )
 
 target_compile_definitions(NeonSynth
@@ -128,7 +130,7 @@ option(NEONSYNTH_BUILD_TESTS "Build the unit tests and the render benchmark" OFF
 
 if(NEONSYNTH_BUILD_TESTS)
     enable_testing()
-    set(NEONSYNTH_UNIT_TESTS StepSequencerTests VoiceEnvelopeTests OscillatorTests ChopTests SculptTests SampleDataTests SampleReaderTests GranularTests FilterTests)
+    set(NEONSYNTH_UNIT_TESTS StepSequencerTests VoiceEnvelopeTests OscillatorTests ChopTests SculptTests SampleDataTests SampleReaderTests GranularTests FilterTests LfoTests PitchTests ModulationTests)
     add_custom_target(unit_tests)
 
     foreach(test ${NEONSYNTH_UNIT_TESTS})
