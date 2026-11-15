@@ -1,6 +1,6 @@
 # Manual figures
 
-The figures in `docs/images/` for [the user manual](../NeonSynth-User-Manual.md), the scripts that make them, and how to remake them. Edition 1.4 of the manual, built against NeonSynth v1.7.0: the new 1280 × 860 window, so the captures (Figures 1, 3, 6 and 8) were retaken, and the plots re-rendered with the window's labels (ATTACK, DECAY, SUSTAIN, RELEASE). The sound is bit-identical to v1.6.0, and every measured value in `render-settings.json` came out the same.
+The figures in `docs/images/` for [the user manual](../NeonSynth-User-Manual.md), the scripts that make them, and how to remake them. Edition 1.6 of the manual, for NeonSynth v1.8.0: the capture behind Figures 1 and 8 (`ui-oscillator-running`) was retaken to show the new filter panel and the AMP / FILTER tabs; Figures 3 and 6 show only the SOURCE panel, which did not change, so their v1.7.0 captures stay. The plots were made with v1.7.0, whose sound v1.8.0 keeps bit-identical at their settings (the compare test checks it).
 
 ## What each figure is
 
