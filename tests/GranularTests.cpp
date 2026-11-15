@@ -136,6 +136,55 @@ int main()
         check (scalar == avx2, what);
     }
 
+    std::printf ("SIMD paths under pitch modulation (v1.9.0)\n");
+    {
+        // The pitch ratio scales each grain's step once per render() call, before the
+        // grain loop, so the paths must still agree bit for bit: first at a steady 1.37,
+        // then with the ratio changing between calls (grains started at one ratio follow another).
+        const auto renderWith = [&] (GrainCloud::SimdPath path, bool changing)
+        {
+            GrainCloud::forceSimdPath (path);
+            GrainCloud c;
+            c.begin (noise.get(), 64, 60, rate, cloud (73, 80, 0.7f, 40.0f, -0.6f), 2024);
+            std::vector<float> out (96000);
+            int call = 0;
+            for (size_t i = 0; i < out.size(); i += 29, ++call)   // odd chunks, as the voice's 32-sample ones
+            {
+                c.setPitchRatio (changing ? 1.37f * (float) std::pow (2.0, std::sin (0.05 * call) / 12.0) : 1.37f);
+                c.render (out.data() + i, (int) std::min<size_t> (29, out.size() - i));
+            }
+            c.end();
+            return out;
+        };
+        for (const bool changing : { false, true })
+        {
+            const auto scalar = renderWith (GrainCloud::SimdPath::scalar, changing);
+            const auto sse2   = renderWith (GrainCloud::SimdPath::sse2, changing);
+            const auto avx2   = renderWith (GrainCloud::SimdPath::avx2, changing);
+            std::snprintf (what, sizeof (what), "pitch ratio %s: SSE2 and AVX2 grain loops are bit-identical to the scalar loop%s",
+                           changing ? "moving around 1.37" : "1.37",
+                           GrainCloud::cpuHasAVX2() ? "" : " (no AVX2 on this CPU: SSE2 was used)");
+            check (scalar == sse2 && scalar == avx2, what);
+        }
+        GrainCloud::forceSimdPath (GrainCloud::SimdPath::automatic);
+
+        // A grain sized to fit the file at its starting pitch, then bent up two octaves,
+        // must not read past the end of its copy: its step shrinks to fit instead.
+        GrainCloud g;
+        g.begin (noise.get(), 60, 60, rate, cloud (500, 20, 1.0f), 77);
+        bool finite = true;
+        for (int i = 0; i < 96000; i += 32)
+        {
+            g.setPitchRatio (i < 4800 ? 1.0f : 4.0f);
+            float x[32];
+            g.render (x, 32);
+            for (const float v : x)
+                finite = finite && std::isfinite (v) && std::abs (v) < 10.0f;
+        }
+        check (finite, "grains bent two octaves up after they started stay inside the sample (bounded output)");
+        g.end();
+    }
+
     std::printf ("Density\n");
     for (const float density : { 5.0f, 50.0f, 200.0f })
     {
