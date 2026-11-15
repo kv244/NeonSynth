@@ -32,3 +32,12 @@
 31 noiseLevel v1 "Noise" float 0 to 100 step 0.1 skew 1 default 0
 32 foldDrive v1 "Fold Drive" float 1 to 10 step 0.01 skew 1 default 3
 33 foldMix v1 "Fold Mix" float 0 to 100 step 0.1 skew 1 default 0
+34 filterMode v1 "Filter Mode" choice [Low-pass, High-pass, Band-pass, Notch] default Low-pass
+35 filterRes v1 "Filter Resonance" float 0 to 100 step 0.1 skew 1 default 0
+36 filterDrive v1 "Filter Drive" float 0 to 100 step 0.1 skew 1 default 0
+37 filterEnvAmt v1 "Filter Env Amount" float -5 to 5 step 0.01 skew 1 default 0
+38 filterAttack v1 "Filter Attack" float 0.001 to 5 step 0.001 skew 0.3 default 0.01
+39 filterDecay v1 "Filter Decay" float 0.001 to 5 step 0.001 skew 0.3 default 0.3
+40 filterSustain v1 "Filter Sustain" float 0 to 1 step 0.01 skew 1 default 0.5
+41 filterRelease v1 "Filter Release" float 0.001 to 10 step 0.001 skew 0.3 default 0.3
+42 filterVel v1 "Filter Velocity" float 0 to 4 step 0.01 skew 1 default 0

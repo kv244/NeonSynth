@@ -88,8 +88,8 @@ FIG1_REGIONS = [                     # number, box (design px), marker (design p
     (1, (28, 114, 404, 154), (12, 134)),        # with nothing under it, never on a label
     (2, (28, 214, 404, 610), (12, 400)),
     (3, (440, 88, 940, 336), (946, 88)),
-    (4, (440, 364, 746, 610), (752, 362)),
-    (5, (782, 362, 940, 452), (946, 362)),
+    (4, (440, 358, 748, 612), (754, 358)),      # takes in the AMP / FILTER tabs (v1.8.0)
+    (5, (782, 362, 940, 622), (946, 362)),      # the whole filter panel since v1.8.0
     (6, (976, 90, 1252, 616), (1256, 90)),
     (7, (826, 28, 1172, 56), (800, 42)),
     (8, (1206, 22, 1256, 62), (1192, 42)),
@@ -99,8 +99,8 @@ FIG1_KEY = [
     (1, "Source and waveform. The left menu picks Oscillator, Sample, Granular or Random; the right menu picks the oscillator waveform."),
     (2, "The strip and its knob row: the SHAPE strip for Oscillator and Random (Figure 3); the sample for Sample and Granular (Figure 6)."),
     (3, "Display: SCOPE or SPECTRUM view of the mix."),
-    (4, "Envelope. Drag the four points, or turn ATTACK, DECAY, SUSTAIN and RELEASE."),
-    (5, "Low-pass filter. ON switches it in; the slider sets CUTOFF."),
+    (4, "Envelope. AMP or FILTER: drag the four points, or turn ATTACK, DECAY, SUSTAIN and RELEASE."),
+    (5, "Filter. ON, CUTOFF, the mode, and RES, DRIVE, ENV and VEL."),
     (6, "Output: GAIN, WIDTH and the left and right level meters."),
     (7, "Voice lights: one for each of the 16 voices, lit while it sounds."),
     (8, "Quick help. Click it, or anywhere on the help page, or press Esc to close."),

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(NeonSynth VERSION 1.7.1 LANGUAGES C CXX)
+project(NeonSynth VERSION 1.8.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -41,7 +41,7 @@ if(NEONSYNTH_WARNINGS_AS_ERRORS)
 endif()
 
 juce_add_plugin(NeonSynth
-    VERSION                     1.7.1
+    VERSION                     1.8.0
     COMPANY_NAME                "AudioDSP"
     COMPANY_WEBSITE             "https://audiodsp.com"
     BUNDLE_ID                   "com.audiodsp.neonsynth"
@@ -128,7 +128,7 @@ option(NEONSYNTH_BUILD_TESTS "Build the unit tests and the render benchmark" OFF
 
 if(NEONSYNTH_BUILD_TESTS)
     enable_testing()
-    set(NEONSYNTH_UNIT_TESTS StepSequencerTests VoiceEnvelopeTests OscillatorTests ChopTests SculptTests SampleDataTests SampleReaderTests GranularTests)
+    set(NEONSYNTH_UNIT_TESTS StepSequencerTests VoiceEnvelopeTests OscillatorTests ChopTests SculptTests SampleDataTests SampleReaderTests GranularTests FilterTests)
     add_custom_target(unit_tests)
 
     foreach(test ${NEONSYNTH_UNIT_TESTS})
@@ -146,6 +146,9 @@ if(NEONSYNTH_BUILD_TESTS)
         add_dependencies(unit_tests ${test})
         add_test(NAME ${test} COMMAND ${test})
     endforeach()
+
+    # FilterTests compares CytomicSvf with juce::dsp::StateVariableTPTFilter bit for bit
+    target_link_libraries(FilterTests PRIVATE juce::juce_dsp)
 
     # Programs that drive the whole processor directly (no host, no Python):
     #   RenderBenchmark       times processBlock for a few load scenarios

@@ -24,7 +24,7 @@
     SOURCE panel: source and waveform, the sample controls (load, built-in pad, loop
     mode), the strip (sample waveform with draggable markers, or the sculpted
     cycle) and the knob row under it. A file can also be dropped anywhere.
-    Middle: scope / spectrum, envelope (shape + knobs) and filter.
+    Middle: scope / spectrum, envelope (shape + knobs; AMP / FILTER tabs) and filter.
     OUTPUT panel: gain, stereo width and the stereo meter.
     SEQUENCER panel: run / sync / rate / mode / tempo / swing / gate, then the 16 steps.
 
@@ -73,6 +73,15 @@ public:
         noiseValue        = apvts.getRawParameterValue ("noiseLevel");
         foldDriveValue    = apvts.getRawParameterValue ("foldDrive");
         foldMixValue      = apvts.getRawParameterValue ("foldMix");
+        filterResValue    = apvts.getRawParameterValue ("filterRes");
+        filterModeValue   = apvts.getRawParameterValue ("filterMode");
+        filterDriveValue  = apvts.getRawParameterValue ("filterDrive");
+        filterEnvAmtValue  = apvts.getRawParameterValue ("filterEnvAmt");
+        filterVelValue     = apvts.getRawParameterValue ("filterVel");
+        filterAttackValue  = apvts.getRawParameterValue ("filterAttack");
+        filterDecayValue   = apvts.getRawParameterValue ("filterDecay");
+        filterSustainValue = apvts.getRawParameterValue ("filterSustain");
+        filterReleaseValue = apvts.getRawParameterValue ("filterRelease");
 
         // ── Oscillator ───────────────────────────────────────────────────────
         content.addAndMakeVisible (waveformCombo);
@@ -231,6 +240,55 @@ public:
         for (auto* label : { &attackReadout, &decayReadout, &sustainReadout, &releaseReadout })
             setUpReadout (*label, neon::amber, juce::Justification::centred);
 
+        // The filter envelope (v1.8.0): a second view and set of knobs in the same places, in
+        // magenta, shown instead of the amp envelope's by the FILTER tab. Two fixed sets rather
+        // than one set re-bound on a tab change: each control stays attached to one parameter, so
+        // host automation and undo gestures never land on the wrong one.
+        content.addChildComponent (filterAdsrView);
+        filterAdsrView.setAccent (neon::magenta);
+        filterAdsrView.attach (apvts.getParameter ("filterAttack"), apvts.getParameter ("filterDecay"),
+                               apvts.getParameter ("filterSustain"), apvts.getParameter ("filterRelease"));
+
+        const std::pair<juce::Slider*, const char*> filterEnvKnobs[] = {
+            { &filterAttackKnob, "filterAttack" }, { &filterDecayKnob, "filterDecay" },
+            { &filterSustainKnob, "filterSustain" }, { &filterReleaseKnob, "filterRelease" } };
+        for (size_t i = 0; i < std::size (filterEnvKnobs); ++i)
+        {
+            auto* knob = filterEnvKnobs[i].first;
+            knob->setSliderStyle (juce::Slider::Rotary);
+            knob->setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+            knob->setColour (juce::Slider::rotarySliderFillColourId,    neon::magenta);
+            knob->setColour (juce::Slider::rotarySliderOutlineColourId, neon::magenta.withAlpha (0.3f));
+            knob->setColour (juce::Slider::thumbColourId,               neon::magenta);
+            content.addChildComponent (knob);
+            filterEnvKnobAttachments[i] = std::make_unique<SliderAttachment> (apvts, filterEnvKnobs[i].second, *knob);
+        }
+        filterAttackKnob.setTooltip ("Filter attack: how long the filter envelope takes to rise to its peak");
+        filterDecayKnob.setTooltip ("Filter decay: how long it then takes to fall to the sustain level");
+        filterSustainKnob.setTooltip ("Filter sustain: where the filter envelope rests while the key is held");
+        filterReleaseKnob.setTooltip ("Filter release: how long it takes to fall back after the key is let go");
+        for (auto* label : { &filterAttackReadout, &filterDecayReadout, &filterSustainReadout, &filterReleaseReadout })
+            setUpReadout (*label, neon::magenta, juce::Justification::centred);
+
+        // AMP / FILTER: which envelope the panel shows (both always run).
+        for (auto [button, colour] : { std::pair { &ampEnvButton, neon::amber }, std::pair { &filterEnvButton, neon::magenta } })
+        {
+            button->setClickingTogglesState (true);
+            button->setRadioGroupId (2);
+            button->setColour (juce::TextButton::buttonColourId,   juce::Colours::transparentBlack);
+            button->setColour (juce::TextButton::buttonOnColourId, colour.withAlpha (0.25f));
+            button->setColour (juce::TextButton::textColourOffId,  colour.withAlpha (0.55f));
+            button->setColour (juce::TextButton::textColourOnId,   colour);
+            button->setColour (juce::ComboBox::outlineColourId,    colour.withAlpha (0.5f));
+            content.addAndMakeVisible (button);
+        }
+        ampEnvButton.setConnectedEdges (juce::Button::ConnectedOnRight);
+        filterEnvButton.setConnectedEdges (juce::Button::ConnectedOnLeft);
+        ampEnvButton.setTooltip ("Show the amp envelope: how the loudness of each note rises and falls");
+        filterEnvButton.setTooltip ("Show the filter envelope: how the cutoff moves during each note (how far: ENV in FILTER)");
+        ampEnvButton.onClick    = [this] { if (ampEnvButton.getToggleState())    setEnvTab (0); };
+        filterEnvButton.onClick = [this] { if (filterEnvButton.getToggleState()) setEnvTab (1); };
+
         // ── Filter ───────────────────────────────────────────────────────────
         setUpLinearSlider (cutoffSlider, neon::magenta);
         cutoffAttachment = std::make_unique<SliderAttachment> (apvts, "cutoff", cutoffSlider);
@@ -248,6 +306,38 @@ public:
         filterEnabledListener = std::make_unique<juce::ParameterAttachment> (
             *apvts.getParameter ("filterEnabled"),
             [this] (float value) { updateFilterState (value >= 0.5f); });
+        // Mode, resonance and drive (v1.8.0)
+        content.addAndMakeVisible (filterModeCombo);
+        filterModeCombo.addItemList ({ "Low-pass", "High-pass", "Band-pass", "Notch" }, 1);   // same order as the parameter
+        filterModeCombo.setTooltip ("Filter mode: which part of the spectrum the filter keeps. Low-pass keeps the lows, "
+                                    "high-pass the highs, band-pass a band around the cutoff, notch everything but it");
+        for (auto id : { juce::ComboBox::outlineColourId, juce::ComboBox::textColourId, juce::ComboBox::arrowColourId })
+            filterModeCombo.setColour (id, neon::magenta);
+        filterModeAttachment = std::make_unique<ComboBoxAttachment> (apvts, "filterMode", filterModeCombo);
+
+        for (auto* knob : { &filterResKnob, &filterDriveKnob, &filterEnvAmtKnob, &filterVelKnob })
+        {
+            knob->setSliderStyle (juce::Slider::Rotary);
+            knob->setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+            knob->setColour (juce::Slider::rotarySliderFillColourId,    neon::magenta);
+            knob->setColour (juce::Slider::rotarySliderOutlineColourId, neon::magenta.withAlpha (0.3f));
+            knob->setColour (juce::Slider::thumbColourId,               neon::magenta);
+            content.addAndMakeVisible (knob);
+        }
+        filterResAttachment   = std::make_unique<SliderAttachment> (apvts, "filterRes",   filterResKnob);
+        filterDriveAttachment = std::make_unique<SliderAttachment> (apvts, "filterDrive", filterDriveKnob);
+        filterEnvAmtAttachment = std::make_unique<SliderAttachment> (apvts, "filterEnvAmt", filterEnvAmtKnob);
+        filterVelAttachment    = std::make_unique<SliderAttachment> (apvts, "filterVel",    filterVelKnob);
+        filterResKnob.setTooltip ("Resonance: boosts the frequencies at the cutoff. From about 98% the filter rings on its own, "
+                                  "a sine at the cutoff that follows the envelope");
+        filterDriveKnob.setTooltip ("Drive: soft-clips the sound before the filter, so its new harmonics meet the resonance. "
+                                    "Loud peaks stay where they are; quieter parts come up");
+        filterEnvAmtKnob.setTooltip ("Envelope amount: how far the filter envelope moves the cutoff, in octaves. "
+                                     "Below 0 it moves it down");
+        filterVelKnob.setTooltip ("Velocity: how far harder notes raise the cutoff, in octaves at full velocity");
+        for (auto* label : { &filterResReadout, &filterDriveReadout, &filterEnvAmtReadout, &filterVelReadout })
+            setUpReadout (*label, neon::magenta, juce::Justification::centred);
+
         filterEnabledListener->sendInitialUpdate();
 
         // ── Voices ───────────────────────────────────────────────────────────
@@ -360,20 +450,26 @@ public:
             { &foldDriveKnob, "foldDrive" }, { &foldMixKnob, "foldMix" },
             { &attackKnob, "attack" }, { &decayKnob, "decay" }, { &sustainKnob, "sustain" }, { &releaseKnob, "release" },
             { &cutoffSlider, "cutoff" }, { &filterToggle, "filterEnabled" },
+            { &filterModeCombo, "filterMode" }, { &filterResKnob, "filterRes" }, { &filterDriveKnob, "filterDrive" },
+            { &filterEnvAmtKnob, "filterEnvAmt" }, { &filterVelKnob, "filterVel" },
+            { &filterAttackKnob, "filterAttack" }, { &filterDecayKnob, "filterDecay" },
+            { &filterSustainKnob, "filterSustain" }, { &filterReleaseKnob, "filterRelease" },
             { &gainSlider, "gain" }, { &widthSlider, "width" },
             { &seqOnButton, "seqOn" }, { &seqSyncButton, "seqSync" }, { &seqTempoSlider, "seqTempo" },
             { &seqRateCombo, "seqRate" }, { &seqModeCombo, "seqMode" }, { &seqSwingSlider, "seqSwing" },
             { &seqGateSlider, "seqGate" },
             { &sampleView, "sampleView" }, { &shapeView, "shapeView" }, { &stepGrid, "stepGrid" },
-            { &adsrView, "adsrView" }, { &oscilloscope, "scopeView" }, { &spectrum, "spectrumView" },
+            { &adsrView, "adsrView" }, { &filterAdsrView, "filterAdsrView" },
+            { &ampEnvButton, "ampEnvButton" }, { &filterEnvButton, "filterEnvButton" }, { &oscilloscope, "scopeView" }, { &spectrum, "spectrumView" },
             { &scopeButton, "scopeButton" }, { &spectrumButton, "spectrumButton" },
             { &loadButton, "loadButton" }, { &padButton, "padButton" },
             { &helpButton, "helpButton" }, { &helpOverlay, "helpOverlay" } };
         for (const auto& [component, id] : ids)
             component->setComponentID (id);
 
-        // The chosen view is GUI state, saved with the plugin's state but not automatable.
+        // The chosen view and envelope tab are GUI state, saved with the plugin's state but not automatable.
         setView ((int) apvts.state.getProperty (viewPropertyId, 0));
+        setEnvTab ((int) apvts.state.getProperty (envTabPropertyId, 0));
 
         layout();
 
@@ -428,6 +524,7 @@ private:
     static constexpr int baseHeight = 860;
     static constexpr int timerHz    = 30;
     static inline const juce::Identifier viewPropertyId { "view" };
+    static inline const juce::Identifier envTabPropertyId { "envelopeTab" };   // 0 = AMP, 1 = FILTER
 
     float scale() const noexcept { return (float) getWidth() / (float) baseWidth; }
 
@@ -539,18 +636,36 @@ private:
         oscilloscope.setBounds (444, 128, 492, 204);
         spectrum.setBounds (444, 128, 492, 204);
 
+        // Envelope: AMP / FILTER tabs in the header, then the view and knobs (each tab's in the same places).
+        ampEnvButton.setBounds (630, 363, 52, 22);
+        filterEnvButton.setBounds (682, 363, 60, 22);
         adsrView.setBounds (444, 392, 298, 116);
+        filterAdsrView.setBounds (444, 392, 298, 116);
         juce::Slider* knobs[] = { &attackKnob, &decayKnob, &sustainKnob, &releaseKnob };
         juce::Label*  reads[] = { &attackReadout, &decayReadout, &sustainReadout, &releaseReadout };
+        juce::Slider* filterKnobs[] = { &filterAttackKnob, &filterDecayKnob, &filterSustainKnob, &filterReleaseKnob };
+        juce::Label*  filterReads[] = { &filterAttackReadout, &filterDecayReadout, &filterSustainReadout, &filterReleaseReadout };
         for (int i = 0; i < 4; ++i)
         {
             knobs[i]->setBounds (444 + 75 * i, 516, 70, 52);
             reads[i]->setBounds (444 + 75 * i, 588, 70, 14);
+            filterKnobs[i]->setBounds (knobs[i]->getBounds());
+            filterReads[i]->setBounds (reads[i]->getBounds());
         }
 
+        // Filter: ON, cutoff, mode, then two rows of knobs (RES DRIVE, ENV VEL) with their labels and readouts.
         filterToggle.setBounds (872, 362, 64, 26);
-        cutoffReadout.setBounds (856, 400, 80, 18);
-        cutoffSlider.setBounds (786, 424, 150, 28);
+        cutoffReadout.setBounds (856, 394, 80, 16);
+        cutoffSlider.setBounds (786, 412, 150, 26);
+        filterModeCombo.setBounds (786, 444, 150, 24);
+        filterResKnob.setBounds (786, filterKnobRow1, 70, 42);
+        filterDriveKnob.setBounds (866, filterKnobRow1, 70, 42);
+        filterResReadout.setBounds (786, filterKnobRow1 + 56, 70, 14);
+        filterDriveReadout.setBounds (866, filterKnobRow1 + 56, 70, 14);
+        filterEnvAmtKnob.setBounds (786, filterKnobRow2, 70, 42);
+        filterVelKnob.setBounds (866, filterKnobRow2, 70, 42);
+        filterEnvAmtReadout.setBounds (786, filterKnobRow2 + 56, 70, 14);
+        filterVelReadout.setBounds (866, filterKnobRow2 + 56, 70, 14);
 
         // OUTPUT panel (964, 82, 300 x 548)
         gainSlider.setBounds (1030, 126, 150, 28);
@@ -576,13 +691,18 @@ private:
 
         // Every readout is 12 px or more at 100%.
         for (auto* label : { &attackReadout, &decayReadout, &sustainReadout, &releaseReadout,
-                             &cutoffReadout, &gainReadout, &widthReadout,
+                             &filterAttackReadout, &filterDecayReadout, &filterSustainReadout, &filterReleaseReadout,
+                             &cutoffReadout, &gainReadout, &widthReadout, &filterResReadout, &filterDriveReadout,
+                             &filterEnvAmtReadout, &filterVelReadout,
                              &seqTempoReadout, &seqSwingReadout, &seqGateReadout, &sampleNameLabel, &sampleStatusLabel,
                              &smpRootReadout, &smpStartReadout, &smpLoopStartReadout, &smpLoopEndReadout, &smpXfadeReadout,
                              &grPosReadout, &grScanReadout, &grSizeReadout, &grDensityReadout, &grSprayReadout, &grJitterReadout,
                              &chopOvertoneReadout, &chopCombReadout, &noiseReadout, &foldDriveReadout, &foldMixReadout })
             label->setFont (neon::font (12.0f));
     }
+
+    // Top of the filter panel's two knob rows; each knob's label sits 42 px below its top, the readout 56 px.
+    static constexpr int filterKnobRow1 = 474, filterKnobRow2 = 550;
 
     /** The panels and the static labels, drawn on the design grid (under the controls). */
     void paintContent (juce::Graphics& g)
@@ -633,15 +753,19 @@ private:
                    span.getStart(), 572, span.getLength(), 14, juce::Justification::centred);
         }
 
-        // Envelope
+        // Envelope: the knob names take the colour of the envelope shown
         title ("ENVELOPE", neon::amber, 444, 366);
         const char* names[] = { "ATTACK", "DECAY", "SUSTAIN", "RELEASE" };
         for (int i = 0; i < 4; ++i)
-            label (names[i], neon::amber, 444 + 75 * i, 572, 70, 14, juce::Justification::centred);
+            label (names[i], envTab == 1 ? neon::magenta : neon::amber, 444 + 75 * i, 572, 70, 14, juce::Justification::centred);
 
         // Filter
         title ("FILTER", neon::magenta, 786, 366, 80);
-        label ("CUTOFF", neon::magenta, 786, 402, 66, 16);
+        label ("CUTOFF", neon::magenta, 786, 394, 66, 16);
+        label ("RES",   neon::magenta, 786, filterKnobRow1 + 42, 70, 14, juce::Justification::centred);
+        label ("DRIVE", neon::magenta, 866, filterKnobRow1 + 42, 70, 14, juce::Justification::centred);
+        label ("ENV",   neon::magenta, 786, filterKnobRow2 + 42, 70, 14, juce::Justification::centred);
+        label ("VEL",   neon::magenta, 866, filterKnobRow2 + 42, 70, 14, juce::Justification::centred);
 
         // Output
         title ("OUTPUT", neon::cyan, 980, 92);
@@ -741,9 +865,15 @@ private:
 
     void updateFilterState (bool on)
     {
-        cutoffSlider.setEnabled (on);
-        cutoffSlider.setAlpha (on ? 1.0f : 0.4f);
-        cutoffReadout.setAlpha (on ? 1.0f : 0.4f);
+        for (juce::Component* c : { (juce::Component*) &cutoffSlider, (juce::Component*) &filterModeCombo,
+                                    (juce::Component*) &filterResKnob, (juce::Component*) &filterDriveKnob,
+                                    (juce::Component*) &filterEnvAmtKnob, (juce::Component*) &filterVelKnob })
+        {
+            c->setEnabled (on);
+            c->setAlpha (on ? 1.0f : 0.4f);
+        }
+        for (auto* label : { &cutoffReadout, &filterResReadout, &filterDriveReadout, &filterEnvAmtReadout, &filterVelReadout })
+            label->setAlpha (on ? 1.0f : 0.4f);
     }
 
     void setView (int view)
@@ -754,6 +884,28 @@ private:
         scopeButton.setToggleState (view == 0, juce::dontSendNotification);
         spectrumButton.setToggleState (view == 1, juce::dontSendNotification);
         apvts.state.setProperty (viewPropertyId, view, nullptr);
+    }
+
+    /** 0: the amp envelope's view and knobs, 1: the filter envelope's, in the same places. */
+    void setEnvTab (int tab)
+    {
+        tab = juce::jlimit (0, 1, tab);
+        const bool filter = tab == 1;
+        for (juce::Component* c : { (juce::Component*) &adsrView, (juce::Component*) &attackKnob, (juce::Component*) &decayKnob,
+                                    (juce::Component*) &sustainKnob, (juce::Component*) &releaseKnob,
+                                    (juce::Component*) &attackReadout, (juce::Component*) &decayReadout,
+                                    (juce::Component*) &sustainReadout, (juce::Component*) &releaseReadout })
+            c->setVisible (! filter);
+        for (juce::Component* c : { (juce::Component*) &filterAdsrView, (juce::Component*) &filterAttackKnob, (juce::Component*) &filterDecayKnob,
+                                    (juce::Component*) &filterSustainKnob, (juce::Component*) &filterReleaseKnob,
+                                    (juce::Component*) &filterAttackReadout, (juce::Component*) &filterDecayReadout,
+                                    (juce::Component*) &filterSustainReadout, (juce::Component*) &filterReleaseReadout })
+            c->setVisible (filter);
+        ampEnvButton.setToggleState (! filter, juce::dontSendNotification);
+        filterEnvButton.setToggleState (filter, juce::dontSendNotification);
+        apvts.state.setProperty (envTabPropertyId, tab, nullptr);
+        if (std::exchange (envTab, tab) != tab)
+            content.repaint (428, 356, 330, 274);   // the knob names change colour
     }
 
     void updateReadouts()
@@ -768,6 +920,16 @@ private:
         set (sustainReadout, juce::String (juce::roundToInt (sustainValue->load() * 100.0f)) + "%");
         set (releaseReadout, neon::formatTime (releaseValue->load()));
         set (cutoffReadout,  neon::formatHz (cutoffValue->load()));
+        set (filterResReadout,   juce::String (juce::roundToInt (filterResValue->load())) + "%");
+        set (filterDriveReadout, juce::String (juce::roundToInt (filterDriveValue->load())) + "%");
+        // Rounded first, so a value a hair either side of 0 reads "0.00 oct" and not "-0.00 oct".
+        const float envOctaves = (float) juce::roundToInt (filterEnvAmtValue->load() * 100.0f) / 100.0f;
+        set (filterEnvAmtReadout, (envOctaves > 0.0f ? "+" : "") + juce::String (envOctaves, 2) + " oct");
+        set (filterVelReadout,    juce::String (filterVelValue->load(), 2) + " oct");
+        set (filterAttackReadout,  neon::formatTime (filterAttackValue->load()));
+        set (filterDecayReadout,   neon::formatTime (filterDecayValue->load()));
+        set (filterSustainReadout, juce::String (juce::roundToInt (filterSustainValue->load() * 100.0f)) + "%");
+        set (filterReleaseReadout, neon::formatTime (filterReleaseValue->load()));
 
         const float gainDb = gainValue->load();
         set (gainReadout,  (gainDb > 0.0f ? "+" : "") + juce::String (gainDb, 1) + " dB");
@@ -838,9 +1000,12 @@ private:
         if (oscilloscope.isVisible())
             oscilloscope.update (history, sampleRate, lowestHz);
         else
-            spectrum.update (history, sampleRate, cutoffValue->load(), filterValue->load() >= 0.5f);
+            spectrum.update (history, sampleRate, cutoffValue->load(), filterValue->load() >= 0.5f,
+                             juce::roundToInt (filterModeValue->load()), filterResValue->load() * 0.01f);
 
-        adsrView.update (attackValue->load(), decayValue->load(), sustainValue->load(), releaseValue->load(), voices);
+        adsrView.update (attackValue->load(), decayValue->load(), sustainValue->load(), releaseValue->load(), &voices);
+        filterAdsrView.update (filterAttackValue->load(), filterDecayValue->load(), filterSustainValue->load(),
+                               filterReleaseValue->load(), nullptr);   // no voice dots: the voices report the amp envelope only
         voiceLeds.update (voices);
         stepGrid.refresh();   // pattern + playhead
         sampleView.refresh(); // sample, markers, playheads
@@ -887,13 +1052,22 @@ private:
     std::atomic<float>* noiseValue = nullptr;
     std::atomic<float>* foldDriveValue = nullptr;
     std::atomic<float>* foldMixValue = nullptr;
+    std::atomic<float>* filterResValue = nullptr;
+    std::atomic<float>* filterModeValue = nullptr;
+    std::atomic<float>* filterDriveValue = nullptr;
+    std::atomic<float>* filterEnvAmtValue = nullptr;
+    std::atomic<float>* filterVelValue = nullptr;
+    std::atomic<float>* filterAttackValue = nullptr;
+    std::atomic<float>* filterDecayValue = nullptr;
+    std::atomic<float>* filterSustainValue = nullptr;
+    std::atomic<float>* filterReleaseValue = nullptr;
 
     // Visualisers and their data
     SignalHistory    history;
     OscilloscopeView oscilloscope;
     SpectrumView     spectrum;
     LevelMeter       meter;
-    AdsrView         adsrView;
+    AdsrView         adsrView, filterAdsrView;
     VoiceLeds        voiceLeds;
     std::array<float, NeonSynthProcessor::scopeFifoSize> scratchLeft {}, scratchRight {}, scratchMid {};
 
@@ -912,6 +1086,21 @@ private:
     std::unique_ptr<SliderAttachment> attackAttachment, decayAttachment, sustainAttachment, releaseAttachment,
                                       cutoffAttachment, gainAttachment, widthAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> filterToggleAttachment;
+    juce::ComboBox filterModeCombo;
+    juce::Slider   filterResKnob, filterDriveKnob;
+    juce::Label    filterResReadout, filterDriveReadout;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> filterModeAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>   filterResAttachment, filterDriveAttachment;
+    juce::Slider   filterEnvAmtKnob, filterVelKnob;
+    juce::Label    filterEnvAmtReadout, filterVelReadout;
+    std::unique_ptr<SliderAttachment> filterEnvAmtAttachment, filterVelAttachment;
+
+    // Filter envelope (the ENVELOPE panel's FILTER tab)
+    juce::TextButton ampEnvButton { "AMP" }, filterEnvButton { "FILTER" };
+    juce::Slider     filterAttackKnob, filterDecayKnob, filterSustainKnob, filterReleaseKnob;
+    juce::Label      filterAttackReadout, filterDecayReadout, filterSustainReadout, filterReleaseReadout;
+    std::array<std::unique_ptr<SliderAttachment>, 4> filterEnvKnobAttachments;
+    int envTab = 0;   // which envelope the panel shows (see setEnvTab)
 
     // Source and sample
     juce::ComboBox sourceCombo, smpLoopCombo;

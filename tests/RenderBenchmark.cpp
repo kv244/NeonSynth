@@ -10,6 +10,13 @@
       idle      - no notes
       one note  - a single held note
       16 voices - 16 notes held at full velocity (soft clipper working hard)
+      filter env 16 - the same 16 notes with the filter envelope at +3 octaves (decay 0.5 s,
+                  sustain 0.3, v1.8.0): every voice's coefficients follow it through the decay,
+                  then the voices hold at sustain in the steady version
+      sweep 16  - the same 16 notes with the cutoff knob moved every block (a slow
+                  200 Hz..8 kHz sweep), so every voice's filter glides all the time
+      resonant 16 - the same 16 notes with resonance 90% and the filter's drive at 50%
+                  (v1.8.0): the nonlinear filter path and the drive stage in every voice
       sample 16 - the same 16 notes playing the built-in pad (Source = Sample, looped)
       random 16 - the same 16 notes on the Random source
       sculpt 16 - the same 16 notes on a sawtooth with CHOP, Noise and Fold all on (v1.6.0)
@@ -27,6 +34,7 @@
 */
 #include "NeonSynthProcessor.h"
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <functional>
 
@@ -43,9 +51,13 @@ namespace
                 ranged->setValueNotifyingHost (ranged->convertTo0to1 (value));
     }
 
-    /** Renders `benchSeconds` of audio; `addMidi` fills each block's MIDI. Returns milliseconds spent in processBlock. */
+    using BlockHook = std::function<void (juce::AudioProcessor&, juce::int64 blockStart)>;
+
+    /** Renders `benchSeconds` of audio; `addMidi` fills each block's MIDI and `beforeBlock`, if given,
+        changes parameters before each block (not timed). Returns milliseconds spent in processBlock. */
     double render (const std::function<void (juce::MidiBuffer&, juce::int64 blockStart)>& addMidi,
-                   const std::function<void (juce::AudioProcessor&)>& configure)
+                   const std::function<void (juce::AudioProcessor&)>& configure,
+                   const BlockHook& beforeBlock = {})
     {
         NeonSynthProcessor processor;
         configure (processor);
@@ -62,6 +74,8 @@ namespace
         {
             midi.clear();
             addMidi (midi, b * benchBlockSize);
+            if (beforeBlock)
+                beforeBlock (processor, b * benchBlockSize);
             const auto start = std::chrono::steady_clock::now();
             processor.processBlock (buffer, midi);
             total += std::chrono::duration<double, std::milli> (std::chrono::steady_clock::now() - start).count();
@@ -74,7 +88,7 @@ namespace
 
     void report (const char* name, double ms)
     {
-        std::printf ("  %-10s %8.0f ms for %.0f s   %5.2f%% of one core\n", name, ms, benchSeconds, 100.0 * ms / (benchSeconds * 1000.0));
+        std::printf ("  %-13s %8.0f ms for %.0f s   %5.2f%% of one core\n", name, ms, benchSeconds, 100.0 * ms / (benchSeconds * 1000.0));
     }
 
     /** Adds the events of a note that is held for the whole render (note-on in the first block only). */
@@ -112,6 +126,28 @@ int main()
     report ("idle",     render ([] (juce::MidiBuffer&, juce::int64) {}, noChange));
     report ("one note", render (held ({ 60 }, 100), noChange));
     report ("16 voices", render (held ({ 48, 50, 52, 53, 55, 57, 59, 60, 62, 64, 65, 67, 69, 71, 72, 74 }, 127), noChange));
+    report ("filter env 16", render (held ({ 48, 50, 52, 53, 55, 57, 59, 60, 62, 64, 65, 67, 69, 71, 72, 74 }, 127),
+                                     [] (juce::AudioProcessor& p)
+                                     {
+                                         setParameter (p, "filterEnvAmt", 3.0f);
+                                         setParameter (p, "filterDecay", 0.5f);
+                                         setParameter (p, "filterSustain", 0.3f);
+                                     }));
+    report ("sweep 16", render (held ({ 48, 50, 52, 53, 55, 57, 59, 60, 62, 64, 65, 67, 69, 71, 72, 74 }, 127), noChange,
+                                [] (juce::AudioProcessor& p, juce::int64 blockStart)
+                                {
+                                    // A new cutoff every block (10.7 ms), less than the 20 ms the cutoff
+                                    // takes to glide, so the filters never come to rest: a 4 s cycle, in octaves.
+                                    const double phase = (double) blockStart / benchSampleRate / 4.0;
+                                    const double octaves = 2.66 * (1.0 - std::cos (juce::MathConstants<double>::twoPi * phase));
+                                    setParameter (p, "cutoff", (float) (200.0 * std::exp2 (octaves)));
+                                }));
+    report ("resonant 16", render (held ({ 48, 50, 52, 53, 55, 57, 59, 60, 62, 64, 65, 67, 69, 71, 72, 74 }, 127),
+                                   [] (juce::AudioProcessor& p)
+                                   {
+                                       setParameter (p, "filterRes", 90.0f);
+                                       setParameter (p, "filterDrive", 50.0f);
+                                   }));
     report ("sample 16", render (held ({ 48, 50, 52, 53, 55, 57, 59, 60, 62, 64, 65, 67, 69, 71, 72, 74 }, 127),
                                  [] (juce::AudioProcessor& p) { setParameter (p, "source", 1.0f); }));   // the built-in pad, looped
     report ("random 16", render (held ({ 48, 50, 52, 53, 55, 57, 59, 60, 62, 64, 65, 67, 69, 71, 72, 74 }, 127),

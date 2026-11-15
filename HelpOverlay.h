@@ -139,8 +139,8 @@ private:
         // Right column: the synth and getting sound out.
         addSection (columns[1], { "SOUND", {
             "SOURCE: the oscillator (its Waveform), Random (16 drifting steps), the sample, or Granular: grains of it.",
-            "ENVELOPE: attack, decay, sustain and release of every note. Drag the points on the shape or turn the knobs; double-click a point to reset it.",
-            "FILTER: low-pass cutoff; ON switches it in.",
+            "ENVELOPE: attack, decay, sustain and release of every note. AMP shows the loudness envelope, FILTER the cutoff's. Drag the points on the shape or turn the knobs; double-click a point to reset it.",
+            "FILTER: CUTOFF and the mode (low-pass, high-pass, band-pass or notch); ON switches it in. RES boosts the cutoff; near 100% the filter rings on its own. Its DRIVE soft-clips the sound before the filter. ENV: how many octaves the filter envelope moves the cutoff (up or down); VEL: how far harder notes open it.",
             "GAIN: output level. WIDTH: stereo spread of the voices.",
             "VOICES lights the 16 voices in use. SCOPE / SPECTRUM switch the display." } }, neon::cyan);
 
