@@ -73,6 +73,9 @@ public:
         noiseValue        = apvts.getRawParameterValue ("noiseLevel");
         foldDriveValue    = apvts.getRawParameterValue ("foldDrive");
         foldMixValue      = apvts.getRawParameterValue ("foldMix");
+        filterResValue    = apvts.getRawParameterValue ("filterRes");
+        filterModeValue   = apvts.getRawParameterValue ("filterMode");
+        filterDriveValue  = apvts.getRawParameterValue ("filterDrive");
 
         // ── Oscillator ───────────────────────────────────────────────────────
         content.addAndMakeVisible (waveformCombo);
@@ -248,6 +251,33 @@ public:
         filterEnabledListener = std::make_unique<juce::ParameterAttachment> (
             *apvts.getParameter ("filterEnabled"),
             [this] (float value) { updateFilterState (value >= 0.5f); });
+        // Mode, resonance and drive (v1.8.0)
+        content.addAndMakeVisible (filterModeCombo);
+        filterModeCombo.addItemList ({ "Low-pass", "High-pass", "Band-pass", "Notch" }, 1);   // same order as the parameter
+        filterModeCombo.setTooltip ("Filter mode: which part of the spectrum the filter keeps. Low-pass keeps the lows, "
+                                    "high-pass the highs, band-pass a band around the cutoff, notch everything but it");
+        for (auto id : { juce::ComboBox::outlineColourId, juce::ComboBox::textColourId, juce::ComboBox::arrowColourId })
+            filterModeCombo.setColour (id, neon::magenta);
+        filterModeAttachment = std::make_unique<ComboBoxAttachment> (apvts, "filterMode", filterModeCombo);
+
+        for (auto* knob : { &filterResKnob, &filterDriveKnob })
+        {
+            knob->setSliderStyle (juce::Slider::Rotary);
+            knob->setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+            knob->setColour (juce::Slider::rotarySliderFillColourId,    neon::magenta);
+            knob->setColour (juce::Slider::rotarySliderOutlineColourId, neon::magenta.withAlpha (0.3f));
+            knob->setColour (juce::Slider::thumbColourId,               neon::magenta);
+            content.addAndMakeVisible (knob);
+        }
+        filterResAttachment   = std::make_unique<SliderAttachment> (apvts, "filterRes",   filterResKnob);
+        filterDriveAttachment = std::make_unique<SliderAttachment> (apvts, "filterDrive", filterDriveKnob);
+        filterResKnob.setTooltip ("Resonance: boosts the frequencies at the cutoff. From about 98% the filter rings on its own, "
+                                  "a sine at the cutoff that follows the envelope");
+        filterDriveKnob.setTooltip ("Drive: soft-clips the sound before the filter, so its new harmonics meet the resonance. "
+                                    "Loud peaks stay where they are; quieter parts come up");
+        for (auto* label : { &filterResReadout, &filterDriveReadout })
+            setUpReadout (*label, neon::magenta, juce::Justification::centred);
+
         filterEnabledListener->sendInitialUpdate();
 
         // ── Voices ───────────────────────────────────────────────────────────
@@ -360,6 +390,7 @@ public:
             { &foldDriveKnob, "foldDrive" }, { &foldMixKnob, "foldMix" },
             { &attackKnob, "attack" }, { &decayKnob, "decay" }, { &sustainKnob, "sustain" }, { &releaseKnob, "release" },
             { &cutoffSlider, "cutoff" }, { &filterToggle, "filterEnabled" },
+            { &filterModeCombo, "filterMode" }, { &filterResKnob, "filterRes" }, { &filterDriveKnob, "filterDrive" },
             { &gainSlider, "gain" }, { &widthSlider, "width" },
             { &seqOnButton, "seqOn" }, { &seqSyncButton, "seqSync" }, { &seqTempoSlider, "seqTempo" },
             { &seqRateCombo, "seqRate" }, { &seqModeCombo, "seqMode" }, { &seqSwingSlider, "seqSwing" },
@@ -551,6 +582,11 @@ private:
         filterToggle.setBounds (872, 362, 64, 26);
         cutoffReadout.setBounds (856, 400, 80, 18);
         cutoffSlider.setBounds (786, 424, 150, 28);
+        filterModeCombo.setBounds (786, 462, 150, 28);
+        filterResKnob.setBounds (786, 516, 70, 52);
+        filterDriveKnob.setBounds (866, 516, 70, 52);
+        filterResReadout.setBounds (786, 588, 70, 14);
+        filterDriveReadout.setBounds (866, 588, 70, 14);
 
         // OUTPUT panel (964, 82, 300 x 548)
         gainSlider.setBounds (1030, 126, 150, 28);
@@ -576,7 +612,7 @@ private:
 
         // Every readout is 12 px or more at 100%.
         for (auto* label : { &attackReadout, &decayReadout, &sustainReadout, &releaseReadout,
-                             &cutoffReadout, &gainReadout, &widthReadout,
+                             &cutoffReadout, &gainReadout, &widthReadout, &filterResReadout, &filterDriveReadout,
                              &seqTempoReadout, &seqSwingReadout, &seqGateReadout, &sampleNameLabel, &sampleStatusLabel,
                              &smpRootReadout, &smpStartReadout, &smpLoopStartReadout, &smpLoopEndReadout, &smpXfadeReadout,
                              &grPosReadout, &grScanReadout, &grSizeReadout, &grDensityReadout, &grSprayReadout, &grJitterReadout,
@@ -642,6 +678,8 @@ private:
         // Filter
         title ("FILTER", neon::magenta, 786, 366, 80);
         label ("CUTOFF", neon::magenta, 786, 402, 66, 16);
+        label ("RES",   neon::magenta, 786, 572, 70, 14, juce::Justification::centred);
+        label ("DRIVE", neon::magenta, 866, 572, 70, 14, juce::Justification::centred);
 
         // Output
         title ("OUTPUT", neon::cyan, 980, 92);
@@ -741,9 +779,14 @@ private:
 
     void updateFilterState (bool on)
     {
-        cutoffSlider.setEnabled (on);
-        cutoffSlider.setAlpha (on ? 1.0f : 0.4f);
-        cutoffReadout.setAlpha (on ? 1.0f : 0.4f);
+        for (juce::Component* c : { (juce::Component*) &cutoffSlider, (juce::Component*) &filterModeCombo,
+                                    (juce::Component*) &filterResKnob, (juce::Component*) &filterDriveKnob })
+        {
+            c->setEnabled (on);
+            c->setAlpha (on ? 1.0f : 0.4f);
+        }
+        for (auto* label : { &cutoffReadout, &filterResReadout, &filterDriveReadout })
+            label->setAlpha (on ? 1.0f : 0.4f);
     }
 
     void setView (int view)
@@ -768,6 +811,8 @@ private:
         set (sustainReadout, juce::String (juce::roundToInt (sustainValue->load() * 100.0f)) + "%");
         set (releaseReadout, neon::formatTime (releaseValue->load()));
         set (cutoffReadout,  neon::formatHz (cutoffValue->load()));
+        set (filterResReadout,   juce::String (juce::roundToInt (filterResValue->load())) + "%");
+        set (filterDriveReadout, juce::String (juce::roundToInt (filterDriveValue->load())) + "%");
 
         const float gainDb = gainValue->load();
         set (gainReadout,  (gainDb > 0.0f ? "+" : "") + juce::String (gainDb, 1) + " dB");
@@ -838,7 +883,8 @@ private:
         if (oscilloscope.isVisible())
             oscilloscope.update (history, sampleRate, lowestHz);
         else
-            spectrum.update (history, sampleRate, cutoffValue->load(), filterValue->load() >= 0.5f);
+            spectrum.update (history, sampleRate, cutoffValue->load(), filterValue->load() >= 0.5f,
+                             juce::roundToInt (filterModeValue->load()), filterResValue->load() * 0.01f);
 
         adsrView.update (attackValue->load(), decayValue->load(), sustainValue->load(), releaseValue->load(), voices);
         voiceLeds.update (voices);
@@ -887,6 +933,9 @@ private:
     std::atomic<float>* noiseValue = nullptr;
     std::atomic<float>* foldDriveValue = nullptr;
     std::atomic<float>* foldMixValue = nullptr;
+    std::atomic<float>* filterResValue = nullptr;
+    std::atomic<float>* filterModeValue = nullptr;
+    std::atomic<float>* filterDriveValue = nullptr;
 
     // Visualisers and their data
     SignalHistory    history;
@@ -912,6 +961,11 @@ private:
     std::unique_ptr<SliderAttachment> attackAttachment, decayAttachment, sustainAttachment, releaseAttachment,
                                       cutoffAttachment, gainAttachment, widthAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> filterToggleAttachment;
+    juce::ComboBox filterModeCombo;
+    juce::Slider   filterResKnob, filterDriveKnob;
+    juce::Label    filterResReadout, filterDriveReadout;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> filterModeAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>   filterResAttachment, filterDriveAttachment;
 
     // Source and sample
     juce::ComboBox sourceCombo, smpLoopCombo;

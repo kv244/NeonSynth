@@ -128,7 +128,7 @@ option(NEONSYNTH_BUILD_TESTS "Build the unit tests and the render benchmark" OFF
 
 if(NEONSYNTH_BUILD_TESTS)
     enable_testing()
-    set(NEONSYNTH_UNIT_TESTS StepSequencerTests VoiceEnvelopeTests OscillatorTests ChopTests SculptTests SampleDataTests SampleReaderTests GranularTests)
+    set(NEONSYNTH_UNIT_TESTS StepSequencerTests VoiceEnvelopeTests OscillatorTests ChopTests SculptTests SampleDataTests SampleReaderTests GranularTests FilterTests)
     add_custom_target(unit_tests)
 
     foreach(test ${NEONSYNTH_UNIT_TESTS})
@@ -146,6 +146,9 @@ if(NEONSYNTH_BUILD_TESTS)
         add_dependencies(unit_tests ${test})
         add_test(NAME ${test} COMMAND ${test})
     endforeach()
+
+    # FilterTests compares CytomicSvf with juce::dsp::StateVariableTPTFilter bit for bit
+    target_link_libraries(FilterTests PRIVATE juce::juce_dsp)
 
     # Programs that drive the whole processor directly (no host, no Python):
     #   RenderBenchmark       times processBlock for a few load scenarios
