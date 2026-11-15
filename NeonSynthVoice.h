@@ -9,6 +9,7 @@
 #include "Sculpt.h"
 #include "SampleReader.h"
 #include "GrainCloud.h"
+#include "CytomicSvf.h"
 
 class NeonSynthSound : public juce::SynthesiserSound
 {
@@ -124,16 +125,20 @@ public:
         randomOscillator.prepare (newSampleRate);
         sculpt.prepare (newSampleRate);
 
-        filter.prepare ({ newSampleRate, (juce::uint32) maxBlockSize, 1 });
+        filter.prepare (newSampleRate);
         cloudBuffer.assign ((size_t) juce::jmax (1, maxBlockSize), 0.0f);   // the granular source renders a block at a time
-        filter.setType (juce::dsp::StateVariableTPTFilterType::lowpass);
-        filter.setResonance (1.0f / juce::MathConstants<float>::sqrt2);   // Butterworth Q
 
         level.reset (newSampleRate, 0.002);       // 2 ms: a retriggered or stolen voice changes velocity without a click
         level.setCurrentAndTargetValue (level.getTargetValue());
 
         cutoff.reset (newSampleRate, 0.02);       // 20 ms, multiplicative (even in octaves)
         cutoff.setCurrentAndTargetValue (clampCutoff (cutoff.getTargetValue()));
+        resonance.reset (newSampleRate, 0.02);    // 20 ms, as the cutoff
+        resonance.setCurrentAndTargetValue (resonance.getTargetValue());
+        drive.reset (newSampleRate, 0.02);
+        drive.setCurrentAndTargetValue (drive.getTargetValue());
+        modeFade.reset (newSampleRate, 0.01);     // 10 ms crossfade when the mode changes
+        modeFade.setCurrentAndTargetValue (1.0f);
         setFilterCoefficients();
 
         filterMix.reset (newSampleRate, 0.01);    // 10 ms crossfade for the on/off toggle
@@ -156,6 +161,9 @@ public:
         sculpt.set (p.sculpt);
         cutoff.setTargetValue (clampCutoff (p.cutoffHz));
         filterMix.setTargetValue (p.filterOn ? 1.0f : 0.0f);
+        resonance.setTargetValue (juce::jlimit (0.0f, 1.0f, p.filterResonance));
+        drive.setTargetValue (juce::jlimit (0.0f, 1.0f, p.filterDrive));
+        setFilterMode (juce::jlimit (0, 3, p.filterMode));
 
         width = p.width;
         pan.setTargetValue (notePan * width);
@@ -196,6 +204,9 @@ public:
             pan.setCurrentAndTargetValue (notePan * width);
             updatePanGains (pan.getCurrentValue());
             cutoff.setCurrentAndTargetValue (cutoff.getTargetValue());
+            resonance.setCurrentAndTargetValue (resonance.getTargetValue());
+            drive.setCurrentAndTargetValue (drive.getTargetValue());
+            modeFade.setCurrentAndTargetValue (1.0f);
             setFilterCoefficients();   // at once, not at the next 16-sample boundary
             filterMix.setCurrentAndTargetValue (filterMix.getTargetValue());
         }
@@ -295,6 +306,7 @@ public:
             renderCloud (numSamples);
 
         const bool steady = ! level.isSmoothing() && ! cutoff.isSmoothing() && ! filterMix.isSmoothing() && ! pan.isSmoothing()
+                         && ! resonance.isSmoothing() && ! drive.isSmoothing() && ! modeFade.isSmoothing()
                          && ! filterUpdatePending();
         const int rendered = steady ? renderSamples<true>  (left, right, startSample, numSamples, cloudSounds)
                                     : renderSamples<false> (left, right, startSample, numSamples, cloudSounds);
@@ -328,6 +340,10 @@ private:
             {
                 if (cutoff.isSmoothing())
                     cutoff.getNextValue();   // per sample, so the glide's timing is unchanged
+                if (resonance.isSmoothing())
+                    resonance.getNextValue();
+                if (drive.isSmoothing())
+                    drive.getNextValue();
 
                 if (--coefficientCountdown == 0)
                 {
@@ -338,8 +354,9 @@ private:
             }
 
             lastEnvelope    = adsr.getNextSample();
-            const float dry = nextSourceSample (cloudSounds) * (steady ? steadyLevel : level.getNextValue()) * lastEnvelope;
-            const float wet = filterStep (dry);   // always run: state stays warm
+            const float levelNow = steady ? steadyLevel : level.getNextValue();
+            const float dry = nextSourceSample (cloudSounds) * levelNow * lastEnvelope;   // this order: v1.7's bits
+            const float wet = filterStep<steady> (dry, levelNow * lastEnvelope);   // always run: state stays warm
             const float out = dry + (steady ? steadyMix : filterMix.getNextValue()) * (wet - dry);
 
             if constexpr (! steady)
@@ -361,6 +378,7 @@ private:
                 if (isVoiceActive())
                     clearCurrentNote();
                 filter.reset();
+                modeFade.setCurrentAndTargetValue (1.0f);
                 lastEnvelope = 0.0f;
                 reader.end();          // silent now: let go of the sample
                 fadingReader.end();
@@ -390,7 +408,7 @@ private:
     }
 
     //==============================================================================
-    // The filter. Everything that touches it goes through the four functions below,
+    // The filter. Everything that touches it goes through the functions below,
     // so the filter itself can be replaced without touching the render loop.
 
     /** The cutoff the filter should have right now: the (smoothed) knob, plus
@@ -413,26 +431,73 @@ private:
         return clampCutoff (std::exp2 (std::log2 (knobHz) + modulationOctaves));
     }
 
-    /** True if the coefficients lag the cutoff (it moved since the last update). */
+    /** True if the coefficients lag the cutoff, resonance or drive (one of them moved since the last update). */
     bool filterUpdatePending() const noexcept
     {
-        return modulatedCutoffHz() != coefficientCutoffHz;
+        return modulatedCutoffHz() != coefficientCutoffHz
+            || resonance.getCurrentValue() != coefficientResonance
+            || drive.getCurrentValue() != coefficientDrive;
     }
 
-    /** Sets the filter's coefficients from modulatedCutoffHz() and restarts the
-        16-sample countdown. The render loop calls it every 16 samples while the
-        cutoff moves; prepare() and startNote() call it to set them at once. */
+    /** Sets the filter's coefficients from modulatedCutoffHz(), the resonance and
+        the drive, and restarts the 16-sample countdown. The render loop calls it
+        every 16 samples while one of them moves; prepare() and startNote() call it
+        to set them at once. */
     void setFilterCoefficients() noexcept
     {
-        coefficientCutoffHz = modulatedCutoffHz();
-        filter.setCutoffFrequency (coefficientCutoffHz);
+        coefficientCutoffHz  = modulatedCutoffHz();
+        coefficientResonance = resonance.getCurrentValue();
+        if (coefficientDrive != drive.getCurrentValue())
+        {
+            coefficientDrive = drive.getCurrentValue();
+            driveSettings = CytomicSvf::makeDrive (coefficientDrive);
+        }
+        filter.setCoefficients (coefficientCutoffHz, CytomicSvf::resonanceToK (coefficientResonance));
         coefficientCountdown = coefficientInterval;
     }
 
-    /** One sample through the filter, with the current coefficients. */
-    float filterStep (float dry) noexcept
+    /** A new Filter Mode: crossfades from the old mode's output over 10 ms.
+        Both come from the same filter state, so the old one costs nothing to keep. */
+    void setFilterMode (int newMode) noexcept
     {
-        return filter.processSample (0, dry);
+        const auto m = (CytomicSvf::Mode) newMode;
+        if (m == mode)
+            return;
+        previousMode = mode;
+        mode = m;
+        modeFade.setCurrentAndTargetValue (0.0f);
+        modeFade.setTargetValue (1.0f);
+    }
+
+    /** One sample through the drive and the filter, with the current coefficients.
+        gain is the velocity level times the amp envelope: the limiter's ceiling
+        and the drive's scale follow it, so self-oscillation and drive follow the
+        envelope (see CytomicSvf.h). At resonance 0 and drive 0 this is the
+        filter of v1.7, bit for bit. */
+    template <bool steady>
+    float filterStep (float dry, float gain) noexcept
+    {
+        // The floor keeps the ceiling above zero when the envelope is; below -120 dB nothing is heard.
+        const float ceiling = std::max (gain, 1.0e-6f);
+
+        float x = dry;
+        if (coefficientDrive > 0.0f)
+            x = filter.drive (dry, ceiling, driveSettings);
+        else
+            filter.trackInput (dry);
+
+        const auto o = coefficientResonance > 0.0f ? filter.processNonlinear (x, ceiling)
+                                                   : filter.processLinear (x);
+        const float y = CytomicSvf::select (o, mode);
+
+        if constexpr (steady)
+            return y;   // the steady version runs only while no mode change is fading
+
+        if (! modeFade.isSmoothing())
+            return y;
+
+        const float fade = modeFade.getNextValue();
+        return CytomicSvf::select (o, previousMode) + fade * (y - CytomicSvf::select (o, previousMode));
     }
 
     /** Picks the note's source and starts it. */
@@ -547,11 +612,16 @@ private:
     VoiceEnvelope adsr;
     VoiceEnvelope::Parameters adsrParams;
     juce::SmoothedValue<float> level { 0.0f };   // velocity * voiceGain
-    juce::dsp::StateVariableTPTFilter<float> filter;
+    CytomicSvf filter;
+    juce::SmoothedValue<float> resonance { 0.0f }, drive { 0.0f };   // 0..1
+    CytomicSvf::Drive driveSettings;                                  // for coefficientDrive
+    CytomicSvf::Mode mode = CytomicSvf::Mode::lowpass, previousMode = CytomicSvf::Mode::lowpass;
+    juce::SmoothedValue<float> modeFade { 1.0f };                     // 0 -> 1 from previousMode to mode
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Multiplicative> cutoff { 2000.0f };
     static constexpr int coefficientInterval = 16;   // samples between coefficient updates while the cutoff moves
     int   coefficientCountdown = coefficientInterval;  // samples until the next one, 1..16; runs on across calls
     float coefficientCutoffHz = 0.0f;                  // the cutoff the coefficients were last set for
+    float coefficientResonance = 0.0f, coefficientDrive = 0.0f;   // and the resonance and drive
     juce::SmoothedValue<float> filterMix { 1.0f };
 
     // Stereo placement

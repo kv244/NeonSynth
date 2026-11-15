@@ -679,9 +679,14 @@ int main()
                         // which MSVC deprecates.)
                         if (const auto dir = juce::SystemStats::getEnvironmentVariable ("NEONSYNTH_SNAPSHOT_DIR", {}); dir.isNotEmpty() && image.isValid())
                             if (juce::File (dir).createDirectory().wasOk())
-                                if (juce::FileOutputStream out (juce::File (dir).getChildFile (juce::String (juce::roundToInt (scale * 100)) + "-" + sourceNames[source]
-                                                                          + (view == 0 ? "-scope" : "-spectrum") + (withHelp ? "-help" : "") + ".png")); out.openedOk())
+                            {
+                                // FileOutputStream appends to an existing file: start each image afresh.
+                                const auto file = juce::File (dir).getChildFile (juce::String (juce::roundToInt (scale * 100)) + "-" + sourceNames[source]
+                                                                                 + (view == 0 ? "-scope" : "-spectrum") + (withHelp ? "-help" : "") + ".png");
+                                file.deleteFile();
+                                if (juce::FileOutputStream out (file); out.openedOk())
                                     juce::PNGImageFormat().writeImageToStream (image, out);
+                            }
                         ++painted;
                         if (! image.isValid() || image.getWidth() != ed.getWidth() || image.getHeight() != ed.getHeight())
                             problems.add (juce::String (scale) + "x " + sourceNames[source]);

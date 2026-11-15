@@ -12,6 +12,8 @@
       16 voices - 16 notes held at full velocity (soft clipper working hard)
       sweep 16  - the same 16 notes with the cutoff knob moved every block (a slow
                   200 Hz..8 kHz sweep), so every voice's filter glides all the time
+      resonant 16 - the same 16 notes with resonance 90% and the filter's drive at 50%
+                  (v1.8.0): the nonlinear filter path and the drive stage in every voice
       sample 16 - the same 16 notes playing the built-in pad (Source = Sample, looped)
       random 16 - the same 16 notes on the Random source
       sculpt 16 - the same 16 notes on a sawtooth with CHOP, Noise and Fold all on (v1.6.0)
@@ -130,6 +132,12 @@ int main()
                                     const double octaves = 2.66 * (1.0 - std::cos (juce::MathConstants<double>::twoPi * phase));
                                     setParameter (p, "cutoff", (float) (200.0 * std::exp2 (octaves)));
                                 }));
+    report ("resonant 16", render (held ({ 48, 50, 52, 53, 55, 57, 59, 60, 62, 64, 65, 67, 69, 71, 72, 74 }, 127),
+                                   [] (juce::AudioProcessor& p)
+                                   {
+                                       setParameter (p, "filterRes", 90.0f);
+                                       setParameter (p, "filterDrive", 50.0f);
+                                   }));
     report ("sample 16", render (held ({ 48, 50, 52, 53, 55, 57, 59, 60, 62, 64, 65, 67, 69, 71, 72, 74 }, 127),
                                  [] (juce::AudioProcessor& p) { setParameter (p, "source", 1.0f); }));   // the built-in pad, looped
     report ("random 16", render (held ({ 48, 50, 52, 53, 55, 57, 59, 60, 62, 64, 65, 67, 69, 71, 72, 74 }, 127),
