@@ -961,8 +961,10 @@ private:
             const float y = (float) gainSlider.getY() + gainSlider.getPositionOfValue (db);
             g.setColour (db == 0.0f ? neon::cyan : neon::cyan.withAlpha (0.5f));
             g.fillRect (1002.0f, y - 0.5f, db == 0.0f ? 8.0f : 5.0f, 1.0f);
+            if (db > 0.0f)
+                continue;   // +6 is a tick only: its number would crowd the 0 just below it
             g.setColour (db == 0.0f ? neon::cyan : neon::muted);
-            g.drawText (db > 0.0f ? "+6" : juce::String (juce::roundToInt (db)), 972, juce::roundToInt (y) - 7, 28, 14,
+            g.drawText (juce::String (juce::roundToInt (db)), 972, juce::roundToInt (y) - 7, 28, 14,
                         juce::Justification::centredRight);
         }
 

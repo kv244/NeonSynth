@@ -23,9 +23,11 @@
         on both), the filter envelope's view and knobs move only their own parameters, and the
         chosen tab survives closing and reopening the editor;
       - SCOPE / SPECTRUM and the help page switch what is shown;
+      - the VOICES lights: clicking light N sets Voices to N (one gesture), with its readout;
       - the right-hand column: OUTPUT on top and MODULATION below, each control inside
         its own panel; LFO SYNC swaps the rate in Hz for the note length; the readouts;
-        the green LFO band under CUTOFF appears only while LFO CUTOFF is not 0;
+        the green LFO band under CUTOFF appears only while LFO CUTOFF is not 0; GAIN is a
+        vertical fader beside the meter that a double-click returns to 0 dB;
       - every view paints at 75%, 100% and 150% for every source, with and without
         the help page, while notes play.
 
@@ -580,7 +582,7 @@ int main()
         check (labelShows (ed, "+2.00 st"), "PITCH reads +2.00 st");
         check (labelShows (ed, "+1.50 oct"), "CUTOFF reads +1.50 oct");
         check (labelShows (ed, "40%"), "AMP reads 40%");
-        check (labelShows (ed, juce::String (juce::CharPointer_UTF8 ("\xc2\xb1")) + "2 st"), "BEND reads \u00b12 st (the default)");
+        check (labelShows (ed, juce::String (juce::CharPointer_UTF8 ("\xc2\xb1")) + "2 st"), "BEND reads +/-2 st (the default)");
         check (labelShows (ed, "30 ct"), "VIBRATO reads 30 ct (the default)");
         check (labelShows (ed, "1.00 Hz"), "RATE reads 1.00 Hz (the default) with SYNC off");
 
