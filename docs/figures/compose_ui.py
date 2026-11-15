@@ -10,7 +10,7 @@ and thin outlines, which are vector shapes laid over the picture; the keys that
 explain the numbers sit below the screenshot, never on it.
 
 Writes (SVG + 300 dpi PNG):
-    fig01-interface            the whole window, nine numbered regions
+    fig01-interface            the whole window, ten numbered regions
     fig03-shape-strip          the SOURCE panel with the SHAPE strip
     fig06-sample-granular-ui   the Sample and Granular control strips
     fig08-sequencer            the step grid with a gesture key
@@ -26,13 +26,13 @@ import figstyle as fs
 plt = fs.plt
 
 
-def put_image(fig, img, top_mm, width_mm=160.0, margin_px=0, bottom_px=0):
-    """Places img at 160 mm wide (with optional white margin above/below); returns its axes."""
-    h_mm = width_mm * (img.shape[0] + margin_px + bottom_px) / img.shape[1]
+def put_image(fig, img, top_mm, width_mm=160.0, margin_px=0, bottom_px=0, left_px=0):
+    """Places img at 160 mm wide (with optional white margins above, below and to the left); returns its axes."""
+    h_mm = width_mm * (img.shape[0] + margin_px + bottom_px) / (img.shape[1] + left_px)
     H = fig.get_figheight() / fs.MM
     ax = fig.add_axes([0, 1 - (top_mm + h_mm) / H, width_mm / fs.WIDTH_MM, h_mm / H])
     ax.imshow(img, interpolation="none", aspect="auto")
-    ax.set_xlim(0, img.shape[1])
+    ax.set_xlim(-left_px, img.shape[1])
     ax.set_ylim(img.shape[0] + bottom_px, -margin_px)
     ax.axis("off")
     return ax, h_mm
@@ -48,7 +48,8 @@ def outline(ax, box, color="white"):
 def marker(ax, x, y, label):
     ax.scatter([x], [y], s=210, color="white", edgecolor="black",
                linewidth=1.2, zorder=5)
-    ax.text(x, y, str(label), ha="center", va="center", fontsize=9, fontweight="bold", color="black", zorder=6)
+    ax.text(x, y, str(label), ha="center", va="center", fontsize=9 if len(str(label)) == 1 else 8,
+            fontweight="bold", color="black", zorder=6)
 
 
 def key_block(fig, items, top_mm, cols=2, wrap=40, line_mm=3.9, gap_mm=1.6):
@@ -62,7 +63,7 @@ def key_block(fig, items, top_mm, cols=2, wrap=40, line_mm=3.9, gap_mm=1.6):
             lines = textwrap.wrap(text, wrap) or [""]
             fig.text((c * col_w + 1.0) / 160, 1 - y / H, str(n), ha="left", va="top", fontsize=9,
                      fontweight="bold")
-            fig.text((c * col_w + 6.0) / 160, 1 - y / H, "\n".join(lines), ha="left", va="top", fontsize=9,
+            fig.text((c * col_w + 7.0) / 160, 1 - y / H, "\n".join(lines), ha="left", va="top", fontsize=9,
                      linespacing=1.2)
             y += len(lines) * line_mm + gap_mm
     return y
@@ -85,35 +86,38 @@ def px(box):
 
 # ---------------------------------------------------------------- figure 1
 FIG1_REGIONS = [                     # number, box (design px), marker (design px): on a corner or edge
-    (1, (28, 114, 404, 154), (12, 134)),        # with nothing under it, never on a label
-    (2, (28, 214, 404, 610), (12, 400)),
+    (1, (28, 114, 404, 154), (6, 134)),        # with nothing under it, never on a label
+    (2, (28, 214, 404, 610), (6, 400)),
     (3, (440, 88, 940, 336), (946, 88)),
     (4, (440, 358, 748, 612), (754, 358)),      # takes in the AMP / FILTER tabs (v1.8.0)
-    (5, (782, 362, 940, 622), (946, 362)),      # the whole filter panel since v1.8.0
-    (6, (976, 90, 1252, 616), (1256, 90)),
-    (7, (826, 28, 1172, 56), (800, 42)),
-    (8, (1206, 22, 1256, 62), (1192, 42)),
-    (9, (28, 648, 1252, 838), (12, 760)),
+    (5, (782, 362, 940, 626), (946, 362)),      # the whole filter panel, with the LFO band under CUTOFF
+    (6, (976, 90, 1252, 344), (1256, 90)),      # OUTPUT, the top of the right-hand column since v1.9.0
+    (7, (976, 368, 1252, 622), (1256, 368)),    # MODULATION, the bottom of it (v1.9.0)
+    (8, (758, 26, 1172, 58), (740, 42)),        # the "16 VOICES" readout and the lights
+    (9, (1206, 22, 1256, 62), (1191, 42)),
+    (10, (28, 648, 1252, 838), (6, 760)),
 ]
+FIG1_LEFT = 30                       # white strip left of the capture, capture px: the left markers sit in it
 FIG1_KEY = [
     (1, "Source and waveform. The left menu picks Oscillator, Sample, Granular or Random; the right menu picks the oscillator waveform."),
     (2, "The strip and its knob row: the SHAPE strip for Oscillator and Random (Figure 3); the sample for Sample and Granular (Figure 6)."),
     (3, "Display: SCOPE or SPECTRUM view of the mix."),
     (4, "Envelope. AMP or FILTER: drag the four points, or turn ATTACK, DECAY, SUSTAIN and RELEASE."),
-    (5, "Filter. ON, CUTOFF, the mode, and RES, DRIVE, ENV and VEL."),
-    (6, "Output: GAIN, WIDTH and the left and right level meters."),
-    (7, "Voice lights: one for each of the 16 voices, lit while it sounds."),
-    (8, "Quick help. Click it, or anywhere on the help page, or press Esc to close."),
-    (9, "Step sequencer: RUN, SYNC, rate, keyboard mode, TEMPO, SWING and GATE above; the 16 steps below (Figure 8)."),
+    (5, "Filter. ON, CUTOFF, the mode, and RES, DRIVE, ENV and VEL. The green band under CUTOFF is the LFO's sweep."),
+    (6, "Output: WIDTH, the GAIN fader and the left and right level meters."),
+    (7, "Modulation: the LFO (shape, SYNC, RATE, and its PITCH, CUTOFF and AMP depths), BEND and VIBRATO, with bars for the pitch bend and mod wheel (Figure 9)."),
+    (8, "Voice lights: one for each of the 16 voices, lit while it sounds. Click one to set how many voices can play (1 = MONO)."),
+    (9, "Quick help. Click it, or anywhere on the help page, or press Esc to close."),
+    (10, "Step sequencer: RUN, SYNC, rate, keyboard mode, TEMPO, SWING and GATE above; the 16 steps below (Figure 8)."),
 ]
 
 
 def fig01(cap, out):
     img = np.asarray(Image.open(cap / "ui-oscillator-running.png").convert("RGB"))
     key_mm = key_height(FIG1_KEY)
-    h_img = 160 * img.shape[0] / img.shape[1]
+    h_img = 160 * img.shape[0] / (img.shape[1] + FIG1_LEFT)
     fig = fs.figure(h_img + key_mm + 7)
-    ax, h_mm = put_image(fig, img, 0)
+    ax, h_mm = put_image(fig, img, 0, left_px=FIG1_LEFT)
     for n, box, _ in FIG1_REGIONS:
         outline(ax, px(box))
     for n, _, (mx, my) in FIG1_REGIONS:
