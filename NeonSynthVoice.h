@@ -329,8 +329,23 @@ public:
         const bool steady = ! level.isSmoothing() && ! cutoff.isSmoothing() && ! filterMix.isSmoothing() && ! pan.isSmoothing()
                          && ! resonance.isSmoothing() && ! drive.isSmoothing() && ! modeFade.isSmoothing()
                          && ! filterEnvelopeMovesCutoff() && ! filterUpdatePending();
+        // The filter envelope advances one step per sample whichever version renders, so its
+        // timing never depends on which one ran - also at amount 0, so it is in step if the
+        // amount is turned up mid-note. A constant envelope (sustaining, or idle) is skipped:
+        // getNextSample() would change nothing, and it stays constant for the whole call (it
+        // only starts to move at a note-on or note-off, or with new parameters, all between
+        // calls). The gliding version steps it inside its loop, where the coefficient updates
+        // read it. The steady version never reads it (it runs only while the envelope is
+        // constant or its amount is 0), so it is stepped here, after the loop: the steady
+        // loop stays exactly what it was before the filter envelope existed.
+        const bool stepFilterEnvelopeAfter = steady && ! filterEnvelope.isConstant();
+
         const int rendered = steady ? renderSamples<true>  (left, right, startSample, numSamples, cloudSounds)
                                     : renderSamples<false> (left, right, startSample, numSamples, cloudSounds);
+
+        if (stepFilterEnvelopeAfter && adsr.isActive())   // (a voice that ended has reset it)
+            for (int n = 0; n < rendered; ++n)
+                filterEnvelope.getNextSample();
 
         // The gliding version counts down per sample; the steady one skips ahead here.
         if (steady)
@@ -354,11 +369,8 @@ private:
         const float steadyMix   = steady ? filterMix.getNextValue() : 0.0f;
         const float steadyLeft = gainLeft, steadyRight = gainRight;
 
-        // The filter envelope runs whichever version renders, so its timing never depends on
-        // which one ran. In the steady version it is either constant (skipping it changes
-        // nothing) or its amount is 0 and it doesn't touch the cutoff: it then still advances
-        // per sample, so it is in step if the amount is turned up later.
-        const bool advanceFilterEnvelope = ! steady || ! filterEnvelope.isConstant();
+        // The filter envelope (see renderNextBlock()); constant ones are skipped.
+        const bool advanceFilterEnvelope = ! steady && ! filterEnvelope.isConstant();
 
         int rendered = 0;
         for (int i = startSample; i < startSample + numSamples; ++i, ++rendered)
@@ -371,13 +383,9 @@ private:
                     resonance.getNextValue();
                 if (drive.isSmoothing())
                     drive.getNextValue();
-            }
+                if (advanceFilterEnvelope)
+                    filterEnvelope.getNextSample();   // per sample; read only at the update points below
 
-            if (advanceFilterEnvelope)
-                filterEnvelope.getNextSample();   // per sample; read only at the update points below
-
-            if constexpr (! steady)
-            {
                 if (--coefficientCountdown == 0)
                 {
                     coefficientCountdown = coefficientInterval;
