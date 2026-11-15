@@ -82,6 +82,7 @@ target_sources(NeonSynth
         GrainCloud.h
         SampleView.h
         ShapeView.h
+        LfoView.h
         Lfo.h
         Modulation.h
 )
