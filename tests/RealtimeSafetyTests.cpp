@@ -221,6 +221,20 @@ int main()
             setParameter (processor, "filterRes", (float) ((b / 105) % 5) * 25.0f);        // 0 (linear) ... 100 % (self-oscillation)
         if (b % 135 == 0)
             setParameter (processor, "filterDrive", (float) ((b / 135) % 5) * 25.0f);     // 0 (linear) ... 100 %
+
+        // Filter envelope and velocity (v1.8.0): octaves added to the cutoff, both signs.
+        if (b % 95 == 0)
+            setParameter (processor, "filterEnvAmt", (float) ((b / 95) % 5) * 2.5f - 5.0f);    // -5 ... +5 octaves
+        if (b % 85 == 0)
+            setParameter (processor, "filterAttack", (b / 85) % 2 == 0 ? 0.001f : 0.2f);
+        if (b % 75 == 0)
+            setParameter (processor, "filterDecay", (b / 75) % 2 == 0 ? 0.05f : 1.0f);
+        if (b % 65 == 0)
+            setParameter (processor, "filterSustain", (float) ((b / 65) % 3) * 0.5f);
+        if (b % 55 == 0)
+            setParameter (processor, "filterRelease", (b / 55) % 2 == 0 ? 0.01f : 2.0f);
+        if (b % 45 == 0)
+            setParameter (processor, "filterVel", (float) ((b / 45) % 3) * 2.0f);             // 0, 2, 4 octaves
         if (b % 50 == 0)
             setParameter (processor, "grPos", (float) ((b / 50) % 5) * 0.25f);
         if (b % 150 == 0)

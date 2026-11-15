@@ -56,6 +56,11 @@ public:
         float filterResonance = 0.0f;  // 0..1
         float filterDrive = 0.0f;      // 0..1
 
+        // Filter envelope and velocity (v1.8.0), in octaves added to the cutoff; 0 = none.
+        float filterEnvOctaves = 0.0f;           // -5..+5, at the envelope's peak
+        VoiceEnvelope::Parameters filterEnv { 0.01f, 0.3f, 0.5f, 0.3f };
+        float filterVelOctaves = 0.0f;           // 0..+4, at full velocity
+
         float width = 0.0f;            // stereo width, 0 = mono .. 1 = full spread
         juce::ADSR::Parameters adsr;
 

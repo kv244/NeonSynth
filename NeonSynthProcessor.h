@@ -269,6 +269,12 @@ private:
     juce::AudioParameterChoice* filterModeParameter    = nullptr;
     juce::AudioParameterFloat*  filterResParameter     = nullptr;
     juce::AudioParameterFloat*  filterDriveParameter   = nullptr;
+    juce::AudioParameterFloat*  filterEnvAmtParameter  = nullptr;
+    juce::AudioParameterFloat*  filterAttackParameter  = nullptr;
+    juce::AudioParameterFloat*  filterDecayParameter   = nullptr;
+    juce::AudioParameterFloat*  filterSustainParameter = nullptr;
+    juce::AudioParameterFloat*  filterReleaseParameter = nullptr;
+    juce::AudioParameterFloat*  filterVelParameter     = nullptr;
 
     /** CHOP's pattern, bit k = step k chopped. Written by the editor, read once per block; lock-free. */
     std::atomic<juce::uint16> chopPattern { ChopSettings().pattern };
