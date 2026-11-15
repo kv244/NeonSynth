@@ -4,6 +4,7 @@
 
 #pragma once
 #include "SampleData.h"
+#include <limits>
 
 /**
     @file SampleReader.h
@@ -18,6 +19,14 @@
     the root the full-rate buffer is used, so slight transpositions keep all
     their top end; beyond that the copy's anti-alias filter has already
     removed what would fold back.
+
+    Pitch modulation (v1.9.0): nextSample (pitchRatio) reads at increment x
+    pitchRatio. When bend, vibrato or the LFO carry the read rate across a
+    copy's range, the voice moves the note to the right copy (wantsOtherLevel(),
+    copyNoteTo(), moveToLevel()), crossfading over 2 ms. A copy is left for a
+    smaller one as soon as the rate passes the note-on limit (so a bend up never
+    aliases more than a note played there), but taken back only a semitone below
+    it, so vibrato hovering near a boundary doesn't switch back and forth.
 
     Looping: in the last `crossfade` samples before the loop end, the output
     crossfades (equal power) from the material there into the material just
@@ -53,6 +62,9 @@ public:
     /** Increments above which a smaller copy is read (3 semitones above unity). */
     static constexpr double maxFullRateIncrement = 1.189207115;   // 2^(3/12)
 
+    /** Under pitch modulation, a larger copy is taken back only below this increment: one semitone of hysteresis. */
+    static constexpr double returnIncrement = 1.122462048;        // 2^(2/12)
+
     SampleReader() = default;
     SampleReader (const SampleReader&) = delete;
     SampleReader& operator= (const SampleReader&) = delete;
@@ -79,6 +91,7 @@ public:
         length    = sample->getLength (level);
         increment = ratio / (double) (1 << level);
         levelRate = sample->getSampleRate() / (double) (1 << level);
+        setLevelBounds();
 
         // Loop region, at least 2 crossfades long (and at least 4 samples).
         const double len = (double) length;
@@ -115,6 +128,88 @@ public:
         std::swap (fadeStart, other.fadeStart);    std::swap (mode, other.mode);
         std::swap (looping, other.looping);        std::swap (stopLoopingAtJump, other.stopLoopingAtJump);
         std::swap (finished, other.finished);
+        std::swap (raiseAbove, other.raiseAbove);  std::swap (lowerAtOrBelow, other.lowerAtOrBelow);
+    }
+
+    /**
+        True if, at this pitch ratio, the note should be read from another copy
+        (see the class notes). Two comparisons, for the per-sample check.
+    */
+    bool wantsOtherLevel (float pitchRatio) const noexcept
+    {
+        return (double) pitchRatio > raiseAbove || (double) pitchRatio <= lowerAtOrBelow;
+    }
+
+    /**
+        The copy to read at this pitch ratio. With the hysteresis, judged from the
+        current copy; without it, by begin()'s rule (so at ratio 1 it is exactly
+        the copy the note started on: increment x 2^level is the note's ratio, bit
+        for bit, since scaling by a power of two is exact).
+    */
+    int levelFor (float pitchRatio, bool withHysteresis = true) const noexcept
+    {
+        const double rate = increment * (double) (1 << level) * (double) pitchRatio;   // relative to the full-rate copy
+        int wanted = withHysteresis ? level : 0;
+        while (wanted < SampleData::numLevels - 1 && rate / (double) (1 << wanted) > maxFullRateIncrement)
+            ++wanted;
+        if (withHysteresis)
+            while (wanted > 0 && rate / (double) (1 << (wanted - 1)) <= returnIncrement)
+                --wanted;
+        return wanted;
+    }
+
+    /**
+        Makes `dest` an exact copy of this note (same copy, same position, its own
+        reference on the sample), so the two can then be crossfaded: one fades
+        out while the other moves to another copy with moveToLevel().
+    */
+    void copyNoteTo (SampleReader& dest) const noexcept
+    {
+        dest.end();
+        if (sample == nullptr)
+            return;
+        sample->users.fetch_add (1);
+        dest.sample = sample;              dest.data = data;
+        dest.length = length;              dest.level = level;
+        dest.increment = increment;        dest.levelRate = levelRate;
+        dest.position = position;          dest.loopStartPos = loopStartPos;
+        dest.loopEndPos = loopEndPos;      dest.crossfade = crossfade;
+        dest.fadeStart = fadeStart;        dest.mode = mode;
+        dest.looping = looping;            dest.stopLoopingAtJump = stopLoopingAtJump;
+        dest.finished = finished;
+        dest.raiseAbove = raiseAbove;      dest.lowerAtOrBelow = lowerAtOrBelow;
+    }
+
+    /**
+        Moves the note to another copy in place: the read position, the loop
+        points and the increment are rescaled by the copies' rate ratio (a
+        copy's sample n sits at sample 2n of the copy above it), so it carries
+        on from the same point in the sound.
+    */
+    void moveToLevel (int newLevel) noexcept
+    {
+        newLevel = juce::jlimit (0, SampleData::numLevels - 1, newLevel);
+        if (sample == nullptr || newLevel == level)
+            return;
+
+        const double scale = newLevel > level ? 1.0 / (double) (1 << (newLevel - level))
+                                              : (double) (1 << (level - newLevel));
+        level     = newLevel;
+        data      = sample->getData (level);
+        length    = sample->getLength (level);
+        levelRate = sample->getSampleRate() / (double) (1 << level);
+        increment *= scale;   // half the samples per second on a half-rate copy: half the step
+
+        const double len = (double) length;
+        loopEndPos   = juce::jmin (len, loopEndPos * scale);
+        loopStartPos = juce::jmin (loopEndPos, loopStartPos * scale);
+        crossfade    = juce::jmin ((loopEndPos - loopStartPos) / 2.0, crossfade * scale);
+        fadeStart    = loopEndPos - crossfade;
+        looping      = looping && length >= 4;
+        position     = juce::jlimit (0.0, len, position * scale);
+        if (! looping && position >= len)
+            finished = true;
+        setLevelBounds();
     }
 
     /** Ends the note and releases the sample. Safe to call when idle. */
@@ -150,7 +245,14 @@ public:
     int getLevel() const noexcept      { return level; }
     double getIncrement() const noexcept   { return increment; }
 
-    float nextSample() noexcept
+    /** One sample at the note's own pitch. */
+    float nextSample() noexcept   { return nextSampleWithStep (increment); }
+
+    /** One sample with the read rate multiplied by `pitchRatio` (v1.9.0). The copy isn't changed here: see wantsOtherLevel(). */
+    float nextSample (float pitchRatio) noexcept   { return nextSampleWithStep (increment * (double) pitchRatio); }
+
+private:
+    float nextSampleWithStep (double step) noexcept
     {
         if (finished)
             return 0.0f;
@@ -169,7 +271,7 @@ public:
             out = read (position);
         }
 
-        position += increment;
+        position += step;
 
         if (looping && position >= loopEndPos)
         {
@@ -185,7 +287,16 @@ public:
         return out;
     }
 
-private:
+    /** The pitch ratios at which this copy stops being the right one (see wantsOtherLevel()). */
+    void setLevelBounds() noexcept
+    {
+        const double fullRate = increment * (double) (1 << level);   // the note's rate on the full-rate copy
+        raiseAbove     = level < SampleData::numLevels - 1 ? maxFullRateIncrement * (double) (1 << level) / fullRate
+                                                           : std::numeric_limits<double>::infinity();
+        lowerAtOrBelow = level > 0 ? returnIncrement * (double) (1 << (level - 1)) / fullRate
+                                   : -1.0;
+    }
+
     /** Cubic Hermite (Catmull-Rom) at a fractional position; the padding makes the neighbours safe to read. */
     float read (double pos) const noexcept
     {
@@ -202,4 +313,5 @@ private:
     double loopStartPos = 0.0, loopEndPos = 0.0, crossfade = 0.0, fadeStart = 0.0;
     LoopMode mode = loop;
     bool   looping = false, stopLoopingAtJump = false, finished = true;
+    double raiseAbove = 0.0, lowerAtOrBelow = 0.0;   // pitch ratios beyond which another copy is wanted
 };
