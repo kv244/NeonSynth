@@ -15,6 +15,7 @@ The figures in `docs/images/` for [the user manual](../NeonSynth-User-Manual.md)
 | 7 Where Sample and Granular read | `fig07-sample-granular-schematic` | Explanatory schematic (over the pad's rendered waveform) | `render_plots.py` |
 | 8 Step grid and gestures | `fig08-sequencer` | Actual application capture | `compose_ui.py` |
 | 9 The five LFO shapes | `fig09-lfo-shapes` | Plot derived from rendered audio | `render_plots.py` |
+| 10 The signal path | `fig10-signal-path` | Explanatory schematic, drawn from the source code (not from audio) | `signal_flow.py` |
 | Cover | `cover` | Drawn artwork, with the version and release date | `cover.py --date "<release date>"` (redraw on every version bump; CI checks the version) |
 
 Every figure is written as an SVG (text as outlines) and a PNG at 300 dpi. All are drawn 160 mm wide, the print text width, with 9 pt labels and 10 pt panel titles in DejaVu Sans. Lines are told apart by style and label as well as by colour, so they read in grayscale. The captions in the manual carry the same kind label.

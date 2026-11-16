@@ -698,6 +698,10 @@ The project identifies Claude-assisted development, but Claude is not a runtime 
 
 The voice engine places its amplitude envelope before the filter and panner; voices are then summed, followed by output gain and soft clipping. The filter's drive and its limiter scale with the envelope, so the filter behaves as if the envelope came after it. This is the implemented path, rather than a generic synthesis diagram ([voice engine](https://github.com/kv244/Synth/blob/v1.9.0/NeonSynthVoice.h), [filter](https://github.com/kv244/Synth/blob/v1.9.0/CytomicSvf.h), [processor](https://github.com/kv244/Synth/blob/v1.9.0/NeonSynthProcessor.cpp)).
 
+![The signal path. Keyboard MIDI and the step sequencer go through MIDI routing to voice allocation (up to 16 voices, set by the VOICES limit). Inside each voice, Oscillator and Random pass through CHOP, Noise and Fold; all four sources then go through velocity times the amp envelope, drive and the filter (bypassed together by the filter's ON switch), and the pitch-based pan. The voices are summed, then tremolo, output gain and the soft clipper lead to the audio output and the displays. A shared modulation stage, worked out once per block, sends the pitch ratio to all four sources, the LFO cutoff to the filter and the tremolo to the mix.](images/fig10-signal-path.png)
+
+Figure 10. The signal path in v1.9.0. *Explanatory schematic,* drawn from the source code: each box is a stage in the order the [processor](https://github.com/kv244/Synth/blob/v1.9.0/NeonSynthProcessor.cpp) and the [voice](https://github.com/kv244/Synth/blob/v1.9.0/NeonSynthVoice.h) run them. Solid arrows carry audio, dashed ones the shared modulation, which is worked out once per block for all voices. Drive and the filter form one stage: switching the filter OFF bypasses both. The same path in text:
+
 ```text
 MIDI keyboard / DAW notes ─┐
                           ├─> voice allocation, up to 16 voices
