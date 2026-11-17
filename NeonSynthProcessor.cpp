@@ -160,6 +160,33 @@ juce::AudioProcessorValueTreeState::ParameterLayout NeonSynthProcessor::createPa
     layout.add (std::make_unique<AudioParameterFloat>  (ParameterID { "filterRelease", 1 }, "Filter Release", timeRange (10.0f), 0.30f));
     layout.add (std::make_unique<AudioParameterFloat>  (ParameterID { "filterVel", 1 }, "Filter Velocity",
                                                          NormalisableRange<float> (0.0f, 4.0f, 0.01f), 0.0f));         // octaves at full velocity
+
+    // LFO (v1.9.0): one for the whole synth (Lfo.h, Modulation.h). Its three depths default to 0,
+    // where it changes nothing, so sessions saved before v1.9.0 render the same.
+    NormalisableRange<float> lfoRateRange (0.02f, 20.0f, 0.001f);
+    lfoRateRange.setSkewForCentre (1.0f);
+    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "lfoShape", 1 }, "LFO Shape",
+                                                         StringArray { "Sine", "Triangle", "Square", "Saw", "Random" }, 0));   // order matches Lfo::Shape
+    layout.add (std::make_unique<AudioParameterFloat>  (ParameterID { "lfoRate", 1 }, "LFO Rate", lfoRateRange, 1.0f));          // Hz
+    layout.add (std::make_unique<AudioParameterBool>   (ParameterID { "lfoSync", 1 }, "LFO Sync", false));
+    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "lfoDivision", 1 }, "LFO Division",
+                                                         StringArray { "4 bars", "2 bars", "1 bar", "1/2", "1/4", "1/8", "1/16", "1/8T", "1/16T" }, 4));   // order matches Lfo::Division
+    layout.add (std::make_unique<AudioParameterFloat>  (ParameterID { "lfoPitch", 1 }, "LFO Pitch",
+                                                         NormalisableRange<float> (-12.0f, 12.0f, 0.01f), 0.0f));      // semitones
+    layout.add (std::make_unique<AudioParameterFloat>  (ParameterID { "lfoCutoff", 1 }, "LFO Cutoff",
+                                                         NormalisableRange<float> (-5.0f, 5.0f, 0.01f), 0.0f));        // octaves
+    layout.add (std::make_unique<AudioParameterFloat>  (ParameterID { "lfoAmp", 1 }, "LFO Amp",
+                                                         NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f));        // %: tremolo depth, only dips
+
+    // Pitch bend and mod wheel (v1.9.0). They act only on incoming MIDI pitch bend and CC 1,
+    // so sessions without those messages render the same.
+    layout.add (std::make_unique<AudioParameterInt>    (ParameterID { "bendRange", 1 }, "Pitch Bend Range", 0, 24, 2));   // semitones each way
+    layout.add (std::make_unique<AudioParameterFloat>  (ParameterID { "vibrato", 1 }, "Vibrato Depth",
+                                                         NormalisableRange<float> (0.0f, 100.0f, 0.1f), 30.0f));      // cents at the wheel's top
+
+    // Voices (v1.9.0): how many of the 16 voices may play, 1 = mono. Set by clicking the VOICES
+    // lights. The default, 16, is the full pool, so sessions saved before v1.9.0 play the same.
+    layout.add (std::make_unique<AudioParameterInt>    (ParameterID { "voiceCount", 1 }, "Voices", 1, NeonSynthProcessor::numVoices, NeonSynthProcessor::numVoices));
     return layout;
 }
 
@@ -225,6 +252,16 @@ NeonSynthProcessor::NeonSynthProcessor()
     filterSustainParameter = getTypedParameter<juce::AudioParameterFloat>  (apvts, "filterSustain");
     filterReleaseParameter = getTypedParameter<juce::AudioParameterFloat>  (apvts, "filterRelease");
     filterVelParameter     = getTypedParameter<juce::AudioParameterFloat>  (apvts, "filterVel");
+    lfoShapeParameter      = getTypedParameter<juce::AudioParameterChoice> (apvts, "lfoShape");
+    lfoRateParameter       = getTypedParameter<juce::AudioParameterFloat>  (apvts, "lfoRate");
+    lfoSyncParameter       = getTypedParameter<juce::AudioParameterBool>   (apvts, "lfoSync");
+    lfoDivisionParameter   = getTypedParameter<juce::AudioParameterChoice> (apvts, "lfoDivision");
+    lfoPitchParameter      = getTypedParameter<juce::AudioParameterFloat>  (apvts, "lfoPitch");
+    lfoCutoffParameter     = getTypedParameter<juce::AudioParameterFloat>  (apvts, "lfoCutoff");
+    lfoAmpParameter        = getTypedParameter<juce::AudioParameterFloat>  (apvts, "lfoAmp");
+    bendRangeParameter     = getTypedParameter<juce::AudioParameterInt>    (apvts, "bendRange");
+    vibratoParameter       = getTypedParameter<juce::AudioParameterFloat>  (apvts, "vibrato");
+    voiceCountParameter    = getTypedParameter<juce::AudioParameterInt>    (apvts, "voiceCount");
 
     loadDefaultPattern();
     publishSample (SampleLoader::makeDefaultSample());
@@ -243,6 +280,7 @@ void NeonSynthProcessor::reset()
     // Repeating a render from here gives the same grains (hosts call this before offline renders).
     for (auto* v : voices)
         v->resetSeeds();
+    modulation.reset();   // LFO phase 0, bend and wheel centred
 }
 
 void NeonSynthProcessor::releaseResources()
@@ -261,6 +299,7 @@ void NeonSynthProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     outputGain.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (gainParameter->get()));
 
     midiLogger.setSampleRate (sampleRate);
+    modulation.prepare (sampleRate, samplesPerBlock);
 
     sequencer.prepare (sampleRate);
     playMidi.ensureSize (8192);   // bytes; far more than a block of keyboard + sequencer events needs
@@ -304,9 +343,28 @@ void NeonSynthProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     params.chop = { chopPattern.load (std::memory_order_relaxed), chopCombParameter->get(), chopOvertoneParameter->get() * 0.01f };
     params.sculpt = { noiseLevelParameter->get() * 0.01f, foldDriveParameter->get(), foldMixParameter->get() * 0.01f };
 
-    // Every voice shares the same settings.
+    // Modulation (v1.9.0): the LFO, pitch bend and the mod wheel, worked out once for all voices.
+    // Bend and wheel are read from the incoming MIDI, with their sample positions, so they reach
+    // every voice (keyboard and sequencer notes alike) on the right sample.
+    Modulation::Settings modSettings;
+    modSettings.lfo = { (Lfo::Shape) lfoShapeParameter->getIndex(), lfoRateParameter->get(),
+                        lfoSyncParameter->get(), (Lfo::Division) lfoDivisionParameter->getIndex() };
+    modSettings.lfoPitchSemitones  = lfoPitchParameter->get();
+    modSettings.lfoCutoffOctaves   = lfoCutoffParameter->get();
+    modSettings.lfoAmp             = lfoAmpParameter->get() * 0.01f;
+    modSettings.bendRangeSemitones = bendRangeParameter->get();
+    modSettings.vibratoCents       = vibratoParameter->get();
+    modulation.setSettings (modSettings);
+    synth.setVoiceLimit (voiceCountParameter->get());   // new notes use only the first N voices
+    modulation.handleMidi (midiMessages, numSamples);
+    const auto modulationBlock = modulation.render (numSamples, lfoTransport());
+
+    // Every voice shares the same settings and modulation.
     for (auto* v : voices)
+    {
         v->setParameters (params);
+        v->setModulation (modulationBlock);
+    }
 
     // Voice assignment is automatic: juce::Synthesiser reads each note-on in
     // midiMessages, picks a free voice (stealing one if all 16 are busy)
@@ -316,6 +374,7 @@ void NeonSynthProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     // The synth plays the keyboard (filtered by the sequencer mode) plus the sequencer.
     buildPlayMidi (midiMessages, numSamples);
     synth.renderNextBlock (buffer, playMidi, 0, numSamples);
+    modulation.applyAmplitude (buffer, numSamples);   // the LFO's tremolo, on the summed voices
 
     outputGain.setTargetValue (juce::Decibels::decibelsToGain (gainParameter->get()));
     outputGain.applyGain (buffer, numSamples);
@@ -492,6 +551,29 @@ void NeonSynthProcessor::trackHeldKey (int note, bool isDown) noexcept
 
     if (isDown && numHeldKeys < (int) heldKeys.size())
         heldKeys[(size_t) numHeldKeys++] = note;
+}
+
+Lfo::Transport NeonSynthProcessor::lfoTransport() const
+{
+    // A playing host sets the LFO's phase from its song position (when SYNC is on); otherwise the
+    // LFO free-runs, at the host's tempo when there is one, else at the Sequencer Tempo parameter.
+    Lfo::Transport transport { false, 0.0, (double) seqTempoParameter->get() };
+
+    if (auto* hostPlayHead = getPlayHead())
+    {
+        if (const auto position = hostPlayHead->getPosition(); position.hasValue())
+        {
+            if (const auto bpm = position->getBpm(); bpm.hasValue())
+                transport.bpm = *bpm;
+
+            if (const auto ppq = position->getPpqPosition(); ppq.hasValue() && position->getIsPlaying())
+            {
+                transport.hostPlaying = true;
+                transport.ppq = *ppq;
+            }
+        }
+    }
+    return transport;
 }
 
 void NeonSynthProcessor::buildPlayMidi (const juce::MidiBuffer& input, int numSamples) noexcept

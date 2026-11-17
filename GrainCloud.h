@@ -57,6 +57,15 @@
     1 / sqrt(max(1, overlap)) so thin and dense clouds sound about equally
     loud. The output soft clipper still catches peaks.
 
+    Pitch modulation (v1.9.0). setPitchRatio() multiplies the pitch (bend,
+    vibrato, LFO). A grain starting then takes the note's ratio times it, on
+    the copy that suits that pitch; grains already sounding follow it too,
+    their step scaled by the ratio's change since they started, once per
+    render() call (the voice renders in chunks of up to 32 samples while the
+    pitch moves). The step is a whole number, worked out before the grain
+    loop, so the scalar and SIMD loops stay bit-identical; and at ratio 1
+    every step is exactly what it was before v1.9.0.
+
     Voices. Up to 32 grains at once; an onset is skipped while all 32 are
     busy (stealing one would click). Notes pitched well above the root read
     the sample's band-limited copies, as in SampleReader.
@@ -119,6 +128,7 @@ public:
         while (level < SampleData::numLevels - 1 && ratio / (double) (1 << level) > SampleReader::maxFullRateIncrement)
             ++level;
         noteIncrement = ratio / (double) (1 << level);
+        noteRatio = ratio;
 
         settings = newSettings;
         scanOffset = 0.0;
@@ -132,6 +142,12 @@ public:
 
     /** False once it has stopped spawning and its last grain has ended (it can then be end()ed). */
     bool isSounding() const noexcept   { return sample != nullptr && (spawning || numActive > 0); }
+
+    /**
+        The pitch multiplier for the next render() calls (v1.9.0): new grains
+        start at it, sounding ones follow it. 1 = the note's own pitch.
+    */
+    void setPitchRatio (float ratio) noexcept   { pitchRatio = ratio; }
 
     /** Settings for the grains that start from now on (Position and Scan act immediately). */
     void setSettings (const Settings& newSettings) noexcept   { settings = newSettings; }
@@ -235,6 +251,8 @@ private:
         float windowStep = 0.0f;       // 1 / length
         int   remaining = 0;           // output samples left
         float lengthScale = 1.0f;      // 1 / that copy's length, for display
+        float pitch = 1.0f;            // the pitch ratio it started at: step is right at that ratio
+        juce::uint64 end = 0;          // its copy's length in 32.32: a raised pitch must not read past it
     };
 
     /**
@@ -327,14 +345,15 @@ private:
     {
         const int n = juce::jmin (count, g.remaining);
         int s = 0;
+        const juce::uint64 step = stepNow (g, n);
 
         switch (activeSimdPath())
         {
            #if NEONSYNTH_GRAINS_AVX2
-            case SimdPath::avx2:  s = renderGrainAVX2 (g, out, n); break;
+            case SimdPath::avx2:  s = renderGrainAVX2 (g, out, n, step); break;
            #endif
            #if NEONSYNTH_GRAINS_SSE2
-            case SimdPath::sse2:  s = renderGrainSSE2 (g, out, n); break;
+            case SimdPath::sse2:  s = renderGrainSSE2 (g, out, n, step); break;
            #endif
             case SimdPath::automatic:
             case SimdPath::scalar:
@@ -347,7 +366,7 @@ private:
         {
             const float* d = data + (int) (g.position >> 32);
             out[s] += cubic (d[-1], d[0], d[1], d[2], fractionOf (g.position)) * windowAt (g.age, g.windowStep);
-            g.position += g.step;
+            g.position += step;
             ++g.age;
         }
 
@@ -355,12 +374,29 @@ private:
         return g.remaining > 0;
     }
 
+    /**
+        The grain's step for the next n samples. At the ratio it started at (always,
+        without pitch modulation) that is its own step, untouched; otherwise the step
+        scaled by the ratio's change since. Either way the n samples must stay inside
+        its copy (a grain was sized to fit at its starting pitch, and a bend up makes
+        it read further): if they wouldn't, the step shrinks to fit.
+    */
+    juce::uint64 stepNow (const Grain& g, int n) const noexcept
+    {
+        juce::uint64 step = g.step;
+        if (pitchRatio != g.pitch)
+            step = (juce::uint64) ((double) g.step * ((double) pitchRatio / (double) g.pitch));
+
+        if (n > 0 && g.position + (juce::uint64) n * step > g.end)
+            step = g.position < g.end ? (g.end - g.position) / (juce::uint64) n : 0;
+        return step;
+    }
+
    #if NEONSYNTH_GRAINS_SSE2
     /** 4 samples per step; returns how many samples it rendered (a multiple of 4). */
-    static int renderGrainSSE2 (Grain& g, float* __restrict out, int n) noexcept
+    static int renderGrainSSE2 (Grain& g, float* __restrict out, int n, juce::uint64 step) noexcept
     {
         const float* __restrict const data = g.data;   // the output never overlaps the sample
-        const juce::uint64 step = g.step;
         juce::uint64 position = g.position;
 
         const __m128 half = _mm_set1_ps (0.5f), oneHalf = _mm_set1_ps (1.5f), two = _mm_set1_ps (2.0f),
@@ -416,10 +452,9 @@ private:
         fetches the 8 lanes' values from 8 addresses, instead of 8 scalar
         loads and 7 inserts.
     */
-    NEONSYNTH_TARGET_AVX2 static int renderGrainAVX2 (Grain& g, float* __restrict out, int n) noexcept
+    NEONSYNTH_TARGET_AVX2 static int renderGrainAVX2 (Grain& g, float* __restrict out, int n, juce::uint64 step) noexcept
     {
         const float* __restrict const data = g.data;
-        const juce::uint64 step = g.step;
         juce::uint64 position = g.position;
 
         const __m256 half = _mm256_set1_ps (0.5f), oneHalf = _mm256_set1_ps (1.5f), two = _mm256_set1_ps (2.0f),
@@ -493,10 +528,23 @@ private:
         if (numActive >= maxGrains)
             return;   // all busy: skip this onset rather than cut a grain off
 
-        const int length = sample->getLength (level);
+        // The copy and rate for this grain: the note's, or under pitch modulation the
+        // ones that suit the note's ratio times the current pitch ratio.
+        int grainLevel = level;
+        double grainIncrement = noteIncrement;
+        if (pitchRatio != 1.0f)
+        {
+            const double ratio = noteRatio * (double) pitchRatio;
+            grainLevel = 0;
+            while (grainLevel < SampleData::numLevels - 1 && ratio / (double) (1 << grainLevel) > SampleReader::maxFullRateIncrement)
+                ++grainLevel;
+            grainIncrement = ratio / (double) (1 << grainLevel);
+        }
+
+        const int length = sample->getLength (grainLevel);
         const int sizeSamples = juce::jmax (2, (int) (juce::jlimit (0.005, 0.5, (double) settings.sizeSeconds) * hostRate));
 
-        double increment = noteIncrement * std::pow (2.0, (double) (settings.jitterCents * (2.0f * random01() - 1.0f)) / 1200.0);
+        double increment = grainIncrement * std::pow (2.0, (double) (settings.jitterCents * (2.0f * random01() - 1.0f)) / 1200.0);
         const double span = (double) sizeSamples * increment;   // source samples the grain will read
         if (span >= (double) length - 3.0)
             increment = juce::jmax (0.0, ((double) length - 3.0) / (double) sizeSamples);   // longer than the file: slow it to fit
@@ -509,13 +557,15 @@ private:
         const double start = juce::jlimit (0.0, lastStart, (centre + spread) * (double) length);
 
         Grain g;
-        g.data        = sample->getData (level);
+        g.data        = sample->getData (grainLevel);
         g.position    = (juce::uint64) (start * 4294967296.0);
         g.step        = (juce::uint64) (increment * 4294967296.0);
         g.age         = 0;
         g.windowStep  = 1.0f / (float) sizeSamples;
         g.remaining   = sizeSamples;
         g.lengthScale = 1.0f / (float) juce::jmax (1, length);
+        g.pitch       = pitchRatio;
+        g.end         = (juce::uint64) juce::jmax (0, length) << 32;
 
         grains[(size_t) numActive++] = g;
         ++grainsStarted;
@@ -536,6 +586,8 @@ private:
     const SampleData* sample = nullptr;
     Settings settings;
     double hostRate = 48000.0, noteIncrement = 1.0, scanOffset = 0.0;
+    double noteRatio = 1.0;      // the note's rate on the full-rate copy (noteIncrement is on `level`)
+    float  pitchRatio = 1.0f;    // from setPitchRatio()
     int level = 0, samplesToNextGrain = 0;
     bool spawning = false;
     juce::uint32 rng = 1;

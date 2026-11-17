@@ -298,6 +298,29 @@ int main()
         if (b % 75 == 0)
             setParameter (processor, "grJitter", (float) ((b / 75) % 5) * 25.0f);          // cents
 
+        // v1.9.0 modulation: the LFO on all three depths in every shape, synced and free, the
+        // Voices limit, and pitch bend and the mod wheel moving mid-block.
+        if (b % 60 == 0)
+            setParameter (processor, "lfoShape", (float) ((b / 60) % 5));                  // Sine ... Random
+        if (b % 160 == 0)
+            setParameter (processor, "lfoSync", (float) ((b / 160) % 2));
+        if (b % 55 == 0)
+            setParameter (processor, "lfoRate", 0.02f + (float) ((b / 55) % 4) * 6.0f);   // 0.02 ... 18 Hz
+        if (b % 70 == 0)
+            setParameter (processor, "lfoPitch", (float) ((b / 70) % 3) * 6.0f - 6.0f);   // -6, 0, +6 st
+        if (b % 80 == 0)
+            setParameter (processor, "lfoCutoff", (float) ((b / 80) % 3) * 2.0f - 2.0f);  // -2, 0, +2 oct
+        if (b % 90 == 0)
+            setParameter (processor, "lfoAmp", (float) ((b / 90) % 3) * 50.0f);           // 0, 50, 100 %
+        if (b % 120 == 0)
+            setParameter (processor, "voiceCount", (float) (1 + (b / 120) % 16));
+        if (b % 3 == 0)
+            midi.addEvent (juce::MidiMessage::pitchWheel (1, 8192 + (int) (8000.0 * std::sin (b * 0.05))), 100);
+        if (b % 5 == 0)
+            midi.addEvent (juce::MidiMessage::controllerEvent (1, 1, (b / 5) % 128), 200);
+        if (b % 500 == 499)
+            midi.addEvent (juce::MidiMessage::controllerEvent (1, 121, 0), 300);           // reset all controllers
+
         inAudioCallback = true;
         processor.processBlock (buffer, midi);
         inAudioCallback = false;

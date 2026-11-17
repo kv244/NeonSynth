@@ -13,6 +13,8 @@
       filter env 16 - the same 16 notes with the filter envelope at +3 octaves (decay 0.5 s,
                   sustain 0.3, v1.8.0): every voice's coefficients follow it through the decay,
                   then the voices hold at sustain in the steady version
+      lfo cutoff 16 / vibrato 16 / bend granular - v1.9.0 modulation on the 16 held notes: the LFO on
+                  the cutoff (every voice glides), the mod wheel's vibrato, and a slow bend on the granular source
       sweep 16  - the same 16 notes with the cutoff knob moved every block (a slow
                   200 Hz..8 kHz sweep), so every voice's filter glides all the time
       resonant 16 - the same 16 notes with resonance 90% and the filter's drive at 50%
@@ -171,6 +173,33 @@ int main()
                                     setParameter (p, "grSpray", 0.5f);
                                     setParameter (p, "grJitter", 20.0f);
                                 }));
+
+    // v1.9.0 modulation, on the same 16 held notes.
+    const auto sixteen = held ({ 48, 50, 52, 53, 55, 57, 59, 60, 62, 64, 65, 67, 69, 71, 72, 74 }, 127);
+    report ("lfo cutoff 16", render (sixteen, [] (juce::AudioProcessor& p)
+                                     {
+                                         setParameter (p, "lfoCutoff", 2.0f);   // every voice glides, coefficients every 16 samples
+                                         setParameter (p, "lfoRate", 4.0f);
+                                     }));
+    report ("vibrato 16", render ([sixteen] (juce::MidiBuffer& midi, juce::int64 blockStart)
+                                  {
+                                      sixteen (midi, blockStart);
+                                      if (blockStart == 0)
+                                          midi.addEvent (juce::MidiMessage::controllerEvent (1, 1, 127), 0);   // mod wheel up: pitch moves every sample
+                                  }, noChange));
+    report ("bend granular", render ([sixteen] (juce::MidiBuffer& midi, juce::int64 blockStart)
+                                     {
+                                         sixteen (midi, blockStart);
+                                         const double t = (double) blockStart / benchSampleRate;   // a slow bend up and down, every block
+                                         midi.addEvent (juce::MidiMessage::pitchWheel (1, 8192 + (int) (8000.0 * std::sin (t))), 0);
+                                     },
+                                     [] (juce::AudioProcessor& p)
+                                     {
+                                         setParameter (p, "source", 2.0f);   // the cloud renders in 32-sample chunks while bent
+                                         setParameter (p, "grDensity", 200.0f);
+                                         setParameter (p, "grSize", 250.0f);
+                                         setParameter (p, "bendRange", 12.0f);
+                                     }));
 
     const auto dense = [] (juce::MidiBuffer& midi, juce::int64 blockStart)
     {

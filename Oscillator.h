@@ -255,15 +255,30 @@ public:
     /** Sets the pitch immediately (no glide). Clamped below half the sample rate. */
     void setFrequency (float hz, double sampleRate) noexcept
     {
-        phaseInc = juce::jmin ((float) (hz / sampleRate), Blep4::maxPhaseStep);
+        baseInc  = (float) (hz / sampleRate);
+        phaseInc = juce::jmin (baseInc, Blep4::maxPhaseStep);
     }
 
     int getWaveform() const noexcept   { return waveform; }
 
-    float nextSample() noexcept
+    /** One sample at the note's own pitch. */
+    float nextSample() noexcept   { return nextSampleWithStep (phaseInc); }
+
+    /**
+        One sample with the pitch multiplied by `pitchRatio` (pitch bend, vibrato,
+        LFO; v1.9.0). The step is clamped like setFrequency()'s, so a bend far up
+        stays band-limited. Nothing is kept: the next nextSample() is back at the
+        note's own pitch.
+    */
+    float nextSample (float pitchRatio) noexcept
+    {
+        return nextSampleWithStep (juce::jmin (baseInc * pitchRatio, Blep4::maxPhaseStep));
+    }
+
+private:
+    float nextSampleWithStep (float dt) noexcept
     {
         const float t  = phase;
-        const float dt = phaseInc;
         float value;
 
         switch (waveform)
@@ -303,7 +318,6 @@ public:
         return out;
     }
 
-private:
     /** The ideal wave at the start of CHOP segment k (the midpoint where the wave itself jumps). */
     float valueAtSegment (int segment) const noexcept
     {
@@ -321,6 +335,7 @@ private:
     Blep4::TrebleCompensation treble;
     Chop chop;
     float phase = 0.0f, phaseInc = 0.0f;
+    float baseInc = 0.0f;   // hz / sampleRate before the clamp: what a pitch ratio multiplies
     int   waveform = sine, pendingWaveform = sine;
 };
 
@@ -375,15 +390,29 @@ public:
     /** Sets the pitch immediately (no glide). */
     void setFrequency (float hz, double sampleRate) noexcept
     {
-        phaseInc = juce::jmin ((float) (hz / sampleRate), Blep4::maxPhaseStep);
+        baseInc  = (float) (hz / sampleRate);
+        phaseInc = juce::jmin (baseInc, Blep4::maxPhaseStep);
     }
 
-    float nextSample() noexcept
+    /** One sample at the note's own pitch. */
+    float nextSample() noexcept   { return nextSampleWithStep (phaseInc); }
+
+    /** One sample with the pitch multiplied by `pitchRatio` (v1.9.0), clamped as setFrequency() clamps. */
+    float nextSample (float pitchRatio) noexcept
+    {
+        return nextSampleWithStep (juce::jmin (baseInc * pitchRatio, Blep4::maxPhaseStep));
+    }
+
+    /** The 16 levels of the current cycle (tests and visualisers). */
+    const std::array<float, numSteps>& getLevels() const noexcept   { return levels; }
+
+private:
+    float nextSampleWithStep (float phaseStep) noexcept
     {
         const float s     = phase * (float) numSteps;
         const int   step  = juce::jmin ((int) s, numSteps - 1);
-        const float local = s - (float) step;                                // 0..1 within the step
-        const float dt    = juce::jmin (phaseInc * (float) numSteps, 0.5f);  // phase step within a step; capped
+        const float local = s - (float) step;                                 // 0..1 within the step
+        const float dt    = juce::jmin (phaseStep * (float) numSteps, 0.5f);  // phase step within a step; capped
 
         if (step != lastStep)
             advanceTo (step);
@@ -400,7 +429,7 @@ public:
 
         // CHOP: with Comb = 1 its edges are Random's own step edges, where the wave's value
         // is the midpoint of the two levels; with a higher Comb the extra edges fall inside a step.
-        value = chop.apply (value, phase, phaseInc, [this] (int segment) noexcept
+        value = chop.apply (value, phase, phaseStep, [this] (int segment) noexcept
         {
             const int comb = chop.getSegments() / numSteps;
             const int k = segment / comb;
@@ -408,7 +437,7 @@ public:
             return segment % comb == 0 ? 0.5f * (level + levels[(size_t) ((k + numSteps - 1) % numSteps)]) : level;
         });
 
-        phase += phaseInc;
+        phase += phaseStep;
         if (phase >= 1.0f)
         {
             phase -= 1.0f;
@@ -417,10 +446,6 @@ public:
         return value;   // no treble compensation: at high notes Random's steps run far above Nyquist, and the boost would amplify them
     }
 
-    /** The 16 levels of the current cycle (tests and visualisers). */
-    const std::array<float, numSteps>& getLevels() const noexcept   { return levels; }
-
-private:
     /** Counts the steps entered since the last re-roll; every 17th re-rolls the level 8 steps ahead. */
     void advanceTo (int step) noexcept
     {
@@ -446,5 +471,6 @@ private:
     Chop chop;
     juce::uint32 state = 0x9e3779b9u;
     float phase = 0.0f, phaseInc = 0.0f;
+    float baseInc = 0.0f;   // hz / sampleRate before the clamp: what a pitch ratio multiplies
     int   lastStep = 0, stepsSinceReroll = 0;
 };

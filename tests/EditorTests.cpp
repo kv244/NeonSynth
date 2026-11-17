@@ -23,6 +23,11 @@
         on both), the filter envelope's view and knobs move only their own parameters, and the
         chosen tab survives closing and reopening the editor;
       - SCOPE / SPECTRUM and the help page switch what is shown;
+      - the VOICES lights: clicking light N sets Voices to N (one gesture), with its readout;
+      - the right-hand column: OUTPUT on top and MODULATION below, each control inside
+        its own panel; LFO SYNC swaps the rate in Hz for the note length; the readouts;
+        the green LFO band under CUTOFF appears only while LFO CUTOFF is not 0; GAIN is a
+        vertical fader beside the meter that a double-click returns to 0 dB;
       - every view paints at 75%, 100% and 150% for every source, with and without
         the help page, while notes play.
 
@@ -244,6 +249,59 @@ namespace
                 return false;
         return true;
     }
+
+    // The right-hand column (964, 82, 300 x 548) on the design grid, split into OUTPUT and MODULATION (v1.9.0).
+    const juce::Rectangle<int> rightColumn (964, 82, 300, 548);
+    const juce::Rectangle<int> outputPanel (964, 82, 300, 266);
+    const juce::Rectangle<int> modPanel    (964, 360, 300, 270);
+    constexpr const char* outputControls[] = { "gain", "width", "meter" };
+    constexpr const char* modControls[] = { "lfoShape", "lfoSync", "lfoRate", "lfoDivision", "lfoPitch", "lfoCutoff", "lfoAmp",
+                                            "bendRange", "vibrato", "lfoView", "bendBar", "wheelBar" };
+
+    /** A component's bounds in the editor's (design) coordinates; the editor must be at 100%. */
+    juce::Rectangle<int> boundsIn (juce::Component& ed, juce::Component& c)
+    {
+        return ed.getLocalArea (&c, c.getLocalBounds());
+    }
+
+    /** True if some label in the editor shows exactly this text. */
+    bool labelShows (juce::Component& root, const juce::String& text)
+    {
+        if (auto* label = dynamic_cast<juce::Label*> (&root); label != nullptr && label->isVisible() && label->getText() == text)
+            return true;
+        for (auto* child : root.getChildren())
+            if (labelShows (*child, text))
+                return true;
+        return false;
+    }
+
+    /** Saves an image into NEONSYNTH_SNAPSHOT_DIR, if that is set. */
+    void saveSnapshot (const juce::Image& image, const juce::String& name)
+    {
+        // JUCE's call instead of std::getenv, which MSVC deprecates.
+        if (const auto dir = juce::SystemStats::getEnvironmentVariable ("NEONSYNTH_SNAPSHOT_DIR", {}); dir.isNotEmpty() && image.isValid())
+            if (juce::File (dir).createDirectory().wasOk())
+            {
+                // FileOutputStream appends to an existing file: start each image afresh.
+                const auto file = juce::File (dir).getChildFile (name + ".png");
+                file.deleteFile();
+                if (juce::FileOutputStream out (file); out.openedOk())
+                    juce::PNGImageFormat().writeImageToStream (image, out);
+            }
+    }
+
+    /** Pixels in an area that are clearly the modulation green (and not cyan, magenta or grey). */
+    int greenPixels (const juce::Image& image)
+    {
+        int count = 0;
+        for (int y = 0; y < image.getHeight(); ++y)
+            for (int x = 0; x < image.getWidth(); ++x)
+            {
+                const auto c = image.getPixelAt (x, y);
+                count += c.getGreen() > 90 && c.getGreen() > c.getRed() + 30 && c.getGreen() > c.getBlue() + 30 ? 1 : 0;
+            }
+        return count;
+    }
 }
 
 int main()
@@ -280,7 +338,7 @@ int main()
 
         for (const auto* id : { "stepGrid", "sampleView", "shapeView", "adsrView", "filterAdsrView", "scopeView", "spectrumView",
                                 "scopeButton", "spectrumButton", "ampEnvButton", "filterEnvButton",
-                                "loadButton", "padButton", "helpButton", "helpOverlay" })
+                                "loadButton", "padButton", "helpButton", "helpOverlay", "meter", "lfoView", "bendBar", "wheelBar" })
             check (find (ed, id) != nullptr, juce::String ("a component with ID ") + id);
     }
 
@@ -394,7 +452,7 @@ int main()
     //==========================================================================
     std::printf ("\nCombo boxes and buttons write their parameter and follow it\n");
     set (processor, "source", 0.0f);
-    for (const auto* id : { "waveform", "source", "smpLoop", "seqRate", "seqMode" })
+    for (const auto* id : { "waveform", "source", "smpLoop", "seqRate", "seqMode", "lfoShape", "lfoDivision" })
     {
         auto* combo = dynamic_cast<juce::ComboBox*> (find (ed, id));
         if (combo == nullptr) { check (false, juce::String (id) + " is a combo box"); continue; }
@@ -411,7 +469,7 @@ int main()
         check (combo->getSelectedItemIndex() == 0, juce::String (id) + ": the box follows the parameter");
         set (processor, id, before);
     }
-    for (const auto* id : { "filterEnabled", "seqOn", "seqSync" })
+    for (const auto* id : { "filterEnabled", "seqOn", "seqSync", "lfoSync" })
     {
         auto* button = dynamic_cast<juce::Button*> (find (ed, id));
         if (button == nullptr) { check (false, juce::String (id) + " is a button"); continue; }
@@ -425,6 +483,127 @@ int main()
 
         set (processor, id, before ? 1.0f : 0.0f);
         check (button->getToggleState() == before, juce::String (id) + ": the button follows the parameter");
+    }
+
+    //==========================================================================
+    std::printf ("\nVoice lights: a click sets how many voices can play\n");
+    if (auto* leds = find (ed, "voiceCount"); leds != nullptr && parameter (processor, "voiceCount") != nullptr)
+    {
+        const auto light = [leds] (int n) { return juce::Point<float> ((float) leds->getWidth() * ((float) n - 0.5f) / 16.0f, (float) leds->getHeight() * 0.5f); };
+        gestures.clear();
+        mouse.click (*leds, light (4));
+        pump();
+        check (juce::roundToInt (valueOf (processor, "voiceCount")) == 4 && gestures.oneGesture (indexOf (processor, "voiceCount")),
+               "clicking light 4 sets Voices to 4, in one gesture");
+        check (labelShows (ed, "4 VOICES"), "the readout says 4 VOICES");
+        mouse.click (*leds, light (1));
+        pump();
+        check (juce::roundToInt (valueOf (processor, "voiceCount")) == 1 && labelShows (ed, "MONO"), "light 1 sets Voices to 1, and the readout says MONO");
+        mouse.click (*leds, light (16));
+        pump();
+        check (juce::roundToInt (valueOf (processor, "voiceCount")) == 16 && labelShows (ed, "16 VOICES"), "light 16 sets Voices back to 16");
+    }
+    else check (false, "the voice lights (ID voiceCount) and the voiceCount parameter found");
+
+    //==========================================================================
+    std::printf ("\nThe right-hand column: OUTPUT and MODULATION\n");
+    {
+        check (rightColumn.contains (outputPanel) && rightColumn.contains (modPanel) && ! outputPanel.intersects (modPanel),
+               "OUTPUT and MODULATION split the right-hand column without overlapping");
+
+        const auto inside = [&ed] (const char* const* ids, size_t count, juce::Rectangle<int> panel)
+        {
+            juce::StringArray wrong;
+            for (size_t i = 0; i < count; ++i)
+                if (auto* c = find (ed, ids[i]); c == nullptr || ! panel.reduced (8).contains (boundsIn (ed, *c)))
+                    wrong.add (ids[i]);
+            return wrong;
+        };
+        const auto outWrong = inside (outputControls, std::size (outputControls), outputPanel);
+        check (outWrong.isEmpty(), "GAIN, WIDTH and the meter lie inside OUTPUT" + (outWrong.isEmpty() ? juce::String() : " (not: " + outWrong.joinIntoString (", ") + ")"));
+        const auto modWrong = inside (modControls, std::size (modControls), modPanel);
+        check (modWrong.isEmpty(), "every MODULATION control lies inside its panel" + (modWrong.isEmpty() ? juce::String() : " (not: " + modWrong.joinIntoString (", ") + ")"));
+        if (auto* meter = find (ed, "meter"))
+            check (meter->getHeight() >= 140, "the meter is still a usable height (" + juce::String (meter->getHeight()) + " px)");
+
+        // GAIN is a vertical fader beside the meter, like a mixer channel strip.
+        auto* fader = dynamic_cast<juce::Slider*> (find (ed, "gain"));
+        auto* meter = find (ed, "meter");
+        if (fader != nullptr && meter != nullptr)
+        {
+            const auto f = boundsIn (ed, *fader), mt = boundsIn (ed, *meter);
+            check (fader->getSliderStyle() == juce::Slider::LinearVertical && f.getHeight() >= 120,
+                   "GAIN is a vertical fader (" + juce::String (f.getHeight()) + " px of travel)");
+            check (f.getRight() <= mt.getX() && f.getY() < mt.getBottom() && mt.getY() < f.getBottom(),
+                   "the fader stands beside the meter, to its left");
+            auto* gainParam = parameter (processor, "gain");
+            check (fader->isDoubleClickReturnEnabled()
+                       && std::abs (fader->getDoubleClickReturnValue() - gainParam->convertFrom0to1 (gainParam->getDefaultValue())) < 1.0e-4,
+                   "a double-click returns the fader to its default (0 dB)");
+            check (labelShows (ed, "0.0 dB"), "its readout shows 0.0 dB");
+        }
+        else check (false, "the gain fader and the meter found");
+
+        // Both SYNC states: the rate in Hz or the note length, never both, and nothing overlaps.
+        auto* rate = find (ed, "lfoRate");
+        auto* division = find (ed, "lfoDivision");
+        for (const bool sync : { false, true })
+        {
+            set (processor, "lfoSync", sync ? 1.0f : 0.0f);
+            const auto where = juce::String (sync ? "SYNC on" : "SYNC off");
+            check (rate != nullptr && division != nullptr && showing (*rate, ed) == ! sync && showing (*division, ed) == sync,
+                   where + (sync ? ": the note length is shown instead of the rate" : ": the rate in Hz is shown, not the note length"));
+
+            juce::StringArray overlaps;
+            for (size_t i = 0; i < std::size (modControls); ++i)
+                for (size_t j = i + 1; j < std::size (modControls); ++j)
+                {
+                    auto* a = find (ed, modControls[i]);
+                    auto* b = find (ed, modControls[j]);
+                    if (a != nullptr && b != nullptr && showing (*a, ed) && showing (*b, ed) && boundsIn (ed, *a).intersects (boundsIn (ed, *b)))
+                        overlaps.add (juce::String (modControls[i]) + "/" + modControls[j]);
+                }
+            check (overlaps.isEmpty(), where + ": no two MODULATION controls overlap" + (overlaps.isEmpty() ? juce::String() : " (" + overlaps.joinIntoString (", ") + ")"));
+
+            if (sync)
+            {
+                set (processor, "lfoPitch", 2.0f);
+                set (processor, "lfoCutoff", 1.5f);
+                set (processor, "lfoAmp", 40.0f);
+                set (processor, "lfoShape", 1.0f);
+                pump (100);
+                saveSnapshot (ed.createComponentSnapshot (modPanel, true, 1.0f), "modulation-panel-sync");
+            }
+        }
+        set (processor, "lfoSync", 0.0f);
+        pump (100);
+
+        // Readouts, in the panel's units (depths still set from the SYNC-on pass above).
+        check (labelShows (ed, "+2.00 st"), "PITCH reads +2.00 st");
+        check (labelShows (ed, "+1.50 oct"), "CUTOFF reads +1.50 oct");
+        check (labelShows (ed, "40%"), "AMP reads 40%");
+        check (labelShows (ed, juce::String (juce::CharPointer_UTF8 ("\xc2\xb1")) + "2 st"), "BEND reads +/-2 st (the default)");
+        check (labelShows (ed, "30 ct"), "VIBRATO reads 30 ct (the default)");
+        check (labelShows (ed, "1.00 Hz"), "RATE reads 1.00 Hz (the default) with SYNC off");
+
+        const auto modImage = ed.createComponentSnapshot (modPanel, true, 1.0f);
+        saveSnapshot (modImage, "modulation-panel");
+        check (greenPixels (modImage) > 500, "the MODULATION panel is drawn in its green");
+
+        // The green band under CUTOFF: only while LFO CUTOFF is not 0.
+        const juce::Rectangle<int> filterPanel (770, 356, 182, 274);
+        const juce::Rectangle<int> band (780, 438, 162, 6);
+        auto withBand = ed.createComponentSnapshot (band, true, 1.0f);
+        saveSnapshot (ed.createComponentSnapshot (filterPanel, true, 1.0f), "filter-panel-lfo");
+        set (processor, "lfoCutoff", 0.0f);
+        pump (100);
+        const auto withoutBand = ed.createComponentSnapshot (band, true, 1.0f);
+        check (greenPixels (withBand) > 20 && greenPixels (withoutBand) == 0,
+               "the LFO band under CUTOFF shows while LFO CUTOFF is 1.5 oct (" + juce::String (greenPixels (withBand))
+                   + " green pixels) and not at 0 (" + juce::String (greenPixels (withoutBand)) + ")");
+
+        for (const auto* id : { "lfoPitch", "lfoAmp", "lfoShape" })
+            set (processor, id, parameter (processor, id)->convertFrom0to1 (parameter (processor, id)->getDefaultValue()));
     }
 
     //==========================================================================

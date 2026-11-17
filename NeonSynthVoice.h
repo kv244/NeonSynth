@@ -10,6 +10,7 @@
 #include "SampleReader.h"
 #include "GrainCloud.h"
 #include "CytomicSvf.h"
+#include "Modulation.h"
 
 class NeonSynthSound : public juce::SynthesiserSound
 {
@@ -93,7 +94,7 @@ public:
         Telemetry t;
         t.active          = adsr.isActive();
         t.level           = t.active ? lastEnvelope : 0.0f;
-        t.frequencyHz     = frequencyHz;
+        t.frequencyHz     = frequencyHz * shownPitchRatio;   // with bend, vibrato and LFO pitch: display only
         t.secondsSinceOn  = (float) ((double) samplesSinceOn / sampleRate);
         t.secondsSinceOff = samplesSinceOff < 0 ? -1.0f : (float) ((double) samplesSinceOff / sampleRate);
         t.samplePosition  = t.active && source == Source::sample && reader.isActive() && ! reader.hasFinished()
@@ -120,6 +121,7 @@ public:
         reader.end();
         fadingReader.end();
         fadingSamplesLeft = 0;
+        fadingCopy = false;
         cloud.end();
         resetSeeds();
 
@@ -188,6 +190,13 @@ public:
         sampleSettings = p.sampleSettings;
         cloud.setSettings (p.grainSettings);
     }
+
+    /** Audio thread, once per block after setParameters(): this block's modulation buffers (v1.9.0).
+        Indexed like the block, so renderNextBlock()'s startSample is the index of its first sample.
+        Null buffers mean nothing modulates; the voice then renders exactly as v1.8.0 did.
+        The source path reads modulation.pitchRatio (oscillators, sample, grains);
+        modulatedCutoffHz() reads modulation.cutoffOctaves. */
+    void setModulation (const ModulationBlock& block) noexcept   { modulation = block; modulationIndex = 0; }
 
     void startNote (int midiNote, float velocity, juce::SynthesiserSound*, int) override
     {
@@ -320,8 +329,15 @@ public:
     */
     void renderNextBlock (juce::AudioBuffer<float>& output, int startSample, int numSamples) override
     {
+        // Where the block stands after this call: a note started before the next call sets its
+        // filter coefficients there, with the LFO cutoff of that sample (v1.9.0).
+        const int nextModulationIndex = startSample + numSamples;
+
         if (! adsr.isActive())
+        {
+            modulationIndex = nextModulationIndex;
             return;
+        }
 
         auto* left  = output.getWritePointer (0);
         auto* right = output.getNumChannels() > 1 ? output.getWritePointer (1) : nullptr;
@@ -330,7 +346,12 @@ public:
         // cheaper than per sample); the loop below reads it like any other source.
         const bool cloudSounds = cloud.isActive();
         if (cloudSounds)
-            renderCloud (numSamples);
+            renderCloud (startSample, numSamples);
+
+        // Pitch modulation ended (or never started) with the sample on another copy than
+        // the note's own: go back to it. Never happens without pitch modulation.
+        if (modulation.pitchRatio == nullptr)
+            settleSampleCopy (1.0f, false);
 
         const bool steady = ! level.isSmoothing() && ! cutoff.isSmoothing() && ! filterMix.isSmoothing() && ! pan.isSmoothing()
                          && ! resonance.isSmoothing() && ! drive.isSmoothing() && ! modeFade.isSmoothing()
@@ -361,6 +382,13 @@ public:
         samplesSinceOn += rendered;
         if (samplesSinceOff >= 0)
             samplesSinceOff += rendered;
+        modulationIndex = nextModulationIndex;
+
+        if (rendered > 0)
+        {
+            sampleNoteFresh = false;
+            shownPitchRatio = isPitchModulated() ? pitchAt (startSample + rendered - 1) : 1.0f;
+        }
     }
 
 private:
@@ -382,11 +410,14 @@ private:
         for (int i = startSample; i < startSample + numSamples; ++i, ++rendered)
         {
             if constexpr (! steady)
+                modulationIndex = i;   // the coefficient updates read the LFO cutoff of this sample (v1.9.0)
+
+            if constexpr (! steady)
                 advanceFilterControls (advanceFilterEnvelope);
 
             lastEnvelope    = adsr.getNextSample();
             const float levelNow = steady ? steadyLevel : level.getNextValue();
-            const float dry = nextSourceSample (cloudSounds) * levelNow * lastEnvelope;   // this order: v1.7's bits
+            const float dry = nextSourceSample (cloudSounds, i) * levelNow * lastEnvelope;   // this order: v1.7's bits
             const float wet = filterStep<steady> (dry, levelNow * lastEnvelope);   // always run: state stays warm
             const float out = dry + (steady ? steadyMix : filterMix.getNextValue()) * (wet - dry);
 
@@ -454,6 +485,7 @@ private:
         reader.end();          // silent now: let go of the sample
         fadingReader.end();
         fadingSamplesLeft = 0;
+        fadingCopy = false;
         cloud.end();
     }
 
@@ -481,13 +513,18 @@ private:
         const float knobHz = cutoff.getCurrentValue();   // already clamped by setParameters()
 
         // Modulation, in octaves, adds up here: the filter envelope and velocity
-        // (v1.8), the LFO and pitch bend (v1.9). Anything that can move it per
+        // (v1.8) and the LFO (v1.9). Anything that can move it per
         // sample must also count as "moving" in renderNextBlock() (see
         // filterEnvelopeMovesCutoff()), so that block renders in the gliding
         // version. Velocity is constant for a note: a retriggered voice's new
         // velocity is seen by filterUpdatePending() and applied at the next update.
-        const float modulationOctaves = filterEnvOctaves.getCurrentValue() * filterEnvelope.getLevel()
-                                      + filterVelOctaves.getCurrentValue() * noteVelocity;
+        float modulationOctaves = filterEnvOctaves.getCurrentValue() * filterEnvelope.getLevel()
+                                + filterVelOctaves.getCurrentValue() * noteVelocity;
+
+        // The LFO CUTOFF (v1.9), at the sample being rendered. With no LFO cutoff this block the
+        // buffer is null and nothing is added: the sum above is v1.8's, bit for bit.
+        if (modulation.cutoffOctaves != nullptr && modulation.numSamples > 0)
+            modulationOctaves += modulation.cutoffOctaves[juce::jlimit (0, modulation.numSamples - 1, modulationIndex)];
 
         // Unmodulated, the knob value goes through untouched: a round trip through
         // log2 and exp2 can move it by a bit, and the default sound must not change.
@@ -499,11 +536,12 @@ private:
 
     /** True while the filter envelope sweeps the cutoff (it is in its attack, decay or release,
         or its sustain level slews, and its amount isn't 0), or either amount glides to a new
-        setting: coefficients must follow. */
+        setting, or the LFO moves the cutoff this block (v1.9): coefficients must follow. */
     bool filterEnvelopeMovesCutoff() const noexcept
     {
         return (filterEnvOctaves.getCurrentValue() != 0.0f && ! filterEnvelope.isConstant())
-            || filterEnvOctaves.isSmoothing() || filterVelOctaves.isSmoothing();
+            || filterEnvOctaves.isSmoothing() || filterVelOctaves.isSmoothing()
+            || modulation.cutoffOctaves != nullptr;
     }
 
     /** True if the coefficients lag the cutoff, resonance or drive (one of them moved since the last update). */
@@ -589,6 +627,7 @@ private:
             reader.swapWith (fadingReader);   // fadingReader now holds the old note and its sample reference
             fadingSamplesLeft = fadingSamplesTotal = juce::jmax (1, (int) (0.002 * sampleRate));
         }
+        fadingCopy = false;   // the new note starts at full level, whatever was fading
 
         source = newSource;
         ++noteCounter;
@@ -597,6 +636,7 @@ private:
             reader.begin (blockSample, midiNote, sampleRate, sampleSettings);
         else
             reader.end();
+        sampleNoteFresh = true;
 
         if (source == Source::granular)
         {
@@ -610,38 +650,133 @@ private:
         }
     }
 
-    /** Renders the cloud into cloudBuffer, in chunks if the host's block is larger than prepared. */
-    void renderCloud (int numSamples) noexcept
+    /**
+        Renders the cloud into cloudBuffer, in chunks if the host's block is larger than
+        prepared. firstIndex is the block index of its first sample, for the pitch ratio.
+
+        Under pitch modulation the cloud is rendered 32 samples at a time, each chunk at
+        the ratio of its first sample: new grains start at that pitch and sounding ones
+        follow it, smoothly enough for vibrato and bends (32 samples is under 1 ms) while
+        the grain loop keeps its long stretches. Without it, one call as in v1.8.0.
+    */
+    void renderCloud (int firstIndex, int numSamples) noexcept
     {
         cloudSamples = juce::jmin (numSamples, (int) cloudBuffer.size());
-        cloud.render (cloudBuffer.data(), cloudSamples);
+        if (! isPitchModulated())
+        {
+            cloud.setPitchRatio (1.0f);   // grains started under modulation glide back to the note's pitch
+            cloud.render (cloudBuffer.data(), cloudSamples);
+        }
+        else
+        {
+            for (int done = 0; done < cloudSamples;)
+            {
+                const int chunk = juce::jmin (cloudChunk, cloudSamples - done);
+                cloud.setPitchRatio (pitchAt (firstIndex + done));
+                cloud.render (cloudBuffer.data() + done, chunk);
+                done += chunk;
+            }
+        }
         cloudRead = 0;
         if (! cloud.isSounding())
             cloud.end();
     }
 
-    /** The current note's sound source, one sample. */
-    float nextSourceSample (bool cloudSounds) noexcept
+    bool isPitchModulated() const noexcept   { return modulation.pitchRatio != nullptr && modulation.numSamples > 0; }
+
+    /** The pitch ratio at a block index (only while isPitchModulated()); past the buffer, its last value. */
+    float pitchAt (int index) const noexcept
     {
-        float out = source == Source::oscillator ? sculpt.process (oscillator.nextSample())      // CHOP is inside the oscillators;
-                  : source == Source::sample     ? reader.nextSample()
-                  : source == Source::random     ? sculpt.process (randomOscillator.nextSample()) // Noise and Fold follow it
+        return modulation.pitchRatio[juce::jlimit (0, modulation.numSamples - 1, index)];
+    }
+
+    /** The current note's sound source, one sample; index is its position in the processor's block. */
+    float nextSourceSample (bool cloudSounds, int index) noexcept
+    {
+        if (! isPitchModulated())
+            return sourceSample<false> (cloudSounds, 1.0f, index);   // v1.8.0's path, operation for operation
+        return sourceSample<true> (cloudSounds, pitchAt (index), index);
+    }
+
+    /** One sample of the source: at the note's own pitch, or (pitched) times `ratio`. */
+    template <bool pitched>
+    float sourceSample (bool cloudSounds, float ratio, int index) noexcept
+    {
+        if constexpr (pitched)
+        {
+            // The read rate has crossed into another copy's range: move there (see settleSampleCopy()).
+            if (source == Source::sample && reader.wantsOtherLevel (ratio))
+                settleSampleCopy (ratio, true);
+            sampleNoteFresh = false;
+        }
+
+        float out = source == Source::oscillator ? sculpt.process (pitched ? oscillator.nextSample (ratio) : oscillator.nextSample())    // CHOP is inside the oscillators;
+                  : source == Source::sample     ? readSample<pitched> (ratio)
+                  : source == Source::random     ? sculpt.process (pitched ? randomOscillator.nextSample (ratio) : randomOscillator.nextSample())   // Noise and Fold follow it
                                                  : 0.0f;
 
         if (cloudSounds)
         {
             if (cloudRead >= cloudSamples && cloud.isActive())   // a block larger than prepareToPlay said
-                renderCloud (cloudSamples);
+                renderCloud (index, cloudSamples);
             out += cloudRead < cloudSamples ? cloudBuffer[(size_t) cloudRead++] : 0.0f;
         }
 
         if (fadingSamplesLeft > 0)
         {
-            out += fadingReader.nextSample() * ((float) fadingSamplesLeft / (float) fadingSamplesTotal);
+            out += (pitched ? fadingReader.nextSample (ratio) : fadingReader.nextSample()) * ((float) fadingSamplesLeft / (float) fadingSamplesTotal);
             if (--fadingSamplesLeft == 0)
+            {
                 fadingReader.end();
+                fadingCopy = false;
+            }
         }
         return out;
+    }
+
+    /** The sample source, one sample; while it moves to another copy it fades in as the old copy fades out. */
+    template <bool pitched>
+    float readSample (float ratio) noexcept
+    {
+        const float x = pitched ? reader.nextSample (ratio) : reader.nextSample();
+        if (! fadingCopy)
+            return x;
+        return x * (1.0f - (float) fadingSamplesLeft / (float) fadingSamplesTotal);
+    }
+
+    /**
+        Moves the sample to the copy that suits `ratio` if it isn't on it (with the
+        hysteresis, or without it: back exactly to the copy the note started on).
+
+        A note that hasn't sounded yet just moves. A sounding one crossfades over
+        2 ms through the retrigger crossfade's reader: the old copy fades out in
+        fadingReader while the new one fades in, both reading the same point in the
+        sound at the same rate (the copies are sample-aligned, so the fade has
+        nothing to smear). If that crossfade is busy, the move waits for it.
+        Switching rather than reading on from the old copy keeps a bend up from
+        aliasing, and a bend down from losing its top end.
+    */
+    void settleSampleCopy (float ratio, bool withHysteresis) noexcept
+    {
+        if (source != Source::sample || ! reader.isActive() || reader.hasFinished())
+            return;
+
+        const int wanted = reader.levelFor (ratio, withHysteresis);
+        if (wanted == reader.getLevel())
+            return;
+
+        if (sampleNoteFresh)
+        {
+            reader.moveToLevel (wanted);
+            return;
+        }
+        if (fadingSamplesLeft > 0)
+            return;
+
+        reader.copyNoteTo (fadingReader);   // the old copy, fading out from where the note is now
+        reader.moveToLevel (wanted);
+        fadingSamplesLeft = fadingSamplesTotal = juce::jmax (1, (int) (0.002 * sampleRate));
+        fadingCopy = true;
     }
 
     double sampleRate = 44100.0;
@@ -655,11 +790,14 @@ private:
     SampleReader::Settings sampleSettings;
     SampleReader reader, fadingReader;         // fadingReader: the previous note, fading out after a retrigger
     int fadingSamplesLeft = 0, fadingSamplesTotal = 1;
+    bool fadingCopy = false;                   // the fade is a move to another copy: reader fades in as fadingReader fades out
+    bool sampleNoteFresh = false;              // the note hasn't rendered a sample yet: a copy move needs no crossfade
 
     // Granular source
     GrainCloud cloud;
     std::vector<float> cloudBuffer = std::vector<float> (512, 0.0f);   // sized in prepare()
     int cloudSamples = 0, cloudRead = 0;
+    static constexpr int cloudChunk = 32;   // samples per cloud render under pitch modulation
     int voiceIndex = 0, noteCounter = 0;   // seed the grains, so the same MIDI renders the same audio
 
 public:
@@ -679,6 +817,7 @@ private:
 
     // Telemetry for the GUI (written here on the audio thread, copied out by the processor).
     float       frequencyHz = 0.0f, lastEnvelope = 0.0f;
+    float       shownPitchRatio = 1.0f;   // the pitch ratio at the end of the last block, for frequencyHz in the telemetry
     juce::int64 samplesSinceOn = 0, samplesSinceOff = -1;
 
     VoiceEnvelope adsr;
@@ -702,4 +841,8 @@ private:
     // Stereo placement
     float notePan = 0.0f, width = 0.0f, gainLeft = 1.0f, gainRight = 1.0f;
     juce::SmoothedValue<float> pan { 0.0f };
+
+    // This block's modulation (v1.9.0), from setModulation().
+    ModulationBlock modulation;
+    int modulationIndex = 0;   // the sample of the block being rendered (or about to be): where modulatedCutoffHz() reads the LFO
 };

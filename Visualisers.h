@@ -24,6 +24,7 @@ namespace neon
     inline const juce::Colour cyan    { 0xff19e6ff };
     inline const juce::Colour magenta { 0xffff4fd8 };
     inline const juce::Colour amber   { 0xffffb319 };
+    inline const juce::Colour green   { 0xff5cff6a };   // modulation: the LFO, pitch bend and the mod wheel (v1.9.0)
     inline const juce::Colour red     { 0xffff3355 };
     inline const juce::Colour panel   { 0xff0b0e17 };   // the dark inset behind a view
 
@@ -45,6 +46,42 @@ namespace neon
         g.fillRoundedRectangle (r, 6.0f);
         g.setColour (edge.withAlpha (0.35f));
         g.drawRoundedRectangle (r.reduced (0.5f), 6.0f, 1.0f);
+    }
+
+    /** A panel of controls (v1.9.0 look): dark fill, a soft glow and edge in the panel's own
+        colour, and a header strip that fades down from the top behind the title, so each area
+        reads as one block. A handful of translucent fills and strokes, no blur, so it costs
+        next to nothing to repaint. headerHeight 0 leaves the strip out. */
+    inline void drawSection (juce::Graphics& g, juce::Rectangle<float> r, juce::Colour accent, float headerHeight)
+    {
+        constexpr float radius = 10.0f;
+
+        // Glow: three wide, faint strokes outside the edge, fainter further out.
+        for (const auto& [grow, alpha] : { std::pair { 3.5f, 0.05f }, std::pair { 2.0f, 0.09f }, std::pair { 1.0f, 0.14f } })
+        {
+            g.setColour (accent.withAlpha (alpha));
+            g.drawRoundedRectangle (r.expanded (grow), radius + grow, 2.0f);
+        }
+
+        g.setColour (section);
+        g.fillRoundedRectangle (r, radius);
+
+        if (headerHeight > 0.0f)
+        {
+            juce::Graphics::ScopedSaveState state (g);
+            juce::Path shape;
+            shape.addRoundedRectangle (r, radius);
+            g.reduceClipRegion (shape);
+            const auto strip = r.withHeight (headerHeight);
+            g.setGradientFill (juce::ColourGradient (accent.withAlpha (0.16f), 0.0f, strip.getY(),
+                                                     accent.withAlpha (0.03f), 0.0f, strip.getBottom(), false));
+            g.fillRect (strip);
+            g.setColour (accent.withAlpha (0.22f));
+            g.fillRect (strip.getX() + 12.0f, strip.getBottom() - 1.0f, strip.getWidth() - 24.0f, 1.0f);
+        }
+
+        g.setColour (accent.withAlpha (0.45f));
+        g.drawRoundedRectangle (r.reduced (0.5f), radius, 1.0f);
     }
 
     /** Strokes a path with a soft neon glow: two wide faint passes under a thin bright one. */
@@ -911,9 +948,40 @@ private:
 
 //==============================================================================
 /** One light per voice; brightness follows that voice's envelope, with a short afterglow. */
-class VoiceLeds : public juce::Component
+class VoiceLeds : public juce::Component,
+                  public juce::SettableTooltipClient
 {
 public:
+    /** Called with 1..16 when light N is clicked: the owner sets the Voices parameter (v1.9.0). */
+    std::function<void (int)> onLightClicked;
+
+    VoiceLeds()
+    {
+        setTooltip ("Voices in use. Click a light to set how many voices can play: 1 = mono");
+        setMouseCursor (juce::MouseCursor::PointingHandCursor);
+    }
+
+    /** How many voices may play (the Voices parameter); the lights above it are drawn dimmed. */
+    void setLimit (int newLimit)
+    {
+        newLimit = juce::jlimit (1, (int) glow.size(), newLimit);
+        if (std::exchange (limit, newLimit) != newLimit)
+            repaint();
+    }
+
+    /** Which light (1..16) an x position in this component falls on. */
+    int lightAt (float x) const noexcept
+    {
+        const float step = (float) getWidth() / (float) glow.size();
+        return juce::jlimit (1, (int) glow.size(), 1 + (int) std::floor (x / step));
+    }
+
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        if (onLightClicked != nullptr)
+            onLightClicked (lightAt (e.position.x));
+    }
+
     void update (const AdsrView::VoiceViews& voices)
     {
         bool changed = false;
@@ -946,14 +1014,21 @@ public:
                 g.setColour (neon::cyan.withAlpha (0.25f + 0.75f * std::sqrt (level)));
                 g.fillEllipse (juce::Rectangle<float> (radius * 2.0f, radius * 2.0f).withCentre (c));
             }
+            else if ((int) i < limit)
+            {
+                g.setColour (neon::cyan.withAlpha (0.45f));
+                g.drawEllipse (juce::Rectangle<float> (radius * 2.0f, radius * 2.0f).withCentre (c), 1.0f);
+            }
             else
             {
-                g.setColour (neon::cyan.withAlpha (0.25f));
-                g.drawEllipse (juce::Rectangle<float> (radius * 2.0f, radius * 2.0f).withCentre (c), 1.0f);
+                // Above the limit: a faint dot, so the lights that can play stand out.
+                g.setColour (neon::cyan.withAlpha (0.14f));
+                g.fillEllipse (juce::Rectangle<float> (radius, radius).withCentre (c));
             }
         }
     }
 
 private:
     std::array<float, NeonSynthProcessor::numVoices> glow {};
+    int limit = NeonSynthProcessor::numVoices;
 };

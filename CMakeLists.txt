@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(NeonSynth VERSION 1.8.0 LANGUAGES C CXX)
+project(NeonSynth VERSION 1.9.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -41,7 +41,7 @@ if(NEONSYNTH_WARNINGS_AS_ERRORS)
 endif()
 
 juce_add_plugin(NeonSynth
-    VERSION                     1.8.0
+    VERSION                     1.9.0
     COMPANY_NAME                "AudioDSP"
     COMPANY_WEBSITE             "https://github.com/kv244/Synth"   # until a company site is decided (A12)
     BUNDLE_ID                   "com.audiodsp.neonsynth"
@@ -82,6 +82,9 @@ target_sources(NeonSynth
         GrainCloud.h
         SampleView.h
         ShapeView.h
+        LfoView.h
+        Lfo.h
+        Modulation.h
 )
 
 target_compile_definitions(NeonSynth
@@ -128,7 +131,7 @@ option(NEONSYNTH_BUILD_TESTS "Build the unit tests and the render benchmark" OFF
 
 if(NEONSYNTH_BUILD_TESTS)
     enable_testing()
-    set(NEONSYNTH_UNIT_TESTS StepSequencerTests VoiceEnvelopeTests OscillatorTests ChopTests SculptTests SampleDataTests SampleReaderTests GranularTests FilterTests)
+    set(NEONSYNTH_UNIT_TESTS StepSequencerTests VoiceEnvelopeTests OscillatorTests ChopTests SculptTests SampleDataTests SampleReaderTests GranularTests FilterTests LfoTests ModulationTests)
     add_custom_target(unit_tests)
 
     foreach(test ${NEONSYNTH_UNIT_TESTS})
@@ -157,7 +160,7 @@ if(NEONSYNTH_BUILD_TESTS)
     #   SessionStateTests     saving and restoring the sample with a session (ctest)
     #   EditorTests           drives the editor offscreen with mouse events and paints it (ctest;
     #                         on Linux it needs an X display, e.g. xvfb-run)
-    foreach(program RenderBenchmark RealtimeSafetyTests ParameterLayoutTests SessionStateTests EditorTests)
+    foreach(program RenderBenchmark RealtimeSafetyTests ParameterLayoutTests SessionStateTests EditorTests PitchTests MidiModulationTests)
         juce_add_console_app(${program} PRODUCT_NAME "${program}")
         juce_generate_juce_header(${program})
         target_sources(${program} PRIVATE tests/${program}.cpp NeonSynthProcessor.cpp)
@@ -177,7 +180,7 @@ if(NEONSYNTH_BUILD_TESTS)
             neonsynth_warning_tweaks)
     endforeach()
 
-    foreach(program RealtimeSafetyTests ParameterLayoutTests SessionStateTests EditorTests)
+    foreach(program RealtimeSafetyTests ParameterLayoutTests SessionStateTests EditorTests PitchTests MidiModulationTests)
         add_dependencies(unit_tests ${program})
         add_test(NAME ${program} COMMAND ${program})
     endforeach()
