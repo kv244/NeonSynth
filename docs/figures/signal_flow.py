@@ -83,10 +83,10 @@ def draw():
     arrow(ax, [(79, 92), (79, 82)])
 
     # sources
-    osc = box(ax, 6, 64, 28, 9, "Oscillator", ["band-limited (BLEP)"])
-    rnd = box(ax, 6, 53, 28, 9, "Random", ["16 drifting steps"])
-    smp = box(ax, 6, 42, 28, 9, "Sample", ["3 rate-reduced copies"])
-    gra = box(ax, 6, 31.5, 28, 9, "Granular", ["up to 32 grains"])
+    box(ax, 6, 64, 28, 9, "Oscillator", ["band-limited (BLEP)"])
+    box(ax, 6, 53, 28, 9, "Random", ["16 drifting steps"])
+    box(ax, 6, 42, 28, 9, "Sample", ["3 rate-reduced copies"])
+    box(ax, 6, 31.5, 28, 9, "Granular", ["up to 32 grains"])
     label(ax, 40, 77.8, "pitch × pitch ratio (all four sources)", color=MOD)
     arrow(ax, [(110, 88), (110, 76), (20, 76), (20, 73)], color=MOD, dashed=True)
 
@@ -101,7 +101,7 @@ def draw():
     label(ax, 44, 70.5, "Oscillator and Random only", style="italic")
 
     # the per-voice chain
-    amp = box(ax, 44, 40, 24, 11, "Velocity ×", ["amp envelope"])
+    box(ax, 44, 40, 24, 11, "Velocity ×", ["amp envelope"])
     box(ax, 72, 40, 18, 11, "Drive", ["ADAA"])
     box(ax, 94, 36, 35, 19, "Filter (SVF)", ["LP / HP / BP / Notch", "resonance limiter follows", "the amp envelope",
                                               "cutoff + env + vel + LFO"], fill="white")
