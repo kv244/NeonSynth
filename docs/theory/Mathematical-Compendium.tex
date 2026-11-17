@@ -1,0 +1,543 @@
+% Mathematical Compendium: DSP Techniques in NeonSynth
+% A supplement to "The DSP Behind NeonSynth".
+%
+% Build: docs/theory/build_compendium.sh [out-dir]   (pdflatex, run twice for the page references)
+% The version below must match project(NeonSynth VERSION ...) in CMakeLists.txt; the build script checks it.
+\documentclass[11pt,letterpaper]{article}
+
+\newcommand{\NSVersion}{1.9.0}
+\newcommand{\NSDate}{17 November 2026}
+
+% ---------------------------------------------------------------- fonts and page
+\usepackage[T1]{fontenc}
+\usepackage{mathptmx}                 % Times text and maths
+\usepackage[scaled=0.92]{helvet}      % Helvetica for headings, header and footer
+\usepackage{courier}                  % Courier for file and identifier names
+\usepackage{amsmath,amssymb}
+\usepackage[letterpaper,left=0.8in,right=0.8in,top=1.0in,bottom=0.95in,
+            headheight=14pt,headsep=26pt,footskip=34pt]{geometry}
+\usepackage{xcolor}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{tcolorbox}
+\usepackage{lastpage}
+\usepackage[hidelinks]{hyperref}
+
+\hypersetup{
+  pdftitle={Mathematical Compendium: DSP Techniques in NeonSynth v\NSVersion},
+  pdfsubject={A Supplement to The DSP Behind NeonSynth},
+}
+
+% ---------------------------------------------------------------- colours
+\definecolor{navy}{RGB}{28,42,74}         % title band, headings
+\definecolor{accent}{RGB}{42,108,214}     % numbers, links, rules, box bars
+\definecolor{kicker}{RGB}{150,184,238}    % title band kicker line
+\definecolor{subtle}{RGB}{110,118,130}    % header text, contents descriptions
+\definecolor{codegray}{RGB}{85,85,85}     % file and identifier names
+\definecolor{boxbg}{RGB}{242,246,252}     % callout background
+\definecolor{rulegray}{RGB}{200,204,210}
+
+\newcommand{\code}[1]{\texttt{\textcolor{codegray}{#1}}}
+
+% ---------------------------------------------------------------- running header and footer
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\sffamily\footnotesize\textcolor{navy}{\textbf{NEONSYNTH v\NSVersion}}\textcolor{subtle}{~---~MATHEMATICAL COMPENDIUM}}
+\fancyhead[R]{\sffamily\footnotesize\textcolor{subtle}{DSP REFERENCE SUPPLEMENT}}
+\fancyfoot[C]{\sffamily\footnotesize\textcolor{subtle}{Page \thepage{} of \textcolor{accent}{\pageref*{LastPage}}}}
+\renewcommand{\headrule}{\hbox to\headwidth{\color{navy!70}\leaders\hrule height 0.6pt\hfill}}
+\renewcommand{\footrule}{\hbox to\headwidth{\color{rulegray}\leaders\hrule height 0.4pt\hfill}}
+\renewcommand{\footrulewidth}{0.4pt}
+
+\fancypagestyle{titlepage}{%
+  \fancyhf{}%
+  \renewcommand{\headrule}{}%
+  \renewcommand{\footrule}{}%
+  \fancyfoot[C]{\sffamily\footnotesize\textcolor{subtle}{Target Instrument: NeonSynth v\NSVersion
+    \quad|\quad Companion Reference to \textit{The DSP Behind NeonSynth}}}%
+}
+
+% ---------------------------------------------------------------- headings
+\titleformat{\section}{\sffamily\bfseries\Large\color{navy}}{\textcolor{accent}{\thesection.}}{0.45em}{}
+  [\vspace{0.05ex}{\color{accent}\titlerule[0.9pt]}]
+\titlespacing*{\section}{0pt}{0pt}{1.8ex}
+\titleformat{\subsection}{\sffamily\bfseries\large\color{navy}}{\textcolor{accent}{\thesubsection}}{0.5em}{}
+\titlespacing*{\subsection}{0pt}{2.6ex}{1.3ex}
+
+\setlength{\parindent}{0pt}
+\setlength{\emergencystretch}{1.5em}
+\setlength{\parskip}{0.55ex}
+\setlength{\abovedisplayskip}{6pt plus 2pt minus 2pt}
+\setlength{\belowdisplayskip}{6pt plus 2pt minus 2pt}
+\setlength{\abovedisplayshortskip}{4pt plus 2pt}
+\setlength{\belowdisplayshortskip}{6pt plus 2pt minus 2pt}
+\renewcommand{\arraystretch}{1.15}
+
+% ---------------------------------------------------------------- callouts
+\newtcolorbox{callout}[1]{%
+  colback=boxbg, colframe=accent, coltitle=accent, colbacktitle=boxbg,
+  boxrule=0pt, leftrule=3.5pt, arc=0pt, outer arc=0pt,
+  left=10pt, right=8pt, top=2pt, bottom=6pt, toptitle=5pt, bottomtitle=2pt,
+  titlerule=0pt, fonttitle=\sffamily\bfseries\small,
+  title={#1}, before skip=6pt, after skip=6pt}
+
+% ---------------------------------------------------------------- notation
+\newcommand{\Fs}{F_s}
+\newcommand{\frc}{\operatorname{frac}}
+\newcommand{\sat}{\operatorname{sat}}
+\newcommand{\clamp}{\operatorname{clamp}}
+\newcommand{\lfo}{\ell}
+
+% ---------------------------------------------------------------- contents rows
+\newcommand{\contentsrow}[4]{%
+  \textsf{\bfseries\textcolor{accent}{#1.}} &
+  \hyperref[#4]{\textbf{\textcolor{accent}{#2}}} & \\
+  & {\small\textcolor{subtle}{#3}} &
+  \hyperref[#4]{\sffamily\small\textcolor{subtle}{Page} \textcolor{accent}{\pageref*{#4}}}\\[0pt]
+  \midrule[0.5pt]}
+
+\begin{document}
+
+% ================================================================ title page
+\thispagestyle{titlepage}
+\vspace*{0.1in}
+
+\begin{tcolorbox}[colback=navy, colframe=accent, boxrule=0pt, bottomrule=3pt,
+                  arc=4pt, outer arc=4pt, left=20pt, right=20pt, top=14pt, bottom=16pt]
+  {\sffamily\bfseries\footnotesize\textcolor{kicker}{TECHNICAL REFERENCE SUPPLEMENT \textbullet{} NEONSYNTH v\NSVersion}}\par
+  \vspace{2pt}
+  {\sffamily\bfseries\fontsize{24}{27}\selectfont\color{white}Mathematical Compendium:\\DSP Techniques in NeonSynth\par}
+  \vspace{8pt}
+  {\itshape\large\textcolor{white!85!navy}{A Supplement to ``The DSP Behind NeonSynth''}\par}
+\end{tcolorbox}
+
+\vspace{0.22in}
+
+\begin{tcolorbox}[colback=boxbg, colframe=accent, coltitle=accent, colbacktitle=boxbg,
+                  boxrule=0pt, leftrule=3.5pt, arc=0pt, outer arc=0pt,
+                  left=10pt, right=8pt, top=3pt, bottom=7pt, toptitle=5pt, bottomtitle=2pt,
+                  titlerule=0pt, fonttitle=\sffamily\bfseries\small, title={Scope \& Edition Notes}]
+This compendium presents the core mathematical formulations underlying seven digital signal processing
+subsystems in \textbf{NeonSynth v\NSVersion} (released \NSDate): 4-point cubic B-spline BLEP/BLAMP
+anti-aliasing, trapezoidal topology-preserving state-variable filtering, quadrature van der Pol self-oscillation
+limiting, double-precision antiderivative anti-aliasing (ADAA) drive, polynomial-windowed granular synthesis,
+prefiltered Catmull--Rom sample resampling, and the per-sample LFO, pitch-bend and vibrato modulation new in v1.9.0.\\
+All equations, boundary conditions, and numerical thresholds are aligned with the NeonSynth v\NSVersion{} implementation
+(\code{Oscillator.h}, \code{CytomicSvf.h}, \code{NeonSynthVoice.h}, \code{GrainCloud.h}, \code{SampleData.h},
+\code{SampleReader.h}, \code{Lfo.h}, and \code{Modulation.h}). This edition adds Section~7 and corrects several v1.8.0 figures against the code and its tests.
+\end{tcolorbox}
+
+\vspace{0.12in}
+{\sffamily\bfseries\large\color{navy}Contents\par}
+\vspace{2pt}
+{\color{accent}\hrule height 0.8pt}
+\vspace{6pt}
+
+\noindent
+\begin{tabular*}{\textwidth}{@{}p{0.45in}@{}p{5.85in}@{\extracolsep{\fill}}r@{}}
+\contentsrow{1}{Band-Limited Edge Correction (BLEP \& BLAMP)}
+  {Phase accumulation, waveform latching, cubic B-spline residuals, and treble compensation}{sec:blep}
+\contentsrow{2}{Topology-Preserving Transform (TPT / ZDF) Filter}
+  {Bilinear pre-warping, JUCE-ordered difference equations, four filter modes, and decimation}{sec:tpt}
+\contentsrow{3}{Van der Pol Self-Oscillation Limiter}
+  {Resonance mapping, quadrature amplitude sensing, nonlinear damping, and degree-1 homogeneity}{sec:vdp}
+\contentsrow{4}{Antiderivative Anti-Aliasing (ADAA) Drive}
+  {Normalized saturation, double-precision secant evaluation, cancellation guard, and dry crossfade}{sec:adaa}
+\contentsrow{5}{Granular Synthesis Mathematics}
+  {Polynomial window, uncorrelated overlap gain scaling, onset jitter, and 32.32 fixed-point SIMD}{sec:gran}
+\contentsrow{6}{Sample Resampling and Interpolation}
+  {Playback rate, Horner Catmull--Rom cubics, 95-tap Blackman FIR decimation, and transposition bounds}{sec:smp}
+\contentsrow{7}{Modulation: LFO, Pitch Bend and Vibrato}
+  {LFO shapes and phase, slew limiter, pitch ratio, tremolo, per-source pitch, and bit-identity}{sec:mod}
+\end{tabular*}
+
+% ================================================================ 1
+\newpage
+\section{Band-Limited Edge Correction (BLEP \& BLAMP)}\label{sec:blep}
+
+To suppress aliasing from discontinuities in naive periodic waveforms, NeonSynth applies polynomial residuals
+derived from a centered, unit-area 4-point cubic B-spline kernel $B_3(x)$ supported on $[-2,2]$ (\code{Oscillator.h},
+\code{Blep4}).
+
+\subsection{Phase Accumulation and Waveform Latching}
+
+The phase accumulator retains phase across notes and advances per sample $n$ according to:
+\begin{equation}\label{eq:phase}
+  \phi[n+1] = \frc\!\left(\phi[n] + \Delta\phi\right), \qquad \Delta\phi = \min\!\left(\frac{f}{\Fs},\, 0.49\right)
+\end{equation}
+where $f$ is the oscillator frequency, $\Fs$ is the host sample rate, and the phase increment $\Delta\phi$ is strictly capped at
+0.49 cycles per sample to remain below the Nyquist limit (0.5). Since v1.9.0 the per-sample pitch ratio $r[n]$
+multiplies $f/\Fs$ before the cap (Section~\ref{sec:mod}, eq.~\eqref{eq:oscstep}). Calling \code{setWaveform()} stores a pending
+shape that is latched unconditionally at the phase wrap $\phi \ge 1.0$. Across a waveform switch, the downstream 3-tap
+treble-compensation FIR filter (active on all non-sine waveforms; the sine bypasses it but keeps its history) preserves its state history:
+\begin{equation}\label{eq:treble}
+  y_{\mathrm{comp}}[n] = (1+2a)\,x[n-1] - a\bigl(x[n] + x[n-2]\bigr), \qquad a = 0.27
+\end{equation}
+
+\subsection{Residual Formulation and Boundary Conditions}
+
+Let $d \in [0,2]$ denote the unsigned fractional sample distance from a discontinuity, and let $s \in \{-1,+1\}$ indicate the
+pre-edge versus post-edge sign for step discontinuities. Because a BLEP step residual is odd-symmetric across an
+amplitude jump whereas a BLAMP ramp residual is even-symmetric across a slope corner, the corrected sample is
+formed by adding signed step residuals and unsigned corner residuals to the naive waveform:
+\begin{equation}\label{eq:residuals}
+  y[n] = y_{\mathrm{naive}}[n] + \sum_{\text{edges}} s \cdot J \cdot R_{\mathrm{BLEP}}(d) + \sum_{\text{corners}} S \cdot R_{\mathrm{BLAMP}}(d)
+\end{equation}
+where $J$ is the amplitude jump height and $S$ is the slope change per sample.
+\begin{itemize}[leftmargin=1.6em, itemsep=2pt, topsep=4pt]
+  \item \textbf{BLEP (Band-Limited Step):} The first integral of the 4-point cubic B-spline kernel:
+  \begin{equation}\label{eq:blep}
+    R_{\mathrm{BLEP}}(d) = \int_d^2 B_3(x)\,dx, \qquad R_{\mathrm{BLEP}}(0) = \frac{1}{2}, \quad R_{\mathrm{BLEP}}(2) = 0.
+  \end{equation}
+  \item \textbf{BLAMP (Band-Limited Ramp):} The second integral of the cubic B-spline kernel, used for slope discontinuities
+  such as triangle wave corners:
+  \begin{equation}\label{eq:blamp}
+    R_{\mathrm{BLAMP}}(d) = \int_d^2\!\!\int_x^2 B_3(t)\,dt\,dx, \qquad R_{\mathrm{BLAMP}}(0) = \frac{7}{30}, \quad R_{\mathrm{BLAMP}}(1) = \frac{1}{120}.
+  \end{equation}
+\end{itemize}
+
+\begin{callout}{Practical Anti-Aliasing Window Bounds}
+Because each residual spans $\pm 2$ samples (4 samples total), adjacent correction windows remain completely
+non-overlapping for $\Delta\phi \le 0.25$ on single-edge waveforms (sawtooth) and $\Delta\phi \le 0.125$ on two-edge waveforms
+(square and triangle). For higher increments up to the 0.49 cap, windows overlap and some aliasing returns,
+though output amplitude remains bounded. As a finite-support spline kernel, \code{Blep4} provides practical
+anti-aliasing rather than ideal brick-wall filtering.
+\end{callout}
+
+% ================================================================ 2
+\newpage
+\section{Topology-Preserving Transform (TPT / ZDF) Filter}\label{sec:tpt}
+
+NeonSynth v\NSVersion{} implements a 2-pole (12\,dB/oct) multi-mode state-variable filter per voice (\code{CytomicSvf.h})
+using trapezoidal integration to eliminate the artificial unit-sample delay ($z^{-1}$) introduced by naive bilinear feedback
+loops.
+
+\subsection{Continuous-to-Discrete Mapping and Cutoff Modulation}
+
+The continuous integrator $1/s$ is mapped to discrete time via the bilinear transform with frequency pre-warping at
+cutoff $f_c$ (evaluated in 64-bit \code{double} precision and cast to \code{float}):
+\begin{equation}\label{eq:tpt}
+  g = \tan\!\left(\pi\,\frac{f_c}{\Fs}\right), \qquad R_2 = k_{\mathrm{eff}}, \qquad h = \frac{1}{1 + R_2\,g + g^2}
+\end{equation}
+At neutral settings (0\% resonance, $Q = 1/\sqrt{2}$ Butterworth, and 0\% drive), $R_2 = k = 1/Q = \sqrt{2}$ and $h$ is
+evaluated in \code{double}, as JUCE does. At any resonance above 0\% the voice runs the nonlinear step, in which $R_2$ is the
+amplitude-limited effective damping $k_{\mathrm{eff}}$ of Section~\ref{sec:vdp}, re-evaluated every sample (with $h$ in \code{float}).
+
+Filter cutoff is modulated exponentially in octaves by a dedicated filter \code{VoiceEnvelope} (defaults: 10\,ms Attack,
+300\,ms Decay, 0.5 Sustain, 300\,ms Release) and note velocity, clamped safely below Nyquist:
+\begin{equation}\label{eq:cutoff}
+  f_c = \clamp\!\left(f_{\mathrm{knob}} \cdot 2^{\,\mathrm{envAmount}\cdot\mathrm{envLevel} + \mathrm{velAmount}\cdot\mathrm{velocity}},\; 20\ \mathrm{Hz},\; 0.45\Fs\right)
+\end{equation}
+with envAmount $\in[-5,5]$ octaves, velAmount $\in[0,4]$ octaves and velocity $\in[0,1]$; v1.9.0 adds the LFO's cutoff octaves
+to the exponent (eq.~\eqref{eq:modcutoff}). When the summed exponent is exactly zero, $f_{\mathrm{knob}}$ is returned untouched without
+evaluating $2^0$. To reduce trigonometric
+overhead during sweeps, coefficients $(g, R_2, h)$ update every 16 samples while parameters, envelopes or the LFO are moving
+(persisting the 16-sample counter across buffer boundaries for block-size independence) and are skipped at rest.
+
+\subsection{Sample-Step Difference Equations and Filter Modes}
+
+For an input sample $x$ and previous integrator states $s_1, s_2$, the zero-delay outputs and trapezoidal state updates
+execute in the following exact sequential order:
+\begin{equation}\label{eq:svf}
+\begin{aligned}
+  y_{\mathrm{HP}} &= h \cdot \bigl(x - s_1(g + R_2) - s_2\bigr)\\
+  y_{\mathrm{BP}} &= g \cdot y_{\mathrm{HP}} + s_1\\
+  s_1 &\leftarrow g \cdot y_{\mathrm{HP}} + y_{\mathrm{BP}}\\
+  y_{\mathrm{LP}} &= g \cdot y_{\mathrm{BP}} + s_2\\
+  s_2 &\leftarrow g \cdot y_{\mathrm{BP}} + y_{\mathrm{LP}}
+\end{aligned}
+\end{equation}
+All four filter modes are obtained directly from these states: Low-Pass ($y_{\mathrm{LP}}$), High-Pass ($y_{\mathrm{HP}}$), Band-Pass ($y_{\mathrm{BP}}$), and
+Notch ($y_{\mathrm{LP}} + y_{\mathrm{HP}}$). Mode switches crossfade over 10\,ms to prevent clicks.
+
+\begin{callout}{IEEE-754 Associativity and Bit-Identical Compatibility}
+The five-step arithmetic sequence above copies JUCE's \code{StateVariableTPTFilter} instruction for
+instruction rather than Andrew Simper's algebraically equivalent reordered Cytomic equations. Because
+IEEE-754 floating-point addition and multiplication are non-associative, altering the evaluation order shifts
+the least significant bits of rendered audio. Preserving JUCE's exact operation order guarantees bit-identical
+output against legacy v1.7.1 sessions at neutral settings (0\% resonance, 0\% drive).
+\end{callout}
+
+% ================================================================ 3
+\newpage
+\section{Van der Pol Self-Oscillation Limiter}\label{sec:vdp}
+
+The Resonance control maps percentages (0\% to 100\%) to the linear damping factor $k = 1/Q$. At 98\% resonance
+($k = 0$), the linear filter poles lie on the unit circle; when resonance exceeds 98\% ($k < 0$, reaching $k = -0.0275$
+at 100\%), the poles move outside the unit circle and cause exponential growth unless bounded by a restoring
+nonlinearity. Rather than hard-clipping an internal state, \code{CytomicSvf.h} applies smooth amplitude-dependent
+van der Pol damping.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular*}{\textwidth}{@{}l@{\extracolsep{\fill}}cccccccc@{}}
+\toprule
+\textbf{Resonance} & 0\% & 25\% & 50\% & 75\% & 90\% & 95\% & 98\% & 100\% \\
+\midrule
+\textbf{Damping} $k = 1/Q$ & 1.4142 & 0.8398 & 0.5000 & 0.2568 & 0.1000 & 0.0393 & 0.0000 & $-0.0275$ \\
+\textbf{Quality} $Q$       & 0.71   & 1.19   & 2.00   & 3.89   & 10.0   & 25.5   & $\infty$ & $-36.3$ \\
+\bottomrule
+\end{tabular*}
+\caption{NeonSynth v\NSVersion{} mapping from Resonance percentage to damping factor $k$ and quality factor $Q$.}
+\end{table}
+\vspace{-2ex}
+
+\subsection{Quadrature Amplitude Sensing}
+
+Near the cutoff frequency $f_c$, the two integrator states $s_1$ and $s_2$ have equal magnitude and sit approximately $90^\circ$ (a
+quarter cycle) out of phase. Their squared sum provides a phase-ripple-free measure of the instantaneous squared
+envelope $A^2$, avoiding second-harmonic distortion inside the damping loop and remaining stable near $f_c = \Fs/4$:
+\begin{equation}\label{eq:amp}
+  A^2 = \frac{s_1^2 + s_2^2}{4}
+\end{equation}
+
+\subsection{Nonlinear Damping Equation}
+
+Effective damping $k_{\mathrm{eff}}$ increases smoothly with the ratio of current oscillation amplitude $A$ to an envelope-tracked
+dynamic ceiling $L$:
+\begin{equation}\label{eq:ceiling}
+  L = \max\!\left(\mathrm{velocityLevel} \times \mathrm{ampEnv},\; 10^{-6}\right), \qquad \mathrm{velocityLevel} = 0.25 \times \mathrm{velocity}
+\end{equation}
+\begin{equation}\label{eq:keff}
+  q = c\,\frac{A^2}{L^2}, \qquad k_{\mathrm{eff}} = k + \frac{B \cdot q}{B + q}, \qquad (c = 0.1,\ B = 2)
+\end{equation}
+As $A$ approaches $L$, $k_{\mathrm{eff}}$ rises through zero and becomes positive, stabilizing self-oscillation into a limit cycle. At
+$\Fs = 48$\,kHz, the oscillation settles at a peak of approximately $1.05L$ (staying within $\pm 1$\,dB from 100\,Hz to 5\,kHz,
+$-2.1$\,dB at 10\,kHz, and $-5.1$\,dB at 15\,kHz), while tracking cutoff pitch within 0.1\%.
+
+\subsection{Degree-1 Homogeneity}
+
+Above the $10^{-6}$ numerical floor, $k_{\mathrm{eff}}$ depends solely on the dimensionless ratio $A/L$, making the filter response
+homogeneous of degree 1:
+\begin{equation}\label{eq:homog}
+  f(\alpha x, \alpha L) = \alpha\, f(x, L) \qquad (\alpha > 0,\ \alpha L \ge 10^{-6})
+\end{equation}
+Consequently, self-oscillation tracks the amplitude envelope---swelling during Attack and decaying smoothly to
+silence during Release---while preserving the physical voice signal chain (\code{ampEnv} $\rightarrow$ \code{drive} $\rightarrow$ \code{filter}).
+
+% ================================================================ 4
+\newpage
+\section{Antiderivative Anti-Aliasing (ADAA) Drive}\label{sec:adaa}
+
+To introduce warm saturation ahead of the filter loop without generating feedback intermodulation or severe aliasing,
+NeonSynth v\NSVersion{} applies first-order ADAA over 0--20\,dB of Drive ($D = 10^{\mathrm{drive\_dB}/20}$).
+
+\subsection{Normalized Saturation Function}
+
+The underlying memoryless saturation curve is:
+\begin{equation}\label{eq:sat}
+  \sat(u) = \frac{u}{\sqrt{1 + u^2}}
+\end{equation}
+Scaling the input $x[n]$ by both the dynamic ceiling $L$ and the drive factor $D$, then normalizing by $\sat(D/4)$, preserves
+degree-1 homogeneity with the filter limiter:
+\begin{equation}\label{eq:drive}
+  u_n = \frac{D \cdot x[n]}{4L}, \qquad y_{\mathrm{ideal}}[n] = L \cdot \frac{\sat(u_n)}{\sat(D/4)}
+\end{equation}
+A peak input at $|x| = L$ maintains unity peak $L$, whereas small signals ($|x| \ll L$) receive a linear gain boost of
+$(D/4)/\sat(D/4) = \sqrt{1 + (D/4)^2}$, reaching $+8.6$\,dB at full 20\,dB drive ($D = 10$).
+
+\subsection{First-Order Antiderivative Evaluation}
+
+The continuous-time first antiderivative of $\sat(u)$ is:
+\begin{equation}\label{eq:antideriv}
+  F_1(u) = \int \frac{u}{\sqrt{1 + u^2}}\,du = \sqrt{1 + u^2}
+\end{equation}
+First-order ADAA replaces instantaneous sampling of $\sat(u)$ with its average slope across the interval $[u_{n-1}, u_n]$:
+\begin{equation}\label{eq:adaa}
+  y_{\mathrm{ADAA}}[n] = \frac{F_1(u_n) - F_1(u_{n-1})}{u_n - u_{n-1}}, \qquad y_{\mathrm{drive}}[n] = L \cdot \frac{y_{\mathrm{ADAA}}[n]}{\sat(D/4)}
+\end{equation}
+
+\subsection{Numerical Stability and Group-Delay Crossfade}
+
+When successive normalized inputs are nearly equal ($\Delta u = |u_n - u_{n-1}| \le 10^{-5}$), subtracting two nearly identical
+square roots causes catastrophic cancellation and risks $0/0$ division. In that regime, the implementation falls back to
+the midpoint evaluation:
+\begin{equation}\label{eq:midpoint}
+  y_{\mathrm{ADAA}}[n] = \sat\!\left(\frac{u_n + u_{n-1}}{2}\right) \qquad \text{if } |u_n - u_{n-1}| \le 10^{-5}
+\end{equation}
+All $F_1(u)$ evaluations are executed in 64-bit \code{double} precision to preserve numerical accuracy near $\sqrt{1 + u^2} \approx 1$.
+
+\begin{callout}{Half-Sample Delay Compensation and Aliasing Reduction}
+Because first-order ADAA computes the average over $[u_{n-1}, u_n]$, it introduces an inherent 0.5-sample group
+delay. To prevent comb filtering when engaging subtle amounts of drive, the first 5\% of the Drive knob
+crossfades from the undelayed dry signal into the ADAA output: the stage outputs $x + \beta\,(y_{\mathrm{drive}} - x)$ with
+$\beta = \min(1,\, 20\cdot\mathrm{Drive})$, Drive $\in[0,1]$. Measured on a PolyBLEP sawtooth at 100\%
+drive, ADAA holds the aliasing floor at $-32.4$\,dB against a $-32.7$\,dB baseline, outperforming naive clipping
+by 11 to 17\,dB.
+\end{callout}
+
+% ================================================================ 5
+\newpage
+\section{Granular Synthesis Mathematics}\label{sec:gran}
+
+The granular engine (\code{GrainCloud.h}) overlaps short windowed excerpts of a prepared mono sample, decoupling
+the source scan trajectory from per-grain playback rate:
+\begin{equation}\label{eq:grain}
+  \mathrm{grain}_j[n] = w\!\left(\frac{n - \mathrm{onset}_j}{\mathrm{duration}_j}\right) \times \mathrm{sample}\bigl(\mathrm{start}_j + \mathrm{rate}_j\,(n - \mathrm{onset}_j)\bigr), \qquad
+  \mathrm{output}[n] = G_{\mathrm{scale}} \sum_j \mathrm{grain}_j[n]
+\end{equation}
+where $\mathrm{sample}(\cdot)$ is the Catmull--Rom read of eq.~\eqref{eq:horner} on the copy chosen for the grain's rate (Section~\ref{sec:smp}).
+
+\subsection{Polynomial Window Function}
+
+Rather than evaluating a trigonometric raised-cosine Hann window per sample, NeonSynth uses a computationally
+efficient $C^1$-smooth polynomial bell on normalized grain progress $u \in [0,1]$:
+\begin{equation}\label{eq:window}
+  w(u) = \bigl[4u(1-u)\bigr]^2, \qquad w(0) = w(1) = 0, \quad w'(0) = w'(1) = 0, \quad w(0.5) = 1
+\end{equation}
+Zero value and zero slope at both endpoints eliminate boundary clicks while requiring only multiplications and
+subtractions inside the inner loop.
+
+\subsection{Overlap Gain Scaling and Pool Management}
+
+To prevent excessive amplitude buildup as grain density or duration increases, output gain is normalized by the
+square root of the expected overlap (density $\times$ duration):
+\begin{equation}\label{eq:gscale}
+  G_{\mathrm{scale}} = \frac{1}{\sqrt{\max(1,\ \mathrm{density} \times \mathrm{duration})}}
+\end{equation}
+This scaling assumes roughly uncorrelated grains. Onset intervals are jittered by $\pm 30\%$ around the nominal period to
+avoid periodic ringing, and pitch jitter of $\delta$ cents scales per-grain playback rate by $2^{\delta/1200}$. Active grains are capped
+at 32 simultaneous voices; when all 32 slots are occupied, new grain onsets are skipped rather than truncating active
+grains.
+
+\subsection{Fixed-Point Position Stepping and SIMD Consistency}
+
+Grain read positions advance using 32.32 fixed-point arithmetic (32 integer bits and 32 fractional bits in a 64-bit
+integer representation), enabling fast, drift-free fractional increments across long playback spans. Rendering loops
+target scalar, SSE2, and AVX2 execution paths with fused multiply-add (FMA) contraction disabled so numerical
+rounding remains consistent across CPU instruction sets.
+Under pitch modulation (v1.9.0) the voice renders the cloud in chunks of at most 32 samples, each at the pitch ratio
+of its first sample: new grains start at that pitch on the copy that suits it, and running grains rescale their integer
+step once per chunk (eq.~\eqref{eq:grainstep}), before the inner loop, so the three paths stay bit-identical; at an unchanged
+ratio the step is untouched.
+
+\begin{callout}{Decoupled Scan vs.\ Per-Grain Playback}
+Source selection (\code{Position} + \code{Scan} + \code{Spray}) is sampled only at each grain's onset. Freezing \code{Scan} halts
+cursor movement across the source buffer while active grains continue playing to completion; negative \code{Scan}
+moves the selection cursor backward through the buffer without reversing audio inside individual grains.
+\end{callout}
+
+% ================================================================ 6
+\newpage
+\section{Sample Resampling and Interpolation}\label{sec:smp}
+
+Pitch-shifting sampled audio is formulated as a variable-rate discrete resampling problem (\code{SampleData.h},
+\code{SampleReader.h}).
+
+\subsection{Playback Rate Calculation}
+
+Given a MIDI \code{note}, mapped \code{root} key, prepared file sample rate $F_{\mathrm{file}}$, and host sample rate $\Fs$, the sample read
+increment per host sample is:
+\begin{equation}\label{eq:rate}
+  \mathrm{rate} = 2^{(\mathrm{note}-\mathrm{root})/12} \times \frac{F_{\mathrm{file}}}{\Fs}, \qquad \mathrm{position}_{n+1} = \mathrm{position}_n + \mathrm{rate}
+\end{equation}
+Each semitone scales the traversal rate by $2^{1/12}$, and transposing one octave upward doubles both pitch and traversal
+rate. Since v1.9.0 the increment is multiplied per sample by the pitch ratio $r[n]$ (eq.~\eqref{eq:oscstep}).
+
+\subsection{Catmull--Rom Cubic Interpolation}
+
+At fractional sample offset $t \in [0,1)$ across four neighboring stored samples $P_0, P_1, P_2, P_3$, NeonSynth performs
+Catmull--Rom cubic interpolation passing through $P_1$ and $P_2$ with $C^1$ continuity (continuous first derivative),
+evaluated via Horner's nested multiplication:
+\begin{equation}\label{eq:horner}
+  y(t) = c_0 + t\bigl(c_1 + t(c_2 + t \cdot c_3)\bigr)
+\end{equation}
+where $c_0 = P_1$, $c_1 = \tfrac12(P_2 - P_0)$, $c_2 = P_0 - \tfrac52 P_1 + 2P_2 - \tfrac12 P_3$ and
+$c_3 = \tfrac12(P_3 - P_0) + \tfrac32(P_1 - P_2)$ (with buffer padding ensuring boundary-safe reads).
+
+\subsection{Prefiltered Decimation Levels}
+
+To attenuate high-frequency content that would alias during upward transposition, \code{SampleData.h} precomputes
+three versions of each imported mono sample ($-1$\,dBFS normalized, 24-bit quantized, max 60\,s) at load time:
+\begin{enumerate}[leftmargin=1.6em, itemsep=0pt, topsep=2pt]
+  \item Original rate ($F_{\mathrm{file}}$)
+  \item Half rate ($F_{\mathrm{file}}/2$)
+  \item Quarter rate ($F_{\mathrm{file}}/4$, decimated again from the half-rate table)
+\end{enumerate}
+The half-rate and quarter-rate tables are band-limited prior to decimation using an $N = 95$-tap Blackman-windowed
+sinc low-pass FIR filter (cutoff $0.21$ of the input rate, unity gain at DC; $0 \le n \le N-1$), trading a slightly wider main lobe for strong sidelobe suppression:
+\begin{equation}\label{eq:blackman}
+  w[n] = 0.42 - 0.5\cos\!\left(\frac{2\pi n}{N-1}\right) + 0.08\cos\!\left(\frac{4\pi n}{N-1}\right)
+\end{equation}
+
+\begin{callout}{Transposition Bounds of the Three-Tier Table}
+At note-on, \code{SampleReader.h} selects the highest-rate table whose effective playback increment satisfies
+$\mathrm{rate} \le 2^{3/12} \approx 1.19$ (three semitones above unity). Because only three decimation tiers ($1\times$, $1/2\times$, $1/4\times$) are stored, extreme upward
+transposition---such as playing more than 27 semitones above \code{root} when $F_{\mathrm{file}} = \Fs$ (yielding $\mathrm{rate}_{\mathrm{orig}} > 4 \cdot 2^{3/12} \approx 4.76$)---causes even the
+quarter-rate table to exceed that bound. Since v1.9.0 the bound applies to $\mathrm{rate}\cdot r[n]$, and bend, LFO and vibrato can add up to 37 semitones
+($r \le 2^{37/12} \approx 8.5$; eq.~\eqref{eq:levels}). This three-level architecture is therefore a practical, memory-bounded
+anti-aliasing compromise rather than an arbitrary-ratio resampler.
+\end{callout}
+
+% ================================================================ 7
+\newpage
+\section{Modulation: LFO, Pitch Bend and Vibrato}\label{sec:mod}
+\setlength{\abovedisplayskip}{4pt plus 1pt minus 1pt}\setlength{\belowdisplayskip}{4pt plus 1pt minus 1pt}
+\setlength{\abovedisplayshortskip}{2pt plus 1pt}\setlength{\belowdisplayshortskip}{4pt plus 1pt minus 1pt}
+
+One LFO (\code{Lfo.h}) is rendered once per block into $\lfo[n] \in [-1,1]$; \code{Modulation.h} adds the block's pitch bend and
+mod wheel (at their MIDI sample positions) and builds per-sample buffers shared by every voice.
+
+\subsection{LFO Shapes, Phase and Click Suppression}
+
+On phase $p \in [0,1)$ (triangle pieces on $[0,\frac14)$, $[\frac14,\frac34)$, $[\frac34,1)$; $u_k$ uniform on $[-1,1)$ per cycle, PRNG reseeded by \code{reset()}):
+\begin{equation}\label{eq:shapes}
+  \lfo_{\sin} = \sin 2\pi p, \quad
+  \lfo_{\mathrm{tri}} = \{4p,\ 2-4p,\ 4p-4\}, \quad
+  \lfo_{\mathrm{sq}} = 1 - 2\,[p \ge \tfrac12], \quad
+  \lfo_{\mathrm{saw}} = 2p - 1, \quad \lfo_{\mathrm{rnd}} = u_k
+\end{equation}
+\begin{equation}\label{eq:lfophase}
+  p[n+1] = \frc\!\left(p[n] + \rho/\Fs\right), \quad
+  \rho = \clamp(\mathrm{rate},\, 0.02,\, 20) \ \text{or}\ \frac{\mathrm{bpm}}{60B}\ \text{(synced)}, \quad
+  p[n_0] = \frc(\mathrm{ppq}/B)
+\end{equation}
+with $B \in \{16, 8, 4, 2, 1, \frac12, \frac14, \frac13, \frac16\}$ beats (4 bars \ldots\ 1/16T); $p[n_0]$ at block start applies only when synced to a
+playing host. A rate limiter follows each shape; a shape change crossfades linearly over $K = \operatorname{round}(0.01\Fs)$ samples:
+\begin{equation}\label{eq:slew}
+  y[n] = y[n-1] + \clamp\!\left(x[n] - y[n-1],\, \pm\Delta\right), \quad \Delta = \frac{2}{0.002\,\Fs}; \qquad
+  \lfo[n] = y_{\mathrm{old}}[n] + \tfrac{k}{K}\bigl(y_{\mathrm{new}}[n] - y_{\mathrm{old}}[n]\bigr)
+\end{equation}
+so $|\Delta y| \le 1000/\Fs$ per sample: sine, triangle and saw ramps ($\le 126$\,s$^{-1}$ at 20\,Hz) pass bit for bit.
+
+\subsection{Pitch Ratio, Cutoff and Tremolo}
+
+Bend $b\in[-1,1]$ (14-bit, any channel) scaled by range $R \in 0..24$ st (default 2); wheel $w\in[0,1]$ (CC\,1, 14-bit with CC\,33; CC\,121
+resets); vibrato $c \in 0..100$ cents (default 30) at 5.5\,Hz; LFO depths $d_p \in \pm 12$ st, $d_c \in \pm 5$ oct, $A\in[0,1]$:
+\begin{equation}\label{eq:ratio}
+  r[n] = 2^{\left(b[n]\,R \,+\, w[n]\,\frac{c}{100}\sin 2\pi\psi[n] \,+\, d_p[n]\,\lfo[n]\right)/12}, \qquad \psi[n+1] = \frc\!\left(\psi[n] + 5.5/\Fs\right)
+\end{equation}
+\begin{equation}\label{eq:modcutoff}
+  f_c[n] = \clamp\!\left(f_{\mathrm{knob}} \cdot 2^{\,\mathrm{env} + \mathrm{vel} + d_c[n]\,\lfo[n]},\, 20\,\mathrm{Hz},\, 0.45\Fs\right), \qquad
+  g[n] = 1 - A[n]\,\frac{1 - \lfo[n]}{2} \;\in\; [1 - A,\, 1]
+\end{equation}
+where env $+$ vel is the exponent of eq.~\eqref{eq:cutoff}. Bend glides by a linear ramp over 5\,ms; $w$, $c$, $d_p$, $d_c$ and $A$ over 20\,ms.
+A cutoff buffer forces the gliding path (eq.~\eqref{eq:modcutoff} at every 16-sample update); $g$ scales the summed voices.
+
+\subsection{Per-Source Application}
+
+With the note's full-rate ratio $\varrho = 2^{(\mathrm{note}-\mathrm{root})/12} F_{\mathrm{file}}/\Fs$, copy level $\lambda \in \{0,1,2\}$, and $n_0$ a grain chunk's first sample:
+\begin{equation}\label{eq:oscstep}
+  \Delta\phi[n] = \min\!\left(r[n]\,\frac{f}{\Fs},\; 0.49\right) \ \text{(oscillators, Random)}, \qquad
+  \mathrm{inc}[n] = \frac{\varrho\, r[n]}{2^{\lambda}} \ \text{(sample reader)}
+\end{equation}
+\begin{equation}\label{eq:levels}
+  \lambda \leftarrow \lambda + 1 \ \text{ while } \varrho\, r/2^{\lambda} > 2^{3/12}, \qquad
+  \lambda \leftarrow \lambda - 1 \ \text{ while } \varrho\, r/2^{\lambda-1} \le 2^{2/12}
+\end{equation}
+\begin{equation}\label{eq:grainstep}
+  s_j' = \bigl\lfloor s_j \cdot r[n_0]/r_j \bigr\rfloor \quad (32.32;\ r_j\text{: the ratio at the grain's start; chunks of } m \le 32 \text{ samples})
+\end{equation}
+Copy changes crossfade linearly over 2\,ms; a grain step shrinks rather than read past its copy.
+
+\begin{callout}{Bit-Identity Condition}
+A buffer reaches the voices as a null pointer when it is neutral for the whole block: pitch $\Leftrightarrow r[n] = 1\ \forall n$;
+cutoff $\Leftrightarrow d_c[n]\,\lfo[n] = 0\ \forall n$; the tremolo is skipped while $A = 0$ and not gliding. With null buffers each voice
+runs v1.8.0's code path operation for operation, so default sessions render bit-identically to v1.8.0.
+\end{callout}
+
+\end{document}
