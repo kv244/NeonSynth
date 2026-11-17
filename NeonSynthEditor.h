@@ -6,6 +6,7 @@
 #include <JuceHeader.h>
 #include "NeonSynthProcessor.h"
 #include "Visualisers.h"
+#include "CrtLookAndFeel.h"
 #include "SequencerView.h"
 #include "HelpOverlay.h"
 #include "SampleView.h"
@@ -48,7 +49,15 @@ public:
         : AudioProcessorEditor (&p), processor (p), apvts (p.getAPVTS()), sampleView (p, p.getAPVTS()), shapeView (p, p.getAPVTS()), stepGrid (p)
     {
         addAndMakeVisible (content);
-        content.onPaint = [this] (juce::Graphics& g) { paintContent (g); };
+        content.setLookAndFeel (&crtLook);   // every control inherits the CRT look (v1.10.0)
+        content.setOpaque (true);            // the backdrop covers it, so nothing behind it is ever drawn
+        content.onPaint = [this] (juce::Graphics& g)
+        {
+            // The backdrop, panels and labels change only with the envelope tab and the source,
+            // so they are drawn once into an image and copied from it; the LFO band moves.
+            backdrop.paint (g, content.getLocalBounds(), [this] (juce::Graphics& ig) { paintContent (ig); });
+            paintCutoffBand (g);
+        };
 
         attackValue  = apvts.getRawParameterValue ("attack");
         decayValue   = apvts.getRawParameterValue ("decay");
@@ -226,6 +235,7 @@ public:
                 if (std::exchange (stripMode, mode) != stripMode && getWidth() > 0)
                 {
                     layoutKnobRow();
+                    backdrop.invalidate();   // the strip's caption and the knob names change
                     content.repaint();
                 }
             });
@@ -536,7 +546,20 @@ public:
         };
         helpOverlay.onClose = [this] { helpButton.setToggleState (false, juce::dontSendNotification); };
         content.addAndMakeVisible (helpButton);
-        content.addChildComponent (helpOverlay);   // added last, so it sits above every control
+
+        // SCANLINES (v1.10.0): a view setting saved with the session, like SCOPE / SPECTRUM.
+        scanlinesButton.setClickingTogglesState (true);
+        scanlinesButton.setTooltip ("The CRT's scanlines on or off");
+        scanlinesButton.setColour (juce::TextButton::buttonColourId,   juce::Colours::transparentBlack);
+        scanlinesButton.setColour (juce::TextButton::buttonOnColourId, neon::cyan.withAlpha (0.25f));
+        scanlinesButton.setColour (juce::TextButton::textColourOffId,  neon::cyan.withAlpha (0.55f));
+        scanlinesButton.setColour (juce::TextButton::textColourOnId,   neon::cyan);
+        scanlinesButton.setColour (juce::ComboBox::outlineColourId,    neon::cyan.withAlpha (0.6f));
+        scanlinesButton.onClick = [this] { setScanlines (scanlinesButton.getToggleState()); };
+        content.addAndMakeVisible (scanlinesButton);
+
+        content.addChildComponent (helpOverlay);   // above every control
+        content.addChildComponent (scanlines);     // added last, over everything; clicks pass through it
 
         // Component IDs: a control attached to a parameter carries that parameter's ID, and the
         // views and buttons carry the names below. EditorTests finds everything by these IDs
@@ -568,13 +591,15 @@ public:
             { &ampEnvButton, "ampEnvButton" }, { &filterEnvButton, "filterEnvButton" }, { &oscilloscope, "scopeView" }, { &spectrum, "spectrumView" },
             { &scopeButton, "scopeButton" }, { &spectrumButton, "spectrumButton" },
             { &loadButton, "loadButton" }, { &padButton, "padButton" },
-            { &voiceLeds, "voiceCount" }, { &helpButton, "helpButton" }, { &helpOverlay, "helpOverlay" } };
+            { &voiceLeds, "voiceCount" }, { &helpButton, "helpButton" }, { &helpOverlay, "helpOverlay" },
+            { &scanlinesButton, "scanlinesButton" }, { &scanlines, "scanlines" } };
         for (const auto& [component, id] : ids)
             component->setComponentID (id);
 
         // The chosen view and envelope tab are GUI state, saved with the plugin's state but not automatable.
         setView ((int) apvts.state.getProperty (viewPropertyId, 0));
         setEnvTab ((int) apvts.state.getProperty (envTabPropertyId, 0));
+        setScanlines ((bool) apvts.state.getProperty (neon::crt::scanlinesPropertyId, true));
 
         layout();
 
@@ -596,6 +621,7 @@ public:
     ~NeonSynthEditor() override
     {
         stopTimer();   // the Timer base outlives our members; make sure no tick can arrive mid-teardown
+        content.setLookAndFeel (nullptr);   // before crtLook goes, while every control still exists
     }
 
     void resized() override
@@ -714,6 +740,7 @@ private:
         voiceLeds.setBounds (880, 33, 288, 18);
         voiceCountReadout.setBounds (764, 33, 110, 18);
         helpButton.setBounds (1212, 26, 40, 32);
+        scanlinesButton.setBounds (620, 26, 128, 32);
 
         // SOURCE panel (16, 82, 400 x 548)
         sourceCombo.setBounds (32, 118, 176, 32);
@@ -810,6 +837,8 @@ private:
         stepGrid.setBounds (32, 692, 1216, 142);
 
         helpOverlay.setBounds (0, 0, baseWidth, baseHeight);
+        scanlines.setBounds (0, 0, baseWidth, baseHeight);
+        backdrop.invalidate();   // the fader's dB marks follow the fader
 
         // Every readout is 12 px or more at 100%.
         for (auto* label : { &attackReadout, &decayReadout, &sustainReadout, &releaseReadout,
@@ -983,8 +1012,6 @@ private:
         g.drawText ("pitch bend", 1044, m + modKnobRow2 + 30, 64, 14, juce::Justification::centred);
         g.drawText ("mod wheel",  1184, m + modKnobRow2 + 30, 64, 14, juce::Justification::centred);
 
-        paintCutoffBand (g);
-
         // Sequencer
         title ("SEQUENCER", neon::amber, 32, 657, 110);
         label ("TEMPO", neon::amber, 544, 656, 56, 20);
@@ -1089,6 +1116,14 @@ private:
             label->setAlpha (on ? 1.0f : 0.4f);
     }
 
+    /** SCANLINES: the overlay on or off, saved with the session (not a parameter). */
+    void setScanlines (bool on)
+    {
+        scanlines.setVisible (on);
+        scanlinesButton.setToggleState (on, juce::dontSendNotification);
+        apvts.state.setProperty (neon::crt::scanlinesPropertyId, on, nullptr);
+    }
+
     void setView (int view)
     {
         view = juce::jlimit (0, 1, view);
@@ -1118,7 +1153,10 @@ private:
         filterEnvButton.setToggleState (filter, juce::dontSendNotification);
         apvts.state.setProperty (envTabPropertyId, tab, nullptr);
         if (std::exchange (envTab, tab) != tab)
+        {
+            backdrop.invalidate();
             content.repaint (juce::Rectangle<int> (428, 356, 330, 274).expanded (4));   // the knob names and the panel's glow change colour
+        }
     }
 
     /** The Voices parameter: how many voices may play (16 if this build has no such parameter). */
@@ -1272,7 +1310,9 @@ private:
 
     NeonSynthProcessor&           processor;
     juce::AudioProcessorValueTreeState& apvts;
+    CrtLookAndFeel crtLook;   // declared before content, so it outlives everything that uses it
     Content content;   // declared before every control, so it outlives them
+    neon::crt::CachedPainter backdrop;   // paintContent(), drawn once per change
 
     std::atomic<float>* attackValue = nullptr;
     std::atomic<float>* decayValue = nullptr;
@@ -1407,6 +1447,8 @@ private:
     // Help
     juce::TextButton helpButton { "?" };
     HelpOverlay      helpOverlay { baseWidth, baseHeight };
+    juce::TextButton scanlinesButton { "SCANLINES" };
+    neon::crt::ScanlineOverlay scanlines;
 
     std::unique_ptr<juce::ParameterAttachment> sourceListener;
     std::unique_ptr<juce::ParameterAttachment> lfoSyncListener;

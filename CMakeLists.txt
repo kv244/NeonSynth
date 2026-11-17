@@ -61,10 +61,22 @@ juce_add_plugin(NeonSynth
 
 juce_generate_juce_header(NeonSynth)
 
+# The CRT theme's fonts (v1.10.0), compiled in so the window looks the same everywhere.
+# Both are under the SIL Open Font Licence; fonts/OFL-*.txt ship with the installer.
+juce_add_binary_data(NeonSynthFonts
+    HEADER_NAME NeonFonts.h
+    NAMESPACE NeonFonts
+    SOURCES
+        fonts/VT323-Regular.ttf
+        fonts/IBMPlexMono-Regular.ttf
+        fonts/IBMPlexMono-SemiBold.ttf)
+
 target_sources(NeonSynth
     PRIVATE
         NeonSynthVoice.h
         NeonSynthEditor.h
+        CrtTheme.h
+        CrtLookAndFeel.h
         NeonSynthProcessor.h
         NeonSynthProcessor.cpp
         MidiLogger.h
@@ -96,6 +108,7 @@ target_compile_definitions(NeonSynth
 
 target_link_libraries(NeonSynth
     PRIVATE
+        NeonSynthFonts
         juce::juce_core
         juce::juce_gui_basics
         juce::juce_audio_basics
@@ -171,6 +184,7 @@ if(NEONSYNTH_BUILD_TESTS)
             JUCE_MODAL_LOOPS_PERMITTED=1                          # EditorTests runs the message loop
             NEONSYNTH_TESTS_DIR="${CMAKE_CURRENT_LIST_DIR}/tests")   # ParameterLayoutTests' reference
         target_link_libraries(${program} PRIVATE
+            NeonSynthFonts
             juce::juce_audio_utils
             juce::juce_audio_processors
             juce::juce_dsp

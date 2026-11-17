@@ -5,6 +5,7 @@
 #pragma once
 #include <JuceHeader.h>
 #include "NeonSynthProcessor.h"
+#include "CrtTheme.h"
 #include <tuple>
 
 /*
@@ -34,10 +35,10 @@ namespace neon
     inline const juce::Colour text        { 0xffe6ebf5 };
     inline const juce::Colour muted       { 0xffa3adc2 };
 
+    /** The small-text font (v1.10.0: IBM Plex Mono, embedded; SemiBold for "bold"). */
     inline juce::Font font (float height, bool bold = false)
     {
-        auto options = juce::FontOptions (height);
-        return juce::Font (bold ? options.withStyle ("Bold") : options);
+        return crt::labelFont (height, bold);
     }
 
     inline void drawPanel (juce::Graphics& g, juce::Rectangle<float> r, juce::Colour edge)

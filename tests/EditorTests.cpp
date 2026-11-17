@@ -338,7 +338,8 @@ int main()
 
         for (const auto* id : { "stepGrid", "sampleView", "shapeView", "adsrView", "filterAdsrView", "scopeView", "spectrumView",
                                 "scopeButton", "spectrumButton", "ampEnvButton", "filterEnvButton",
-                                "loadButton", "padButton", "helpButton", "helpOverlay", "meter", "lfoView", "bendBar", "wheelBar" })
+                                "loadButton", "padButton", "helpButton", "helpOverlay", "meter", "lfoView", "bendBar", "wheelBar",
+                                "scanlinesButton", "scanlines" })
             check (find (ed, id) != nullptr, juce::String ("a component with ID ") + id);
     }
 
@@ -958,6 +959,30 @@ int main()
     }
 
     //==========================================================================
+    std::printf ("\nSCANLINES (v1.10.0)\n");
+    {
+        auto* overlay = find (ed, "scanlines");
+        auto* button = dynamic_cast<juce::Button*> (find (ed, "scanlinesButton"));
+        auto* knob = find (ed, "attack");
+        if (overlay != nullptr && button != nullptr && knob != nullptr)
+        {
+            check (showing (*overlay, ed) && button->getToggleState(), "the scanlines are on by default");
+            auto* content = overlay->getParentComponent();
+            const auto centre = content->getLocalPoint (knob, knob->getLocalBounds().getCentre());
+            check (content->getComponentAt (centre) == knob, "a click on a knob reaches the knob through the scanlines");
+            button->triggerClick();
+            pump();
+            check (! showing (*overlay, ed) && ! button->getToggleState()
+                       && ! (bool) processor.getAPVTS().state.getProperty ("scanlines", true),
+                   "SCANLINES turns them off, and the choice is kept with the session");
+            button->triggerClick();
+            pump();
+            check (showing (*overlay, ed), "and on again");
+        }
+        else check (false, "scanlines overlay and SCANLINES button found");
+    }
+
+    //==========================================================================
     std::printf ("\nEvery view paints, at every size, for every source\n");
     {
         auto* spectrumButton = dynamic_cast<juce::Button*> (find (ed, "spectrumButton"));
@@ -1033,9 +1058,11 @@ int main()
     }
 
     //==========================================================================
-    std::printf ("\nThe envelope tab is kept with the plugin's state\n");
+    std::printf ("\nThe envelope tab and SCANLINES are kept with the plugin's state\n");
     {
         showEnvTab (ed, 1);
+        if (auto* scanlinesButton = dynamic_cast<juce::Button*> (find (ed, "scanlinesButton")))
+            scanlinesButton->triggerClick();   // off
         processor.editorBeingDeleted (editor.get());   // what a host's wrapper does before deleting the editor
         editor.reset();
         editor.reset (processor.createEditorAndMakeActive());
@@ -1045,6 +1072,8 @@ int main()
                    && allShowing (*editor, filterEnvControls, std::size (filterEnvControls), true)
                    && allShowing (*editor, ampEnvControls, std::size (ampEnvControls), false),
                "a reopened editor shows the FILTER tab it was closed on");
+        auto* overlay = editor != nullptr ? find (*editor, "scanlines") : nullptr;
+        check (overlay != nullptr && ! overlay->isVisible(), "and with the scanlines off, as it was closed");
         if (editor != nullptr)
             showEnvTab (*editor, 0);
     }
