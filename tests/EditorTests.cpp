@@ -367,7 +367,8 @@ int main()
             {
                 for (auto* child : c.getChildren())
                 {
-                    if (child->getComponentID().isNotEmpty() && child->getComponentID() != "helpOverlay" && showing (*child, ed))
+                    if (child->getComponentID().isNotEmpty() && child->getComponentID() != "helpOverlay"
+                        && child->getComponentID() != "scanlines" && showing (*child, ed))
                         shown.add (child);
                     collect (*child);
                 }
@@ -1063,6 +1064,7 @@ int main()
         showEnvTab (ed, 1);
         if (auto* scanlinesButton = dynamic_cast<juce::Button*> (find (ed, "scanlinesButton")))
             scanlinesButton->triggerClick();   // off
+        pump();   // a click arrives as a message
         processor.editorBeingDeleted (editor.get());   // what a host's wrapper does before deleting the editor
         editor.reset();
         editor.reset (processor.createEditorAndMakeActive());
