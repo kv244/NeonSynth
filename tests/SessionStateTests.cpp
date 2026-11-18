@@ -20,7 +20,7 @@
                        cmake --build build --target SessionStateTests
     Run the resulting SessionStateTests executable; it exits non-zero on failure.
 */
-#include "NeonSynthProcessor.h"
+#include "plugin/NeonSynthProcessor.h"
 #include <cmath>
 #include <cstdio>
 #include <cstring>

@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Licensed under the GNU Affero General Public License v3; see LICENSE.
 
-#include "NeonSynthProcessor.h"
-#include "NeonSynthEditor.h"
+#include "plugin/NeonSynthProcessor.h"
+#include "gui/NeonSynthEditor.h"
 
 namespace
 {

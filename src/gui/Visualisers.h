@@ -4,8 +4,8 @@
 
 #pragma once
 #include <JuceHeader.h>
-#include "NeonSynthProcessor.h"
-#include "CrtTheme.h"
+#include "plugin/NeonSynthProcessor.h"
+#include "gui/CrtTheme.h"
 #include <tuple>
 #include <deque>
 

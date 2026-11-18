@@ -16,7 +16,7 @@
                        cmake --build build --target ModulationTests
     Run the resulting ModulationTests executable; it exits non-zero on failure.
 */
-#include "../Modulation.h"
+#include "dsp/Modulation.h"
 #include <cstdio>
 #include <cstring>
 #include <cmath>

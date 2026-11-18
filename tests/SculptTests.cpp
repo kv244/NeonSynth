@@ -12,7 +12,7 @@
     Run the resulting SculptTests executable; it exits non-zero on failure.
 */
 #include <juce_audio_basics/juce_audio_basics.h>
-#include "../Sculpt.h"
+#include "dsp/Sculpt.h"
 #include <cstdio>
 #include <cmath>
 #include <vector>

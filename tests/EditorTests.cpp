@@ -40,9 +40,9 @@
     Run the resulting EditorTests executable; it exits non-zero on failure.
     On Linux it needs an X display (in CI: xvfb-run).
 */
-#include "NeonSynthProcessor.h"
-#include "Visualisers.h"
-#include "NeonSynthEditor.h"
+#include "plugin/NeonSynthProcessor.h"
+#include "gui/Visualisers.h"
+#include "gui/NeonSynthEditor.h"
 #include <array>
 #include <cmath>
 #include <cstdio>

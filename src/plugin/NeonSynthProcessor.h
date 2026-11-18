@@ -4,11 +4,11 @@
 
 #pragma once
 #include <JuceHeader.h>
-#include "NeonSynthVoice.h"
-#include "MidiLogger.h"
-#include "StepSequencer.h"
-#include "SampleSlot.h"
-#include "SampleLoader.h"
+#include "plugin/NeonSynthVoice.h"
+#include "plugin/MidiLogger.h"
+#include "sequencer/StepSequencer.h"
+#include "state/SampleSlot.h"
+#include "state/SampleLoader.h"
 
 class NeonSynthProcessor : public juce::AudioProcessor
 {

@@ -366,32 +366,43 @@ The source files are listed in [Project Structure](#project-structure).
 
 ## Project Structure
 
+The plugin's sources are grouped by job under `src/` (v1.11.0); includes name the folder, as in `#include "dsp/Oscillator.h"`:
+
+| Folder | What lives there |
+|---|---|
+| `src/dsp` | Signal processing: oscillators, CHOP and the sculpt stages, sample playback, grains, the filter, the envelope, the LFO and modulation |
+| `src/sequencer` | The step sequencer engine |
+| `src/state` | Samples: loading, the prepared sample and its hand-off to the audio thread |
+| `src/gui` | The editor, the CRT theme and look-and-feel, and every view |
+| `src/plugin` | The processor (parameters, sessions, MIDI routing), the voice and the MIDI log |
+
 | File | Purpose |
 |---|---|
-| `NeonSynthVoice.h` | Voice and sound classes — sound source, filter, envelope, pan |
-| `Oscillator.h` | The band-limited oscillators (sine, square, triangle, sawtooth) with 4-point band-limited steps and corners, the Random source's step wave, and CHOP |
-| `Sculpt.h` | Noise and Fold: white-noise crossfade and a 2× oversampled sine wavefolder |
-| `ShapeView.h` | The SHAPE strip's drawing of one cycle, with CHOP step editing |
-| `SampleData.h` | A prepared sample: mono, normalised, 24-bit grid, with 1/2- and 1/4-rate copies |
-| `SampleSlot.h` | Lock-free hand-off of the current sample to the audio thread; frees replaced samples only when safe |
-| `SampleLoader.h` | Loads WAV, AIFF and FLAC files and embedded FLAC; renders the built-in pad |
-| `SampleReader.h` | Plays a note from the sample: pitch, cubic interpolation, band-limited copies, crossfaded loops |
-| `GrainCloud.h` | The granular source: grain scheduler, 32-grain pool, Hann window, scan, spray and jitter |
-| `SampleView.h` | The sample's waveform in the editor, with draggable markers and live playheads |
-| `NeonSynthProcessor.h/cpp` | `AudioProcessor` — parameter management, MIDI, state |
-| `NeonSynthEditor.h` | The editor — layout, controls, resizing, the 30 Hz timer that feeds the visualisers, the SCANLINES switch |
-| `CrtTheme.h` | The retro CRT look's shared pieces (v1.10.0): palette, the embedded VT323 and IBM Plex Mono fonts, glow text, `CachedPainter` (draw once at the screen's pixel scale, then copy) and the scanline overlay |
-| `CrtFrame.h` | The CRT frame: bezel, tube glass, panels and their titles, the GAIN fader's groove and dB marks |
-| `CrtLookAndFeel.h` | How every stock control is drawn in the CRT look: knobs, sliders, buttons, combo boxes and pop-up menus |
+| `src/dsp/Oscillator.h` | The band-limited oscillators (sine, square, triangle, sawtooth) with 4-point band-limited steps and corners, the Random source's step wave, and CHOP |
+| `src/dsp/Sculpt.h` | Noise and Fold: white-noise crossfade and a 2× oversampled sine wavefolder |
+| `src/dsp/SampleReader.h` | Plays a note from the sample: pitch, cubic interpolation, band-limited copies, crossfaded loops |
+| `src/dsp/GrainCloud.h` | The granular source: grain scheduler, 32-grain pool, Hann window, scan, spray and jitter |
+| `src/dsp/CytomicSvf.h` | The state-variable filter (low-pass, high-pass, band-pass, notch) with drive |
+| `src/dsp/Lfo.h` / `src/dsp/Modulation.h` | The LFO and the shared per-block modulation buffers (pitch, cutoff, tremolo), pitch bend and the mod wheel |
+| `src/dsp/VoiceEnvelope.h` | The voice's ADSR envelope (slewed sustain, release rate fixed at note-off) |
+| `src/sequencer/StepSequencer.h` | Step sequencer engine — timing, swing, gate, note-off queue, lock-free pattern |
+| `src/state/SampleData.h` | A prepared sample: mono, normalised, 24-bit grid, with 1/2- and 1/4-rate copies |
+| `src/state/SampleSlot.h` | Lock-free hand-off of the current sample to the audio thread; frees replaced samples only when safe |
+| `src/state/SampleLoader.h` | Loads WAV, AIFF and FLAC files and embedded FLAC; renders the built-in pad |
+| `src/gui/ShapeView.h` | The SHAPE strip's drawing of one cycle, with CHOP step editing |
+| `src/gui/SampleView.h` | The sample's waveform in the editor, with draggable markers and live playheads |
+| `src/gui/NeonSynthEditor.h` | The editor — layout, controls, resizing, the 30 Hz timer that feeds the visualisers, the SCANLINES switch |
+| `src/gui/CrtTheme.h` | The retro CRT look's shared pieces (v1.10.0): palette, the embedded VT323 and IBM Plex Mono fonts, glow text, `CachedPainter` (draw once at the screen's pixel scale, then copy) and the scanline overlay |
+| `src/gui/CrtFrame.h` | The CRT frame: bezel, tube glass, panels and their titles, the GAIN fader's groove and dB marks |
+| `src/gui/CrtLookAndFeel.h` | How every stock control is drawn in the CRT look: knobs, sliders, buttons, combo boxes and pop-up menus |
+| `src/gui/LfoView.h` | The LFO's drawing in the MODULATION panel |
+| `src/gui/SequencerView.h` | The 16-step grid in the editor (editing and playhead) |
+| `src/gui/HelpOverlay.h` | Quick-help page opened by the editor's ? button |
+| `src/gui/Visualisers.h` | Oscilloscope and spectrum (with afterglow), ADSR graph, voice lights, the block L/R meter and the controller bars (message thread only) |
+| `src/plugin/NeonSynthProcessor.h`, `.cpp` | `AudioProcessor` — parameter management, MIDI, state |
+| `src/plugin/NeonSynthVoice.h` | Voice and sound classes — sound source, filter, envelope, pan |
+| `src/plugin/MidiLogger.h` | Real-time-safe MIDI logging (lock-free FIFO + background writer thread) |
 | `fonts/` | VT323 and IBM Plex Mono (SIL Open Font Licence, `OFL-*.txt`), compiled into the plugin as binary data |
-| `CytomicSvf.h` | The state-variable filter (low-pass, high-pass, band-pass, notch) with drive |
-| `Lfo.h` / `Modulation.h` | The LFO and the shared per-block modulation buffers (pitch, cutoff, tremolo), pitch bend and the mod wheel |
-| `LfoView.h` | The LFO's drawing in the MODULATION panel |
-| `MidiLogger.h` | Real-time-safe MIDI logging (lock-free FIFO + background writer thread) |
-| `StepSequencer.h` | Step sequencer engine — timing, swing, gate, note-off queue, lock-free pattern |
-| `SequencerView.h` | The 16-step grid in the editor (editing and playhead) |
-| `HelpOverlay.h` | Quick-help page opened by the editor's ? button |
-| `VoiceEnvelope.h` | The voice's ADSR envelope (slewed sustain, release rate fixed at note-off) |
 | `tests/StepSequencerTests.cpp` | Unit tests for the sequencer engine (`-DNEONSYNTH_BUILD_TESTS=ON`) |
 | `tests/VoiceEnvelopeTests.cpp` | Unit tests for the voice envelope |
 | `tests/OscillatorTests.cpp` | Unit tests for the oscillators, including Random |
@@ -409,7 +420,6 @@ The source files are listed in [Project Structure](#project-structure).
 | `tests/EditorTests.cpp` | Offscreen editor tests (gestures, painting, the CRT look's contrast and caches) |
 | `tests/complexity_report.py` | Lines of code and the cyclomatic complexity of every plugin function, as Markdown (`pip install lizard`); CI runs it on every push and pull request |
 | `tests/compare_versions.py` | Renders a set of sessions through two VST3 builds and requires identical audio (CI compares against the v1.6.0 release) |
-| `Visualisers.h` | Oscilloscope and spectrum (with afterglow), ADSR graph, voice lights, the block L/R meter and the controller bars (message thread only) |
 | `CMakeLists.txt` | Build config — Standalone + VST3, JUCE path, the test programs |
 | `icon.png` | Application / plugin icon |
 | `test_midi.py` | Automated Python test suite |

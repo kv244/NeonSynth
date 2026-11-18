@@ -9,3 +9,4 @@ docs/*.pdf
 # The demo piece lives on the 'demo' release, one copy (see docs/DEVELOPMENT.md)
 docs/demo/*.wav
 build-san/
+build-move/

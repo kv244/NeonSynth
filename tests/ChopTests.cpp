@@ -12,7 +12,7 @@
     Run the resulting ChopTests executable; it exits non-zero on failure.
 */
 #include <juce_audio_basics/juce_audio_basics.h>
-#include "../Oscillator.h"
+#include "dsp/Oscillator.h"
 #include <cstdio>
 #include <cmath>
 #include <vector>
