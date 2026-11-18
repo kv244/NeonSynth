@@ -3,7 +3,7 @@
 // Licensed under the GNU Affero General Public License v3; see LICENSE.
 
 #pragma once
-#include "SampleData.h"
+#include "state/SampleData.h"
 
 /**
     @file SampleSlot.h

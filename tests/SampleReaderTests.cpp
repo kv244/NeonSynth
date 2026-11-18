@@ -13,8 +13,8 @@
     Run the resulting SampleReaderTests executable; it exits non-zero on failure.
 */
 #include <juce_audio_basics/juce_audio_basics.h>
-#include "../SampleData.h"
-#include "../SampleReader.h"
+#include "state/SampleData.h"
+#include "dsp/SampleReader.h"
 #include <cstdio>
 #include <cmath>
 #include <random>

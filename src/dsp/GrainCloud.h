@@ -3,8 +3,8 @@
 // Licensed under the GNU Affero General Public License v3; see LICENSE.
 
 #pragma once
-#include "SampleData.h"
-#include "SampleReader.h"
+#include "state/SampleData.h"
+#include "dsp/SampleReader.h"
 #include <array>
 #include <cstring>
 

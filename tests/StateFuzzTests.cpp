@@ -28,7 +28,7 @@
                        cmake --build build --target StateFuzzTests
     Run the resulting StateFuzzTests executable; it exits non-zero on failure.
 */
-#include "NeonSynthProcessor.h"
+#include "plugin/NeonSynthProcessor.h"
 #include <cmath>
 #include <cstdio>
 #include <functional>

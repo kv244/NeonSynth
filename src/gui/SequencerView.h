@@ -4,8 +4,8 @@
 
 #pragma once
 #include <JuceHeader.h>
-#include "NeonSynthProcessor.h"
-#include "Visualisers.h"
+#include "plugin/NeonSynthProcessor.h"
+#include "gui/Visualisers.h"
 
 /**
     @file SequencerView.h

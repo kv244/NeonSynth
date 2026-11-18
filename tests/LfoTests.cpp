@@ -13,7 +13,7 @@
                        cmake --build build --target LfoTests
     Run the resulting LfoTests executable; it exits non-zero on failure.
 */
-#include "../Lfo.h"
+#include "dsp/Lfo.h"
 #include <cstdio>
 #include <cstring>
 #include <cmath>

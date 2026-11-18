@@ -13,7 +13,7 @@
     Run the resulting StepSequencerTests executable; it exits non-zero on failure.
 */
 #include <juce_audio_basics/juce_audio_basics.h>
-#include "../StepSequencer.h"
+#include "sequencer/StepSequencer.h"
 #include <cstdio>
 #include <vector>
 

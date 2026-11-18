@@ -4,9 +4,9 @@
 
 #pragma once
 #include <JuceHeader.h>
-#include "NeonSynthProcessor.h"
-#include "Sculpt.h"
-#include "Visualisers.h"
+#include "plugin/NeonSynthProcessor.h"
+#include "dsp/Sculpt.h"
+#include "gui/Visualisers.h"
 
 /**
     One cycle of the Oscillator or Random wave as it leaves the Fold stage
