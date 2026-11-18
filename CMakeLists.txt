@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(NeonSynth VERSION 1.10.0 LANGUAGES C CXX)
+project(NeonSynth VERSION 1.10.1 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -40,8 +40,38 @@ if(NEONSYNTH_WARNINGS_AS_ERRORS)
     endif()
 endif()
 
+# Sanitizer build (off by default): AddressSanitizer and UndefinedBehaviorSanitizer for the plugin
+# and every test program, so a memory error or undefined behaviour fails the tests instead of going
+# unnoticed. UB stops the program (-fno-sanitize-recover) rather than printing a warning ctest would
+# ignore. GCC and Clang only (MSVC's /fsanitize=address has no UBSan). Configure it with
+# CMAKE_BUILD_TYPE Debug or RelWithDebInfo: Release adds -flto (juce_recommended_lto_flags), which
+# makes the reports harder to read and the build much slower. The JUCE code compiled into each target
+# is instrumented too, which is what ASan needs to see the buffers JUCE hands to NeonSynth's code.
+# Leave NEONSYNTH_WARNINGS_AS_ERRORS off here: GCC 13's shift instrumentation makes it report
+# -Wsign-conversion in shifts that are clean in a normal build (CI checks warnings there).
+option(NEONSYNTH_SANITIZE "Build NeonSynth and its tests with AddressSanitizer and UndefinedBehaviorSanitizer (GCC/Clang)" OFF)
+add_library(neonsynth_sanitize INTERFACE)
+if(NEONSYNTH_SANITIZE)
+    if(MSVC)
+        message(FATAL_ERROR "NEONSYNTH_SANITIZE needs GCC or Clang")
+    endif()
+    if(CMAKE_BUILD_TYPE STREQUAL "Release")
+        message(WARNING "NEONSYNTH_SANITIZE with a Release build also uses LTO; Debug or RelWithDebInfo is recommended")
+    endif()
+    # Two kinds of check stay recoverable, only so that tests/sanitizer-suppressions.txt can
+    # silence them in two JUCE files (UBSan ignores suppressions for unrecoverable checks); the
+    # tests run with halt_on_error=1, so they still stop a test anywhere else.
+    set(neonsynth_sanitize_flags
+        -fsanitize=address,undefined
+        -fno-sanitize-recover=undefined
+        -fsanitize-recover=nonnull-attribute,shift-base
+        -fno-omit-frame-pointer)
+    target_compile_options(neonsynth_sanitize INTERFACE ${neonsynth_sanitize_flags})
+    target_link_options(neonsynth_sanitize INTERFACE ${neonsynth_sanitize_flags})
+endif()
+
 juce_add_plugin(NeonSynth
-    VERSION                     1.10.0
+    VERSION                     1.10.1
     COMPANY_NAME                "AudioDSP"
     COMPANY_WEBSITE             "https://github.com/kv244/Synth"   # until a company site is decided (A12)
     BUNDLE_ID                   "com.audiodsp.neonsynth"
@@ -124,6 +154,7 @@ target_link_libraries(NeonSynth
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
         neonsynth_warning_tweaks
+        neonsynth_sanitize
 )
 
 target_include_directories(NeonSynth
@@ -159,7 +190,8 @@ if(NEONSYNTH_BUILD_TESTS)
             juce::juce_audio_formats
             juce::juce_recommended_config_flags
             juce::juce_recommended_warning_flags
-            neonsynth_warning_tweaks)
+            neonsynth_warning_tweaks
+            neonsynth_sanitize)
         add_dependencies(unit_tests ${test})
         add_test(NAME ${test} COMMAND ${test})
     endforeach()
@@ -172,9 +204,10 @@ if(NEONSYNTH_BUILD_TESTS)
     #   RealtimeSafetyTests   fails if processBlock allocates (also run by ctest)
     #   ParameterLayoutTests  fails if a parameter changed other than by being appended (ctest)
     #   SessionStateTests     saving and restoring the sample with a session (ctest)
+    #   StateFuzzTests        damaged and hostile sessions must not crash or break the processor (ctest)
     #   EditorTests           drives the editor offscreen with mouse events and paints it (ctest;
     #                         on Linux it needs an X display, e.g. xvfb-run)
-    foreach(program RenderBenchmark RealtimeSafetyTests ParameterLayoutTests SessionStateTests EditorTests PitchTests MidiModulationTests)
+    foreach(program RenderBenchmark RealtimeSafetyTests ParameterLayoutTests SessionStateTests StateFuzzTests EditorTests PitchTests MidiModulationTests)
         juce_add_console_app(${program} PRODUCT_NAME "${program}")
         juce_generate_juce_header(${program})
         target_sources(${program} PRIVATE tests/${program}.cpp NeonSynthProcessor.cpp)
@@ -192,11 +225,23 @@ if(NEONSYNTH_BUILD_TESTS)
             juce::juce_recommended_config_flags
             juce::juce_recommended_lto_flags
             juce::juce_recommended_warning_flags
-            neonsynth_warning_tweaks)
+            neonsynth_warning_tweaks
+            neonsynth_sanitize)
     endforeach()
 
-    foreach(program RealtimeSafetyTests ParameterLayoutTests SessionStateTests EditorTests PitchTests MidiModulationTests)
+    foreach(program RealtimeSafetyTests ParameterLayoutTests SessionStateTests StateFuzzTests EditorTests PitchTests MidiModulationTests)
         add_dependencies(unit_tests ${program})
         add_test(NAME ${program} COMMAND ${program})
     endforeach()
+
+    if(NEONSYNTH_SANITIZE)
+        # The sanitizers' run-time options, for every test ctest runs (see NEONSYNTH_SANITIZE).
+        # LeakSanitizer stays on (the default): no test leaks today, JUCE's singletons and the
+        # GUI tests' system libraries included. Use-after-return and initialisation-order checks
+        # are added, and UBSan halts on the checks left recoverable, except where the
+        # suppressions file says otherwise.
+        get_property(neonsynth_all_tests DIRECTORY PROPERTY TESTS)
+        set_tests_properties(${neonsynth_all_tests} PROPERTIES ENVIRONMENT
+            "ASAN_OPTIONS=strict_string_checks=1:detect_stack_use_after_return=1:check_initialization_order=1;UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1:suppressions=${CMAKE_CURRENT_LIST_DIR}/tests/sanitizer-suppressions.txt")
+    endif()
 endif()

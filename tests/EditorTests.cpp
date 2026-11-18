@@ -90,7 +90,11 @@ namespace
     {
         std::map<int, int> begins, ends;
         void audioProcessorParameterChanged (juce::AudioProcessor*, int, float) override {}
-        void audioProcessorChanged (juce::AudioProcessor*, const ChangeDetails&) override {}
+        int changesOnMessageThread = 0, changesElsewhere = 0;
+        void audioProcessorChanged (juce::AudioProcessor*, const ChangeDetails&) override
+        {
+            ++(juce::MessageManager::getInstance()->isThisTheMessageThread() ? changesOnMessageThread : changesElsewhere);
+        }
         void audioProcessorParameterChangeGestureBegin (juce::AudioProcessor*, int index) override { ++begins[index]; }
         void audioProcessorParameterChangeGestureEnd   (juce::AudioProcessor*, int index) override { ++ends[index]; }
         void clear() { begins.clear(); ends.clear(); }
@@ -765,6 +769,7 @@ int main()
         check (processor.getSampleStatus().name == "Default pad", "and the built-in pad is what plays");
 
         // The same for two loads in a row: the status clears when the second one is in.
+        gestures.changesOnMessageThread = gestures.changesElsewhere = 0;
         processor.loadSampleFileAsync (wav);
         processor.loadSampleFileAsync (wav);
         check (processor.getSampleStatus().loading, "while a file loads in the background the status says so");
@@ -772,6 +777,10 @@ int main()
             pump (50);
         check (! processor.getSampleStatus().loading && processor.getSampleStatus().name == wav.getFileName(),
                "two loads in a row end with the file loaded and the status clear");
+        pump (100);
+        check (gestures.changesOnMessageThread >= 1 && gestures.changesElsewhere == 0,
+               "the host hears of a background load on the message thread, never the loader's ("
+                   + juce::String (gestures.changesOnMessageThread) + " / " + juce::String (gestures.changesElsewhere) + ")");
 
         processor.useDefaultSample();
         wav.deleteFile();

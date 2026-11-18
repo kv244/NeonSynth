@@ -84,7 +84,16 @@ CI also configures with `-DNEONSYNTH_WARNINGS_AS_ERRORS=ON`, so a compiler warni
 | `RealtimeSafetyTests` | Hooks `operator new`/`delete` and fails if `processBlock` allocates or frees while rendering chords, the sequencer, every waveform and every source, the LFO on all three depths, pitch bend, the mod wheel and the Voices limit moving, as another thread keeps replacing the sample |
 | `ParameterLayoutTests` | Every parameter's ID, place, type, range, skew, default and choices against `tests/parameter-layout.txt`: parameters may only be appended (hosts store sessions by ID and normalised value). After appending one, update the reference with `ParameterLayoutTests --write` |
 | `EditorTests` | Opens the editor offscreen and drives it with mouse events: every parameter has a control, each source shows its own controls with nothing overlapping, knobs, boxes and buttons write their parameter in one gesture and follow it, the step grid, the CHOP strip, the sample markers, the four envelope points, the view and help buttons (Esc closes help from any control), a replaced sample being freed once its notes end, and a background load that is overtaken; the SCANLINES switch (clicks pass through, the choice is saved); the CRT look's text contrast (4.5:1 on the glass) and that its backdrop, graticules and help page are drawn once and reused; then paints every view at 75%, 100% and 150% for every source (set `NEONSYNTH_SNAPSHOT_DIR` to keep the pictures). Finds controls only by component ID, so it carries over to a new layout. On Linux it needs an X display (`xvfb-run`) |
+| `SessionStateTests` | Saving and loading sessions: round trips, the embedded sample, missing and changed files, and sessions saved by v1.2, v1.4, v1.5 and v1.10 (`tests/fixtures/state`): each loads with every newer parameter at its neutral default, plays, and renders the same once saved again |
+| `StateFuzzTests` | About 1 600 damaged and hostile sessions (truncated or garbled XML, bad embedded-sample text, parameter values that are not numbers, deep nesting, huge patterns, long paths), seeded so a failure repeats; after each the plugin must still render finite audio, and the cases that crashed or hung v1.10.0 stay in the list |
 | `RenderBenchmark` | Times `processBlock` directly (no host) for idle, one note, 16 voices, 16 voices on each of the Sample, Random and Granular sources, 16 sculpted voices (CHOP, Noise and Fold all on), the LFO on the cutoff, the mod wheel's vibrato and a moving bend on the granular source (all on 16 voices), and a dense sequencer + chords load |
+
+### Sanitizers
+
+`-DNEONSYNTH_SANITIZE=ON` (GCC or Clang, a Debug or RelWithDebInfo build, without warnings as
+errors) builds the plugin and every test with AddressSanitizer and UndefinedBehaviorSanitizer;
+`ctest` then runs each test with leak detection on and stops at the first report. CI runs this
+as the `sanitizers` job on Ubuntu.
 
 ### Performance
 
@@ -308,6 +317,53 @@ audio_bright = plugin.process(msgs, 2.5, SR, reset=True)
 
 ---
 
+## Architecture
+
+### Signal path
+
+![The signal path. Keyboard MIDI and the step sequencer go through MIDI routing to voice allocation (up to 16 voices, set by the VOICES limit). Inside each voice, Oscillator and Random pass through CHOP, Noise and Fold; all four sources then go through velocity times the amp envelope, drive and the filter (bypassed together by the filter's ON switch), and the pitch-based pan. The voices are summed, then tremolo, output gain and the soft clipper lead to the audio output and the displays. A shared modulation stage, worked out once per block, sends the pitch ratio to all four sources, the LFO cutoff to the filter and the tremolo to the mix.](images/fig10-signal-path.png)
+
+Figure 10 of the [user manual](NeonSynth-User-Manual.md#signal-path) (source: `docs/images/fig10-signal-path.svg`). Each box is a stage in the order the code runs it. Solid arrows carry audio, dashed ones the shared modulation.
+
+How to read it, top to bottom, with the code that does each part:
+
+| Stage | What happens | Code |
+|---|---|---|
+| Notes in | Keyboard MIDI, filtered by the sequencer mode, is merged with the sequencer's own notes into one MIDI buffer for the block | `NeonSynthProcessor::buildPlayMidi`, `StepSequencer.h` |
+| Modulation | The LFO, pitch bend and the mod wheel are worked out once per block for all voices: a pitch ratio, a cutoff offset and a tremolo | `Modulation.h`, `Lfo.h` |
+| Voices | Up to 16 voices (the VOICES limit). Each runs its source; Oscillator and Random then pass through CHOP, Noise and Fold. Then velocity times the amp envelope, drive and the filter (one stage, bypassed together by the filter's ON switch), and a pan set by pitch | `NeonSynthVoice.h`, `Oscillator.h`, `Sculpt.h`, `SampleReader.h`, `GrainCloud.h`, `VoiceEnvelope.h`, `CytomicSvf.h` |
+| Output | The voices are summed, then tremolo, output gain and the soft clipper (under −1 dBFS, untouched below −6 dBFS) | `NeonSynthProcessor::processBlock`, `softClip` |
+| Displays | The finished block is copied to the scope FIFO and each voice's state to the voice views | `pushScope`, `publishVoiceViews` |
+
+### Threads
+
+NeonSynth runs on three kinds of thread. The rule is that the audio thread never waits for the others.
+
+| Thread | What runs there | Must not |
+|---|---|---|
+| Audio thread (the host's) | `processBlock`: reading parameters, the sequencer, the modulation, the voices, the soft clipper, filling the scope FIFO and the voice views, queuing MIDI for the log | Allocate, free, lock, throw, do I/O |
+| Message thread | The editor and its views; the 30 Hz timer that drains the scope, reads the voice and modulation views and frees replaced samples; step edits in the sequencer grid (`setSequencerStep`); starting a sample load; telling the host the state changed (`updateHostDisplay`) | Block for long: it is the host's GUI thread too |
+| Background threads | The sample loader (a one-thread `juce::ThreadPool`, "NeonSynth sample loader") reads and prepares a file; the MIDI log writer (a `juce::Thread`, "NeonSynth MIDI log", only when `NEONSYNTH_MIDILOG` is set) formats and writes the log | Touch the editor or call the host |
+
+The host calls `getStateInformation` and `setStateInformation` on a thread of its choosing, usually the message thread. They use `sampleInfoLock`, which the audio thread never takes.
+
+How data crosses between them:
+
+| Data | From → to | How |
+|---|---|---|
+| Parameters | Controls and host automation → audio thread | JUCE's parameter objects (atomic values), read once per block |
+| The sample | Loader or message thread → audio thread | `SampleSlot.h`: an atomic pointer swapped by `publish()` and read once per block by `beginBlock()`. A replaced sample is retired and freed by `collectGarbage()` (on the next load, when the audio stops, or from the editor's timer) only after the audio thread has started a new block and no voice still plays it |
+| Scope audio | Audio thread → editor timer | A lock-free `juce::AbstractFifo` of stereo frames (`pushScope` / `drainScope`) |
+| MIDI log | Audio thread → log writer | A lock-free `juce::AbstractFifo` of fixed-size records in `MidiLogger.h`; when it is full, events are counted as dropped instead of waiting |
+| Sequencer pattern | Message thread ↔ audio thread | One `std::atomic<uint32>` per step in `StepSequencer.h`; the playing step is an atomic too |
+| CHOP pattern | Message thread → audio thread | One `std::atomic<uint16>`, bit k = step k |
+| Voice and modulation views | Audio thread → editor timer | Relaxed atomic stores once per block (`VoiceView`, `Modulation`'s LFO phase and value, bend and wheel positions, the sequencer's tempo); values may come from neighbouring blocks, which is fine for display |
+| "Sample loaded" host notification | Loader thread → message thread | The loader triggers an `AsyncUpdater` member (`HostNotifier`), which calls `updateHostDisplay` on the message thread; a notification still pending when the processor is destroyed is cancelled |
+
+The source files are listed in [Project Structure](#project-structure).
+
+---
+
 ## Project Structure
 
 | File | Purpose |
@@ -345,7 +401,10 @@ audio_bright = plugin.process(msgs, 2.5, SR, reset=True)
 | `tests/SampleReaderTests.cpp` | Unit tests for sample playback |
 | `tests/GranularTests.cpp` | Unit tests for the granular source |
 | `tests/RealtimeSafetyTests.cpp` | Fails if `processBlock` allocates |
-| `tests/RenderBenchmark.cpp` | CPU benchmark of `processBlock` |
+| `tests/RenderBenchmark.cpp` | CPU benchmark of `processBlock`; fails if any case renders a NaN or an infinity |
+| `tests/SessionStateTests.cpp`, `tests/fixtures/state/` | Session save and load, and the sessions saved by earlier releases |
+| `tests/StateFuzzTests.cpp` | Damaged and hostile sessions |
+| `tests/sanitizer-suppressions.txt` | The two JUCE-internal UBSan reports the sanitizer build tolerates, and why |
 | `tests/ParameterLayoutTests.cpp`, `tests/parameter-layout.txt` | The parameter-layout test and its reference |
 | `tests/EditorTests.cpp` | Offscreen editor tests (gestures, painting, the CRT look's contrast and caches) |
 | `tests/complexity_report.py` | Lines of code and the cyclomatic complexity of every plugin function, as Markdown (`pip install lizard`); CI runs it on every push and pull request |

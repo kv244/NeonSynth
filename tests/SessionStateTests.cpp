@@ -21,7 +21,10 @@
     Run the resulting SessionStateTests executable; it exits non-zero on failure.
 */
 #include "NeonSynthProcessor.h"
+#include <cmath>
 #include <cstdio>
+#include <cstring>
+#include <memory>
 #include <functional>
 
 namespace
@@ -101,11 +104,106 @@ namespace
         fn();
         return juce::Time::getMillisecondCounterHiRes() - start;
     }
+
+    //==========================================================================
+    // Sessions saved by earlier releases (tests/fixtures/state). Each fixture is the XML that
+    // release's getStateInformation() wrote; the test wraps it the way JUCE stores it.
+    juce::MemoryBlock fixture (const juce::String& name)
+    {
+        const auto file = juce::File (NEONSYNTH_TESTS_DIR).getChildFile ("fixtures/state").getChildFile (name);
+        juce::MemoryBlock block;
+        if (auto xml = juce::XmlDocument::parse (file))
+            juce::AudioProcessor::copyXmlToBinary (*xml, block);
+        return block;
+    }
+
+    float plainValue (NeonSynthProcessor& p, const juce::String& id)
+    {
+        return p.getAPVTS().getRawParameterValue (id)->load();
+    }
+
+    /** Renders two seconds of a chord, stereo, and returns it (the fixed note sequence of the checks). */
+    juce::AudioBuffer<float> renderChord (NeonSynthProcessor& p)
+    {
+        p.setRateAndBufferSizeDetails (48000.0, 512);
+        p.prepareToPlay (48000.0, 512);
+        juce::AudioBuffer<float> all (2, 48000 * 2), block (2, 512);
+        all.clear();
+        for (int start = 0; start + 512 <= all.getNumSamples(); start += 512)
+        {
+            juce::MidiBuffer midi;
+            if (start == 0)
+                for (int note : { 48, 55, 64 })
+                    midi.addEvent (juce::MidiMessage::noteOn (1, note, (juce::uint8) 100), 0);
+            if (start == 512 * 120)
+                for (int note : { 48, 55, 64 })
+                    midi.addEvent (juce::MidiMessage::noteOff (1, note), 0);
+            block.clear();
+            p.processBlock (block, midi);
+            for (int ch = 0; ch < 2; ++ch)
+                all.copyFrom (ch, start, block, ch, 0, 512);
+        }
+        p.releaseResources();
+        return all;
+    }
+
+    bool finiteAndAudible (const juce::AudioBuffer<float>& b)
+    {
+        float peak = 0.0f;
+        for (int ch = 0; ch < b.getNumChannels(); ++ch)
+            for (int i = 0; i < b.getNumSamples(); ++i)
+            {
+                const float x = b.getSample (ch, i);
+                if (! std::isfinite (x))
+                    return false;
+                peak = juce::jmax (peak, std::abs (x));
+            }
+        return peak > 0.01f;
+    }
+
+    bool identical (const juce::AudioBuffer<float>& a, const juce::AudioBuffer<float>& b)
+    {
+        for (int ch = 0; ch < 2; ++ch)
+            if (std::memcmp (a.getReadPointer (ch), b.getReadPointer (ch), sizeof (float) * (size_t) a.getNumSamples()) != 0)
+                return false;
+        return true;
+    }
 }
 
-int main()
+int main (int argc, char* argv[])
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
+    std::setvbuf (stdout, nullptr, _IONBF, 0);   // a crash still shows the checks before it
+
+    // SessionStateTests --write-fixture FILE: saves the session the fixtures are cut from (see
+    // tests/fixtures/state/README.md). Run it only to make a fixture for a new state format.
+    if (argc > 2 && juce::String (argv[1]) == "--write-fixture")
+    {
+        const auto wav = juce::File::createTempFile (".wav");
+        writeWav (wav, 0.25, 7);
+        NeonSynthProcessor p;
+        juce::String error;
+        if (! p.loadSampleFile (wav, error))
+            return 1;
+        setParameter (p, "waveform", 3.0f);      // Sawtooth
+        setParameter (p, "cutoff", 900.0f);
+        setParameter (p, "filterEnabled", 1.0f);
+        setParameter (p, "attack", 0.05f);
+        setParameter (p, "release", 0.4f);
+        setParameter (p, "gain", -3.0f);
+        setParameter (p, "width", 0.2f);
+        setParameter (p, "seqTempo", 100.0f);
+        setParameter (p, "smpRoot", 57.0f);
+        setParameter (p, "chopOvertone", 50.0f);
+        for (int i = 0; i < StepSequencer::numSteps; ++i)
+            p.setSequencerStep (i, { i % 3 != 2, 45 + i, 60 + 4 * i });
+        p.setChopStep (0, true);
+        p.setChopStep (1, false);
+        const auto state = save (p);
+        auto xml = juce::AudioProcessor::getXmlFromBinary (state.getData(), (int) state.getSize());
+        wav.deleteFile();
+        return xml != nullptr && xml->writeTo (juce::File (argv[2])) ? 0 : 1;
+    }
 
     const auto dir = juce::File::createTempFile ("neonsynth-session");
     dir.createDirectory();
@@ -221,6 +319,66 @@ int main()
     }
 
     dir.deleteRecursively();
+
+    //==========================================================================
+    std::printf ("\nSessions saved by earlier releases\n");
+    {
+        // On the heap: a processor is about 400 KB, and three on the stack at once overflow
+        // Windows' 1 MB main-thread stack.
+        auto freshProcessor = std::make_unique<NeonSynthProcessor>();   // the defaults: pattern, CHOP, sample
+        auto& fresh = *freshProcessor;
+        auto patternIs = [] (NeonSynthProcessor& a, auto&& expected)
+        {
+            for (int i = 0; i < StepSequencer::numSteps; ++i)
+            {
+                const auto x = a.getSequencerStep (i), y = expected (i);
+                if (x.on != y.on || x.note != y.note || x.velocity != y.velocity)
+                    return false;
+            }
+            return true;
+        };
+        auto defaultPattern = [&fresh] (int i) { return fresh.getSequencerStep (i); };
+        auto savedPattern = [] (int i) { return StepSequencer::Step { i % 3 != 2, 45 + i, 60 + 4 * i }; };
+
+        struct Case { const char* file; const char* release; bool hasPattern, hasSample, hasChop; };
+        for (const auto& c : { Case { "v1.2.0.xml",  "v1.2 (no version, no pattern)",       false, false, false },
+                               Case { "v1.4.0.xml",  "v1.4 (stateVersion 2, pattern)",       true,  false, false },
+                               Case { "v1.5.0.xml",  "v1.5 (stateVersion 3, embedded sample)", true, true,  false },
+                               Case { "v1.10.0.xml", "v1.10 (stateVersion 4, CHOP and all)", true,  true,  true } })
+        {
+            const auto state = fixture (c.file);
+            const juce::String name (c.release);
+            if (state.getSize() == 0)
+            {
+                check (false, (name + ": fixture " + c.file + " found and parsed").toRawUTF8());
+                continue;
+            }
+
+            auto processor = std::make_unique<NeonSynthProcessor>();
+            auto& p = *processor;
+            load (p, state);
+            check (juce::approximatelyEqual (plainValue (p, "cutoff"), 900.0f) && juce::approximatelyEqual (plainValue (p, "release"), 0.4f)
+                       && juce::approximatelyEqual (plainValue (p, "gain"), -3.0f) && juce::approximatelyEqual (plainValue (p, "waveform"), 3.0f),
+                   (name + ": its parameters load").toRawUTF8());
+            check (juce::approximatelyEqual (plainValue (p, "lfoCutoff"), plainValue (fresh, "lfoCutoff"))
+                       && juce::approximatelyEqual (plainValue (p, "filterEnvAmt"), plainValue (fresh, "filterEnvAmt")),
+                   (name + ": parameters added since keep their neutral defaults").toRawUTF8());
+            check (c.hasPattern ? patternIs (p, savedPattern) : patternIs (p, defaultPattern),
+                   (name + (c.hasPattern ? ": its pattern loads" : ": the default pattern loads")).toRawUTF8());
+            check (c.hasSample ? p.getSampleStatus().name.endsWith (".wav") && p.getSampleStatus().problem.isEmpty()
+                               : p.getSampleStatus().name == "Default pad",
+                   (name + (c.hasSample ? ": its embedded sample loads" : ": the built-in pad plays")).toRawUTF8());
+            check (p.getChopPattern() == (c.hasChop ? (juce::uint16) ((fresh.getChopPattern() | 1u) & ~2u) : fresh.getChopPattern()),
+                   (name + (c.hasChop ? ": its CHOP pattern loads" : ": the default CHOP pattern")).toRawUTF8());
+
+            // It plays, and saving and reopening it changes nothing that sounds.
+            const auto first = renderChord (p);
+            auto reopened = std::make_unique<NeonSynthProcessor>();
+            load (*reopened, save (p));
+            check (finiteAndAudible (first) && identical (first, renderChord (*reopened)),
+                   (name + ": it renders (finite, audible), and saved again it renders the same").toRawUTF8());
+        }
+    }
 
     std::printf (failures == 0 ? "All session state tests passed.\n" : "%d session state test(s) FAILED.\n", failures);
     return failures == 0 ? 0 : 1;

@@ -32,7 +32,8 @@
     Build with CMake:  cmake -B build -DJUCE_DIR=... -DNEONSYNTH_BUILD_TESTS=ON
                        cmake --build build --config Release --target RenderBenchmark
     Prints, per scenario, the render time and the share of one CPU core used
-    in real time.
+    in real time. Exits non-zero if any scenario renders a NaN or an infinity
+    (checked outside the timed calls).
 */
 #include "NeonSynthProcessor.h"
 #include <chrono>
@@ -55,6 +56,21 @@ namespace
 
     using BlockHook = std::function<void (juce::AudioProcessor&, juce::int64 blockStart)>;
 
+    // Whether the last render() gave only finite samples, and the scenarios that did not. The check
+    // runs after each block's timing stops, so it costs the measurement nothing; a NaN or an
+    // infinity in any scenario fails the program, so CI and scripts notice.
+    bool lastRenderFinite = true;
+    juce::StringArray nonFiniteScenarios;
+
+    bool allFinite (const juce::AudioBuffer<float>& buffer)
+    {
+        for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+            for (int i = 0; i < buffer.getNumSamples(); ++i)
+                if (! std::isfinite (buffer.getSample (ch, i)))
+                    return false;
+        return true;
+    }
+
     /** Renders `benchSeconds` of audio; `addMidi` fills each block's MIDI and `beforeBlock`, if given,
         changes parameters before each block (not timed). Returns milliseconds spent in processBlock. */
     double render (const std::function<void (juce::MidiBuffer&, juce::int64 blockStart)>& addMidi,
@@ -70,6 +86,7 @@ namespace
         juce::MidiBuffer midi;
         double total = 0.0;
         float peak = 0.0f;
+        lastRenderFinite = true;
 
         const auto blocks = (juce::int64) (benchSeconds * benchSampleRate / benchBlockSize);
         for (juce::int64 b = 0; b < blocks; ++b)
@@ -82,6 +99,7 @@ namespace
             processor.processBlock (buffer, midi);
             total += std::chrono::duration<double, std::milli> (std::chrono::steady_clock::now() - start).count();
             peak = juce::jmax (peak, buffer.getMagnitude (0, benchBlockSize));
+            lastRenderFinite = lastRenderFinite && allFinite (buffer);
         }
         processor.releaseResources();
         std::printf ("        (output peak %.1f dBFS)\n", juce::Decibels::gainToDecibels (peak));
@@ -91,6 +109,11 @@ namespace
     void report (const char* name, double ms)
     {
         std::printf ("  %-13s %8.0f ms for %.0f s   %5.2f%% of one core\n", name, ms, benchSeconds, 100.0 * ms / (benchSeconds * 1000.0));
+        if (! lastRenderFinite)
+        {
+            std::printf ("  FAIL  %s rendered a NaN or an infinity\n", name);
+            nonFiniteScenarios.add (name);
+        }
     }
 
     /** Adds the events of a note that is held for the whole render (note-on in the first block only). */
@@ -221,5 +244,12 @@ int main()
         setParameter (p, "seqRate", 2.0f);      // 1/32
         setParameter (p, "seqTempo", 240.0f);
     }));
+
+    if (! nonFiniteScenarios.isEmpty())
+    {
+        std::printf ("\nFAILED: non-finite output in %s\n", nonFiniteScenarios.joinIntoString (", ").toRawUTF8());
+        return 1;
+    }
+    std::printf ("\nEvery scenario's output was finite.\n");
     return 0;
 }
