@@ -73,7 +73,7 @@ endif()
 juce_add_plugin(NeonSynth
     VERSION                     1.10.1
     COMPANY_NAME                "AudioDSP"
-    COMPANY_WEBSITE             "https://github.com/kv244/Synth"   # until a company site is decided (A12)
+    COMPANY_WEBSITE             "https://github.com/kv244/NeonSynth"   # until a company site is decided (A12)
     BUNDLE_ID                   "com.audiodsp.neonsynth"
     PLUGIN_MANUFACTURER_CODE    AuDs
     PLUGIN_CODE                 BaSy

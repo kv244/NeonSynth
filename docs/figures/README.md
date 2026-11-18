@@ -67,3 +67,11 @@ Boxes in `compose_ui.py` are in design pixels (the coordinates used by `NeonSynt
 - The SVG of a capture embeds the screenshot as a raster, so those files are large; the scanlines compress poorly, so the v1.10 captures and Figures 1, 6 and 8 are larger than before.
 - The cover's SVG is about 1.6 MB: the VT323 glyphs, drawn as outlines four times each for the halo, make up most of it.
 - Windows and Linux renders can differ in the last decimal places, which does not change anything visible in these plots.
+
+## Social preview
+
+`social_preview.py` draws `docs/images/social-preview.png` (1280 × 640), the card GitHub shows
+when the repository is linked on social sites and in chat apps. It shows the Oscillator capture
+in the CRT frame with no version number, so it only needs redrawing when the look changes.
+GitHub does not read it from the repository: upload it under **Settings → General → Social
+preview** after redrawing it.
