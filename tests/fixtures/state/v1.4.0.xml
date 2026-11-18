@@ -1,0 +1,37 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<Parameters stateVersion="2">
+  <PARAM id="attack" value="0.05000000074505806" />
+  <PARAM id="cutoff" value="899.9999389648438" />
+  <PARAM id="decay" value="0.1000000014901161" />
+  <PARAM id="filterEnabled" value="1.0" />
+  <PARAM id="gain" value="-3.0" />
+  <PARAM id="release" value="0.4000000059604645" />
+  <PARAM id="seqGate" value="0.5" />
+  <PARAM id="seqMode" value="0.0" />
+  <PARAM id="seqOn" value="0.0" />
+  <PARAM id="seqRate" value="1.0" />
+  <PARAM id="seqSwing" value="0.0" />
+  <PARAM id="seqSync" value="1.0" />
+  <PARAM id="seqTempo" value="100.0" />
+  <PARAM id="sustain" value="0.699999988079071" />
+  <PARAM id="waveform" value="3.0" />
+  <PARAM id="width" value="0.199999988079071" />
+  <Pattern>
+    <Step on="1" note="45" velocity="60" />
+    <Step on="1" note="46" velocity="64" />
+    <Step on="0" note="47" velocity="68" />
+    <Step on="1" note="48" velocity="72" />
+    <Step on="1" note="49" velocity="76" />
+    <Step on="0" note="50" velocity="80" />
+    <Step on="1" note="51" velocity="84" />
+    <Step on="1" note="52" velocity="88" />
+    <Step on="0" note="53" velocity="92" />
+    <Step on="1" note="54" velocity="96" />
+    <Step on="1" note="55" velocity="100" />
+    <Step on="0" note="56" velocity="104" />
+    <Step on="1" note="57" velocity="108" />
+    <Step on="1" note="58" velocity="112" />
+    <Step on="0" note="59" velocity="116" />
+    <Step on="1" note="60" velocity="120" />
+  </Pattern>
+  </Parameters>

@@ -1,0 +1,12 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<Parameters>
+  <PARAM id="attack" value="0.05000000074505806" />
+  <PARAM id="cutoff" value="899.9999389648438" />
+  <PARAM id="decay" value="0.1000000014901161" />
+  <PARAM id="filterEnabled" value="1.0" />
+  <PARAM id="gain" value="-3.0" />
+  <PARAM id="release" value="0.4000000059604645" />
+  <PARAM id="sustain" value="0.699999988079071" />
+  <PARAM id="waveform" value="3.0" />
+  <PARAM id="width" value="0.199999988079071" />
+  </Parameters>
