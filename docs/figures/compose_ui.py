@@ -93,7 +93,8 @@ FIG1_REGIONS = [                     # number, box (design px), marker (design p
     (5, (782, 362, 940, 626), (946, 362)),      # the whole filter panel, with the LFO band under CUTOFF
     (6, (976, 90, 1252, 344), (1256, 90)),      # OUTPUT, the top of the right-hand column since v1.9.0
     (7, (976, 368, 1252, 622), (1256, 368)),    # MODULATION, the bottom of it (v1.9.0)
-    (8, (758, 26, 1172, 58), (740, 42)),        # the "16 VOICES" readout and the lights
+    (8, (758, 26, 1172, 58), (766, 42)),        # the "16 VOICES" readout and the lights; the marker clears
+                                                # the SCANLINES button (v1.10.0), which ends at x 748
     (9, (1206, 22, 1256, 62), (1191, 42)),
     (10, (28, 648, 1252, 838), (6, 760)),
 ]
@@ -250,16 +251,16 @@ def step_x(i, frac=0.5):
 SEQ_MARKS = [                        # number, target (x, y) in design px
     (1, (step_x(0), 720)),           # enabled step
     (2, (step_x(1), 720)),           # disabled step
-    (3, (step_x(2, 0.78), 763)),     # note name, beside the text
-    (4, (step_x(4, 0.12), 829)),     # velocity bar
-    (5, (step_x(8), 694)),           # playhead (cyan outline)
+    (3, (step_x(2, 0.86), 763)),     # note name, beside the text (VT323 since v1.10.0, wider)
+    (4, (step_x(4, 0.12), 826)),     # velocity bar, its first block; the line runs beside the note name
+    (5, (step_x(8), 694)),           # playhead (the inverted step since v1.10.0)
 ]
 SEQ_KEY = [
-    (1, "Enabled step: bright amber. Every fourth step has a brighter top edge, which marks the beat."),
+    (1, "Enabled step: an amber outline and a glowing note name. Every fourth step has a mark along its top edge, which marks the beat."),
     (2, "Disabled step: dark, with a dim note name. Its note and velocity are kept."),
     (3, "Note name: the pitch the step plays."),
-    (4, "Velocity bar: its length is the step's velocity."),
-    (5, "Playhead: a cyan outline on the step now playing."),
+    (4, "Velocity bar: a row of blocks; the more are lit, the higher the step's velocity."),
+    (5, "Playhead: the step now playing is drawn inverted, an amber block with dark text."),
 ]
 SEQ_GESTURES = [
     ("Click", "turn the step on or off"),
