@@ -76,6 +76,7 @@ target_sources(NeonSynth
         NeonSynthVoice.h
         NeonSynthEditor.h
         CrtTheme.h
+        CrtFrame.h
         CrtLookAndFeel.h
         NeonSynthProcessor.h
         NeonSynthProcessor.cpp
