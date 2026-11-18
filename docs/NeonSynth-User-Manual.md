@@ -1,5 +1,5 @@
 <!-- github-cover: shown on GitHub only; the PDF build draws its own full-page cover and drops this block -->
-<p align="center"><img src="images/cover.png" alt="NeonSynth User Manual cover: the four waveforms as neon lines over a grid, with the version and release date" width="420"></p>
+<p align="center"><img src="images/cover.png" alt="NeonSynth User Manual cover, drawn as a CRT terminal: the four waveforms morphing into each other on a green screen, the step sequencer, and the version and release date" width="420"></p>
 <!-- /github-cover -->
 
 # NeonSynth User Manual
