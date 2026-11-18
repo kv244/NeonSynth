@@ -12,10 +12,12 @@
 
     The 16-step grid shown in the editor's sequencer strip.
 
-    Each cell shows one step: lit when the step is on, the note name in the
-    middle, and a velocity bar along the bottom. A cyan outline follows the
-    playhead while the sequencer runs; every fourth cell has a brighter top
-    edge to mark the beats.
+    Each cell shows one step as a block of amber phosphor (v1.10.0 CRT look):
+    the note name in the middle in VT323, glowing when the step is on and dim
+    when it is off (an off step keeps its note), and the velocity as a row of
+    blocks along the bottom. The playing step is drawn inverted, an amber block
+    with dark text, like a terminal cursor; every fourth cell has a mark along
+    its top edge for the beats.
 
     Editing (all on the message thread, written to the processor lock-free):
       - click                     toggle the step on / off
@@ -58,49 +60,7 @@ public:
     void paint (juce::Graphics& g) override
     {
         for (int i = 0; i < StepSequencer::numSteps; ++i)
-        {
-            const auto  cell = cellBounds (i);
-            const auto& s    = steps[(size_t) i];
-            const bool  beat = i % 4 == 0;
-
-            g.setColour (neon::panel);
-            g.fillRoundedRectangle (cell, 3.0f);
-
-            if (s.on)
-            {
-                g.setColour (neon::amber.withAlpha (0.10f + 0.25f * (float) s.velocity / 127.0f));
-                g.fillRoundedRectangle (cell, 3.0f);
-            }
-
-            g.setColour (neon::amber.withAlpha (s.on ? 0.9f : 0.25f));
-            g.drawRoundedRectangle (cell.reduced (0.5f), 3.0f, s.on ? 1.2f : 1.0f);
-
-            if (beat)   // beat marker
-            {
-                g.setColour (neon::amber.withAlpha (s.on ? 1.0f : 0.5f));
-                g.fillRect (cell.getX() + 3.0f, cell.getY(), cell.getWidth() - 6.0f, 2.0f);
-            }
-
-            // Note name
-            g.setFont (neon::font (juce::jmin (14.0f, cell.getWidth() * 0.32f)));
-            g.setColour (s.on ? juce::Colours::white : neon::amber.withAlpha (0.4f));
-            g.drawText (juce::MidiMessage::getMidiNoteName (s.note, true, true, 4),
-                        cell.withTrimmedBottom (6.0f), juce::Justification::centred);
-
-            // Velocity bar
-            const auto bar = cell.reduced (4.0f, 0.0f).removeFromBottom (7.0f).withTrimmedBottom (3.0f);
-            g.setColour (neon::amber.withAlpha (s.on ? 0.85f : 0.25f));
-            g.fillRect (bar.withWidth (bar.getWidth() * (float) s.velocity / 127.0f));
-
-            // Playhead
-            if (i == playhead)
-            {
-                g.setColour (neon::cyan.withAlpha (0.25f));
-                g.drawRoundedRectangle (cell.expanded (1.5f), 4.0f, 4.0f);
-                g.setColour (neon::cyan);
-                g.drawRoundedRectangle (cell.reduced (0.5f), 3.0f, 1.6f);
-            }
-        }
+            paintStep (g, i);
     }
 
     //==========================================================================
@@ -155,6 +115,96 @@ public:
     }
 
 private:
+    // Amber phosphor shades (from the CRT mock-up): lit text, its halo, the
+    // dim text of an off step, and the inverted block of the playing step.
+    static inline const juce::Colour litText   { 0xffffd28a };
+    static inline const juce::Colour litGlow   { 0xffffb03c };
+    static inline const juce::Colour dimText   { 0xff8a6c38 };
+    static inline const juce::Colour headBlock { 0xffffc15e };
+    static inline const juce::Colour headText  { 0xff1a0f00 };
+
+    void paintStep (juce::Graphics& g, int i) const
+    {
+        const auto  cell    = cellBounds (i);
+        const auto& s       = steps[(size_t) i];
+        const bool  playing = i == playhead;
+        const float level   = (float) s.velocity / 127.0f;
+
+        // Cell: square, a 1 px line in amber with a faint halo when on. The playing
+        // step is a solid block with a soft bloom around it. A handful of flat
+        // fills and strokes, no gradients, and only when a step or the playhead moves.
+        if (playing)
+        {
+            // The bloom stays within the 3 px gap so it never touches the next cell.
+            g.setColour (litGlow.withAlpha (0.35f));
+            g.drawRect (cell.expanded (1.0f), 1.0f);
+            g.setColour (headBlock.withAlpha (s.on ? 1.0f : 0.75f));
+            g.fillRect (cell);
+        }
+        else if (s.on)
+        {
+            g.setColour (litGlow.withAlpha (0.05f + 0.10f * level));
+            g.fillRect (cell);
+            g.setColour (litGlow.withAlpha (0.12f));
+            g.drawRect (cell.expanded (1.0f), 1.0f);
+            g.setColour (litText.withAlpha (0.75f));
+            g.drawRect (cell, 1.0f);
+        }
+        else
+        {
+            g.setColour (neon::amber.withAlpha (0.20f));
+            g.drawRect (cell, 1.0f);
+        }
+
+        if (i % 4 == 0)   // beat mark
+        {
+            g.setColour (playing ? headText.withAlpha (0.7f) : neon::amber.withAlpha (s.on ? 0.9f : 0.45f));
+            g.fillRect (cell.getX() + 4.0f, cell.getY() + 3.0f, cell.getWidth() - 8.0f, 2.0f);
+        }
+
+        // Note name: VT323, large enough to read across the room.
+        const auto name  = juce::MidiMessage::getMidiNoteName (s.note, true, true, 4);
+        const auto font  = neon::crt::displayFont (juce::jmin (40.0f, cell.getWidth() * 0.52f));
+        const auto label = cell.withTrimmedBottom (14.0f);
+        g.setFont (font);
+        if (playing)
+        {
+            g.setColour (headText);
+            g.drawText (name, label, juce::Justification::centred, false);
+        }
+        else if (s.on)
+        {
+            // Halo: the text a pixel off in each direction, faint, then the text itself.
+            g.setColour (litGlow.withAlpha (0.22f));
+            for (const auto& [dx, dy] : { std::pair { -1.0f, 0.0f }, std::pair { 1.0f, 0.0f }, std::pair { 0.0f, -1.0f }, std::pair { 0.0f, 1.0f } })
+                g.drawText (name, label.translated (dx, dy), juce::Justification::centred, false);
+            g.setColour (litText);
+            g.drawText (name, label, juce::Justification::centred, false);
+        }
+        else
+        {
+            g.setColour (dimText);
+            g.drawText (name, label, juce::Justification::centred, false);
+        }
+
+        // Velocity: a row of blocks along the bottom. The last lit block is drawn
+        // in proportion to what is left, so every change of velocity still shows.
+        const auto  bar     = cell.reduced (5.0f, 0.0f).removeFromBottom (12.0f).withTrimmedBottom (5.0f);
+        const int   blocks  = juce::jmax (1, (int) (bar.getWidth() / 5.0f));
+        const float pitch   = bar.getWidth() / (float) blocks;
+        const float filled  = level * (float) blocks;
+        const auto  barLit  = playing ? headText : (s.on ? litText : neon::amber);
+        const float barOn   = playing ? 0.85f : (s.on ? 0.9f : 0.35f);
+        const float barOff  = playing ? 0.18f : 0.10f;
+        for (int b = 0; b < blocks; ++b)
+        {
+            const float lit = juce::jlimit (0.0f, 1.0f, filled - (float) b);
+            const juce::Rectangle<float> block { bar.getX() + pitch * (float) b, bar.getY(), pitch - 1.0f, bar.getHeight() };
+            g.setColour (barLit.withAlpha (barOff + (barOn - barOff) * lit));
+            g.fillRect (block);
+        }
+    }
+
     juce::Rectangle<float> cellBounds (int index) const
     {
         const auto  bounds = getLocalBounds().toFloat();
