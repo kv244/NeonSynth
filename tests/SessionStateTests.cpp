@@ -24,6 +24,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <memory>
 #include <functional>
 
 namespace
@@ -172,6 +173,7 @@ namespace
 int main (int argc, char* argv[])
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
+    std::setvbuf (stdout, nullptr, _IONBF, 0);   // a crash still shows the checks before it
 
     // SessionStateTests --write-fixture FILE: saves the session the fixtures are cut from (see
     // tests/fixtures/state/README.md). Run it only to make a fixture for a new state format.
@@ -321,7 +323,10 @@ int main (int argc, char* argv[])
     //==========================================================================
     std::printf ("\nSessions saved by earlier releases\n");
     {
-        NeonSynthProcessor fresh;   // the defaults: pattern, CHOP, sample
+        // On the heap: a processor is about 400 KB, and three on the stack at once overflow
+        // Windows' 1 MB main-thread stack.
+        auto freshProcessor = std::make_unique<NeonSynthProcessor>();   // the defaults: pattern, CHOP, sample
+        auto& fresh = *freshProcessor;
         auto patternIs = [] (NeonSynthProcessor& a, auto&& expected)
         {
             for (int i = 0; i < StepSequencer::numSteps; ++i)
@@ -349,7 +354,8 @@ int main (int argc, char* argv[])
                 continue;
             }
 
-            NeonSynthProcessor p;
+            auto processor = std::make_unique<NeonSynthProcessor>();
+            auto& p = *processor;
             load (p, state);
             check (juce::approximatelyEqual (plainValue (p, "cutoff"), 900.0f) && juce::approximatelyEqual (plainValue (p, "release"), 0.4f)
                        && juce::approximatelyEqual (plainValue (p, "gain"), -3.0f) && juce::approximatelyEqual (plainValue (p, "waveform"), 3.0f),
@@ -367,9 +373,9 @@ int main (int argc, char* argv[])
 
             // It plays, and saving and reopening it changes nothing that sounds.
             const auto first = renderChord (p);
-            NeonSynthProcessor reopened;
-            load (reopened, save (p));
-            check (finiteAndAudible (first) && identical (first, renderChord (reopened)),
+            auto reopened = std::make_unique<NeonSynthProcessor>();
+            load (*reopened, save (p));
+            check (finiteAndAudible (first) && identical (first, renderChord (*reopened)),
                    (name + ": it renders (finite, audible), and saved again it renders the same").toRawUTF8());
         }
     }
