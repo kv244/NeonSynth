@@ -207,8 +207,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout NeonSynthProcessor::createPa
     layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "seqKey", 1 }, "Sequencer Key",
                                                          StringArray { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" }, 0));
     layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "seqScale", 1 }, "Sequencer Scale",   // Off = no lock; order matches StepSequencer::Scale
-                                                         StringArray { "Off", "Major", "Natural minor", "Harmonic minor", "Dorian",
-                                                                       "Mixolydian", "Major pentatonic", "Minor pentatonic", "Blues" }, 0));
+                                                         StringArray { "Off", "Major", "Dorian", "Phrygian", "Lydian", "Mixolydian",
+                                                                       "Natural minor", "Locrian", "Harmonic minor", "Major pentatonic",
+                                                                       "Minor pentatonic", "Blues", "Whole tone" }, 0));   // complete as shipped (roadmap rule 3)
     return layout;
 }
 

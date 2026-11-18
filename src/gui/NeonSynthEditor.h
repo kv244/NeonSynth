@@ -566,8 +566,9 @@ public:
         for (int n = 1; n <= StepSequencer::numSteps; ++n)
             seqLengthCombo.addItem (juce::String (n) + (n == 1 ? " step" : " steps"), n);
         seqKeyCombo.addItemList ({ "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" }, 1);
-        seqScaleCombo.addItemList ({ "Scale off", "Major", "Natural minor", "Harmonic minor", "Dorian",
-                                     "Mixolydian", "Major pentatonic", "Minor pentatonic", "Blues" }, 1);   // same order as the parameter
+        seqScaleCombo.addItemList ({ "Scale off", "Major", "Dorian", "Phrygian", "Lydian", "Mixolydian",
+                                     "Natural minor", "Locrian", "Harmonic minor", "Major pentatonic",
+                                     "Minor pentatonic", "Blues", "Whole tone" }, 1);   // same order as the parameter
         seqLengthCombo.setTooltip ("Pattern length: the pattern repeats after this many steps (try 5 or 7 against the beat)");
         seqKeyCombo.setTooltip ("Key of the scale lock");
         seqScaleCombo.setTooltip ("Scale lock: notes you set on the steps snap to this scale. Notes already there stay");
