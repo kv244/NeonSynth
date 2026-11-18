@@ -5,7 +5,8 @@
 /*
     Unit tests for StepSequencer (sample-accurate timing, gate, swing,
     transport stop / jump, tolerance of small transport drift, block-size
-    independence, triggers disabled, retriggering and step packing).
+    independence, triggers disabled, retriggering and step packing), and a
+    seeded property test with random settings and block sizes.
 
     Build with CMake:  cmake -B build -DJUCE_DIR=... -DNEONSYNTH_BUILD_TESTS=ON
                        cmake --build build --target StepSequencerTests
@@ -294,6 +295,125 @@ int main()
                 for (bool on : { false, true })
                     ok = ok && StepSequencer::unpack (StepSequencer::pack ({ on, note, vel })) == StepSequencer::Step { on, note, vel };
         check (ok, "pack/unpack round-trips every on/note/velocity combination tested");
+    }
+
+    std::printf ("Random settings (property test)\n");
+    {
+        // Seeded random patterns played through blocks of random sizes (1..2048 samples) while
+        // swing, gate, rate, tempo and transpose change at random (now and then out of range),
+        // triggers come and go as when keys are pressed and released in Transpose mode, and the
+        // transport sometimes jumps or stops. Whatever happens:
+        //   - every event lies inside its block, on channel 16, with a note in 0..127 (and a
+        //     note-on velocity in 1..127);
+        //   - a note-on never starts a note that is already sounding, and every note-off ends one
+        //     that is;
+        //   - each note ends no later than its gate length (as it was when it started);
+        //   - stopping the transport releases everything.
+        juce::Random random (20261118);
+        juce::MidiBuffer midi;
+        midi.ensureSize (8192);
+
+        bool inBlock = true, inRange = true, paired = true, inTime = true, allReleased = true;
+        int noteOns = 0;
+
+        for (int trial = 0; trial < 60; ++trial)
+        {
+            StepSequencer seq;
+            seq.prepare (trial % 3 == 0 ? 44100.0 : testSampleRate);
+            const double rate = trial % 3 == 0 ? 44100.0 : testSampleRate;
+            for (int i = 0; i < StepSequencer::numSteps; ++i)
+                seq.setStep (i, { random.nextBool(), random.nextInt (128), 1 + random.nextInt (127) });
+
+            StepSequencer::Settings s;
+            double bpm = 120.0, beat = random.nextDouble() * 8.0;
+            bool playing = true;
+            juce::int64 now = 0;
+            juce::int64 mustEndBy[128] = {};
+            bool sounding[128] = {};
+
+            const auto randomise = [&random, &s, &bpm]
+            {
+                switch (random.nextInt (6))
+                {
+                    case 0:  s.swing = random.nextInt (10) == 0 ? random.nextFloat() * 3.0f - 1.0f : random.nextFloat(); break;
+                    case 1:  s.gate  = random.nextInt (10) == 0 ? random.nextFloat() * 3.0f - 1.0f : random.nextFloat(); break;
+                    case 2:  s.rate  = (StepSequencer::Rate) random.nextInt (5); break;
+                    case 3:  bpm = 20.0 + random.nextDouble() * 380.0; break;
+                    case 4:  s.transpose = random.nextInt (49) - 24 + (random.nextInt (8) == 0 ? 24 * (random.nextInt (3) - 1) : 0); break;   // a key held, now and then far away
+                    default: s.triggersEnabled = random.nextInt (4) != 0; break;   // keys released and pressed again
+                }
+            };
+
+            for (int block = 0; block < 1000; ++block)
+            {
+                const int n = random.nextInt (8) == 0 ? 1 + random.nextInt (16) : 1 + random.nextInt (2048);
+                for (int changes = random.nextInt (3); --changes >= 0;)
+                    randomise();
+
+                const int event = random.nextInt (100);
+                if (event == 0)      playing = ! playing;                       // stop or start
+                else if (event == 1) beat = random.nextDouble() * 16.0;         // a host loop or locate
+                else if (event == 2) beat += (random.nextDouble() - 0.5) * 2.0 * StepSequencer::jumpToleranceSeconds * bpm / 60.0;   // small drift
+
+                midi.clear();
+                seq.process (midi, n, { playing, beat, bpm }, s);
+
+                const double samplesPerBeat = rate * 60.0 / bpm;
+                const double stepLength = StepSequencer::stepLengthInBeats (s.rate);
+                const auto gateSamples = (juce::int64) juce::jmax (1L, std::lround ((double) juce::jlimit (0.05f, 1.0f, s.gate) * stepLength * samplesPerBeat));
+
+                for (const auto m : midi)
+                {
+                    const auto msg = m.getMessage();
+                    const int note = msg.getNoteNumber();
+                    const auto at = now + m.samplePosition;
+                    inBlock = inBlock && m.samplePosition >= 0 && m.samplePosition < n;
+                    inRange = inRange && msg.getChannel() == StepSequencer::midiChannel && note >= 0 && note < 128
+                                      && (msg.isNoteOn() || msg.isNoteOff());
+                    if (! juce::isPositiveAndBelow (note, 128))
+                        continue;
+
+                    if (msg.isNoteOn())
+                    {
+                        ++noteOns;
+                        inRange = inRange && msg.getVelocity() >= 1 && msg.getVelocity() <= 127;
+                        paired = paired && ! sounding[note];
+                        sounding[note] = true;
+                        mustEndBy[note] = at + gateSamples;
+                    }
+                    else
+                    {
+                        paired = paired && sounding[note];
+                        inTime = inTime && (! sounding[note] || at <= mustEndBy[note]);
+                        sounding[note] = false;
+                    }
+                }
+
+                // A note still sounding past its end is late too (its note-off went missing).
+                for (int note = 0; note < 128; ++note)
+                    inTime = inTime && ! (sounding[note] && mustEndBy[note] < now + n);
+
+                if (playing)
+                    beat += (double) n / samplesPerBeat;
+                now += n;
+            }
+
+            midi.clear();
+            seq.process (midi, 64, { false, beat, bpm }, s);   // transport stops
+            for (const auto m : midi)
+                if (m.getMessage().isNoteOff() && m.samplePosition == 0)
+                    sounding[m.getMessage().getNoteNumber()] = false;
+            for (bool b : sounding)
+                allReleased = allReleased && ! b;
+        }
+
+        std::printf ("        (60 runs of 1000 blocks, %d note-ons)\n", noteOns);
+        check (noteOns > 2000, "the random runs play plenty of notes");
+        check (inBlock, "every event lies inside its block");
+        check (inRange, "every event is a note-on or note-off on channel 16, note 0..127, velocity 1..127");
+        check (paired, "no note starts while it is already sounding, and every note-off ends a sounding note");
+        check (inTime, "every note ends no later than its gate length");
+        check (allReleased, "stopping the transport releases every sounding note");
     }
 
     std::printf ("\n%s (%d failure%s)\n", failures == 0 ? "ALL PASSED" : "FAILED", failures, failures == 1 ? "" : "s");

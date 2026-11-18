@@ -8,7 +8,9 @@
     The first test pins it to juce::ADSR for ordinary use (parameters set once),
     so the sound of existing patches doesn't change; the others cover the two
     things it does differently: a slewed sustain level, and a release that
-    survives parameter updates.
+    survives parameter updates. The last is a property test over the extremes of
+    every setting (and seeded random ones): the level stays in [0, 1] and every
+    note-off reaches silence in time.
 
     Build with CMake:  cmake -B build -DJUCE_DIR=... -DNEONSYNTH_BUILD_TESTS=ON
                        cmake --build build --target VoiceEnvelopeTests
@@ -18,6 +20,7 @@
 #include "../VoiceEnvelope.h"
 #include <cstdio>
 #include <cmath>
+#include <vector>
 
 namespace
 {
@@ -169,6 +172,98 @@ int main()
         env.setParameters (p);
         const int remaining = samplesUntilIdle (env, 96000);
         check (std::abs (remaining - 4800) <= 2, "shortening Release mid-fade finishes in the new time, from the current level");
+    }
+
+    std::printf ("Edge values (property test)\n");
+    {
+        // Every combination of the extremes the knobs reach (attack and decay 0..5 s, sustain 0..1,
+        // release 0..10 s; 0 stands for the shortest setting and for a host sending 0), at three
+        // sample rates, plus seeded random settings. The note is held for a while, with parameters
+        // re-sent every block as the voice does and the Sustain knob sometimes moved, and then
+        // released. Throughout, the level must stay finite and within [0, 1], and after the note-off
+        // the envelope must go silent within the Release time (plus a margin for the float rounding
+        // of a long linear ramp). Some notes are retriggered during the release and released again.
+        const float times[]    = { 0.0f, 0.001f, 5.0f };
+        const float sustains[] = { 0.0f, 0.5f, 1.0f };
+        struct Case { double rate; VoiceEnvelope::Parameters p; int holdSamples; bool retrigger; };
+        std::vector<Case> cases;
+        for (double rate : { 22050.0, 48000.0, 192000.0 })
+            for (float a : times) for (float d : times) for (float s : sustains)
+                for (float r : { 0.0f, 0.001f, rate == 48000.0 ? 10.0f : 0.25f })   // the longest release at one rate only (run time)
+                    for (bool retrigger : { false, true })
+                        if (r < 10.0f || retrigger)   // the retrigger case releases twice, so it covers the plain one
+                            cases.push_back ({ rate, { a, d, s, r }, (int) (rate * 0.05), retrigger });
+
+        juce::Random random (20261118);
+        const auto randomTime = [&random] (float maxSeconds)   // log-uniform, with a few exact zeros
+        {
+            return random.nextInt (10) == 0 ? 0.0f : maxSeconds * std::pow (10.0f, -4.0f * random.nextFloat());
+        };
+        for (int i = 0; i < 400; ++i)
+            cases.push_back ({ 48000.0,
+                               { randomTime (0.5f), randomTime (0.5f), random.nextInt (4) == 0 ? (float) random.nextInt (2) : random.nextFloat(), randomTime (1.0f) },
+                               1 + random.nextInt (48000), random.nextBool() });
+
+        bool inRange = true, silentInTime = true;
+        double worstOvershoot = 0.0;   // samples past the Release time, as a fraction of it
+        int worstExtraSamples = 0;
+
+        const auto observe = [&inRange] (float v) { inRange = inRange && std::isfinite (v) && v >= 0.0f && v <= 1.0f; };
+
+        // Releases the note and returns how many samples it took to go silent (or the limit).
+        const auto release = [&] (VoiceEnvelope& env, const VoiceEnvelope::Parameters& p, double rate)
+        {
+            env.noteOff();
+            const auto allowed = (juce::int64) std::ceil ((double) p.release * rate);
+            const auto limit   = allowed + allowed / 100 + 16;   // 1% + 16 samples
+            juce::int64 n = 0;
+            for (; env.isActive() && n <= limit; ++n)
+            {
+                if (n % 64 == 0)
+                    env.setParameters (p);
+                observe (env.getNextSample());
+            }
+            silentInTime = silentInTime && ! env.isActive();
+            worstExtraSamples = juce::jmax (worstExtraSamples, (int) (n - allowed));
+            if (allowed > 0)
+                worstOvershoot = juce::jmax (worstOvershoot, (double) (n - allowed) / (double) allowed);
+        };
+
+        for (const auto& c : cases)
+        {
+            VoiceEnvelope env;
+            env.setSampleRate (c.rate);
+            auto p = c.p;
+            env.setParameters (p);
+            env.noteOn();
+            for (int i = 0; i < c.holdSamples; ++i)
+            {
+                if (i % 64 == 0)
+                {
+                    if (random.nextInt (8) == 0)   // the Sustain knob moves while the note is held
+                        p.sustain = random.nextInt (3) == 0 ? (float) random.nextInt (2) : random.nextFloat();
+                    env.setParameters (p);
+                }
+                observe (env.getNextSample());
+            }
+            release (env, p, c.rate);
+
+            if (c.retrigger)
+            {
+                env.noteOn();
+                for (int i = 0; i < 3; ++i) observe (env.getNextSample());
+                env.noteOff();   // released again a moment later, then retriggered during that release
+                for (int i = 0; i < 100 && env.isActive(); ++i) observe (env.getNextSample());
+                env.noteOn();
+                for (int i = 0; i < 200; ++i) observe (env.getNextSample());
+                release (env, p, c.rate);
+            }
+        }
+
+        std::printf ("        (%d cases; latest silence: %d samples, %.4f%% after the Release time)\n",
+                     (int) cases.size(), worstExtraSamples, 100.0 * worstOvershoot);
+        check (inRange, "the level is always finite and within [0, 1]");
+        check (silentInTime, "a note-off always reaches silence within the Release time (+1% + 16 samples)");
     }
 
     std::printf ("\n%s (%d failure%s)\n", failures == 0 ? "ALL PASSED" : "FAILED", failures, failures == 1 ? "" : "s");

@@ -1,0 +1,13 @@
+# UndefinedBehaviorSanitizer suppressions for the NEONSYNTH_SANITIZE build (CMakeLists.txt passes
+# this file to every test through UBSAN_OPTIONS). Only JUCE's own sources are listed, and only for
+# the two kinds of check that CMakeLists.txt makes recoverable; the same kinds of UB anywhere else
+# still stop the test (halt_on_error=1). Remove a line once JUCE fixes it.
+
+# MemoryBlock::operator= calls memcpy (nullptr, nullptr, 0) when copying an empty block
+# (SampleData::copy() does, for the built-in pad's empty FLAC). Undefined by the letter of the
+# C standard, harmless with every real memcpy.
+nonnull-attribute:juce_MemoryBlock.cpp
+
+# FlacReader shifts negative samples left (src[j] << bitsToShift) to left-justify them. Undefined
+# in C++17 (defined in C++20 as the multiplication every compiler already does).
+shift-base:juce_FlacAudioFormat.cpp
