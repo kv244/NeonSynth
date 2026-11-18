@@ -44,7 +44,6 @@ def main():
     args = parser.parse_args()
 
     plugin = tracked("src/*.h", "src/*.cpp")
-    plugin = [f for f in plugin if f.parent == ROOT]
     parts = [
         ("The plugin (src/)", plugin),
         ("C++ tests and benchmark", tracked("tests/*.cpp")),
