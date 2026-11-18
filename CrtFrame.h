@@ -142,7 +142,7 @@ namespace neon::crt::frame
 
     //==========================================================================
     /** Text with a soft wide halo in `halo` under drawGlowText's tight one. */
-    inline void drawHaloText (juce::Graphics& g, const juce::String& text, juce::Rectangle<float> area,
+    inline void drawHaloText (juce::Graphics& g, const juce::String& words, juce::Rectangle<float> area,
                               juce::Colour colour, juce::Colour halo, const juce::Font& face,
                               juce::Justification justification, float strength = 1.0f)
     {
@@ -150,37 +150,37 @@ namespace neon::crt::frame
         g.setColour (halo.withAlpha (0.10f * strength));
         for (const auto& [dx, dy] : { std::pair { -2.0f, 0.0f }, std::pair { 2.0f, 0.0f }, std::pair { 0.0f, -2.0f }, std::pair { 0.0f, 2.0f },
                                       std::pair { -1.5f, -1.5f }, std::pair { 1.5f, 1.5f }, std::pair { -1.5f, 1.5f }, std::pair { 1.5f, -1.5f } })
-            g.drawText (text, area.translated (dx, dy), justification, false);
-        drawGlowText (g, text, area, colour, face, justification, 0.30f * strength);
+            g.drawText (words, area.translated (dx, dy), justification, false);
+        drawGlowText (g, words, area, colour, face, justification, 0.30f * strength);
     }
 
     /** A panel title, "> NAME" in VT323 with a glow in the panel's hue. The font starts at
         24 units and shrinks (not below 16) only if the title would not fit `area`. */
     inline void drawTitle (juce::Graphics& g, const juce::String& name, juce::Rectangle<float> area, juce::Colour hue)
     {
-        const auto text = "> " + name;
+        const auto words = "> " + name;
         float height = 24.0f;
         auto titleFont = displayFont (height);
-        while (height > 16.0f && juce::GlyphArrangement::getStringWidth (titleFont, text) > area.getWidth())
+        while (height > 16.0f && juce::GlyphArrangement::getStringWidth (titleFont, words) > area.getWidth())
             titleFont = displayFont (height -= 1.0f);
-        drawHaloText (g, text, area.withSizeKeepingCentre (area.getWidth(), juce::jmax (area.getHeight(), height + 4.0f)),
+        drawHaloText (g, words, area.withSizeKeepingCentre (area.getWidth(), juce::jmax (area.getHeight(), height + 4.0f)),
                       lit (hue), hue, titleFont, juce::Justification::centredLeft);
     }
 
     /** A static label in Plex Mono (SemiBold), in the lit hue with a faint glow. */
-    inline void drawLabel (juce::Graphics& g, const juce::String& text, juce::Rectangle<float> area, juce::Colour hue,
+    inline void drawLabel (juce::Graphics& g, const juce::String& words, juce::Rectangle<float> area, juce::Colour hue,
                            juce::Justification justification = juce::Justification::centredLeft)
     {
-        drawGlowText (g, text, area, lit (hue), font (12.0f, true), justification, 0.22f);
+        drawGlowText (g, words, area, lit (hue), font (12.0f, true), justification, 0.22f);
     }
 
     /** A hint (what the strip shows, "pitch bend"): Plex Mono Regular in the dim phosphor. */
-    inline void drawHint (juce::Graphics& g, const juce::String& text, juce::Rectangle<float> area,
+    inline void drawHint (juce::Graphics& g, const juce::String& words, juce::Rectangle<float> area,
                           juce::Justification justification = juce::Justification::centredLeft)
     {
         g.setColour (phosphorDim);
         g.setFont (font (12.0f));
-        g.drawText (text, area, justification, false);
+        g.drawText (words, area, justification, false);
     }
 
     /** NEON_SYNTH, big in VT323 with a phosphor halo. */
