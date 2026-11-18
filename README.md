@@ -76,22 +76,25 @@ The VST3 and the Standalone land in `build/NeonSynth_artefacts/Release/`. The
 **[developer notes](docs/DEVELOPMENT.md)** cover the unit tests, the Python test suite, the benchmark,
 MIDI logging and the layout of the source.
 
-## Release history
+## Contributing and security
+
+- **[Contributing](CONTRIBUTING.md)**: how to build and test a change, the real-time rules, and what a
+  pull request must keep (old sessions sound the same, new parameters go last, every feature shows in
+  the window).
+- **[Architecture](docs/DEVELOPMENT.md#architecture)**: the signal path and which thread does what.
+- **[Security](SECURITY.md)**: how to report a file that crashes or hangs the plugin, privately.
+- **[Changelog](CHANGELOG.md)**: every release.
+
+## Recent releases
 
 | Version | Date | What changed |
 |---|---|---|
 | [v1.10.0](https://github.com/kv244/Synth/releases/tag/v1.10.0) | 18 Nov 2026 | The retro CRT look: phosphor text and traces on a dark green tube inside a bezel, scope and spectrum afterglow, block meters, arc-ring knobs, the sequencer's steps showing their notes, embedded VT323 and IBM Plex Mono fonts, and a SCANLINES switch saved with the session. The layout and the sound are unchanged: old sessions sound bit-identical |
 | [v1.9.0](https://github.com/kv244/Synth/releases/tag/v1.9.0) | 17 Nov 2026 | Movement: one LFO (five shapes, free or synced) on pitch, cutoff and level; pitch bend and a mod-wheel vibrato from MIDI, for keyboard and sequencer notes alike; click the voice lights to set how many voices play (1 = mono); a vertical GAIN fader beside the meters and a glow around every panel. Old sessions sound bit-identical; projects with recorded bend or mod-wheel data now respond to it |
 | [v1.8.0](https://github.com/kv244/Synth/releases/tag/v1.8.0) | 15 Nov 2026 | The filter: low-pass, high-pass, band-pass and notch; resonance up to self-oscillation that follows the envelope; drive; a filter envelope (AMP / FILTER tabs) and velocity to cutoff; the spectrum draws the real response. Old sessions sound bit-identical |
-| [v1.7.1](https://github.com/kv244/Synth/releases/tag/v1.7.1) | 13 Nov 2026 | Review fixes: sample loading and replacement, Granular bracket, CI runs once per commit, code statistics report; no change to controls or sound |
-| [v1.6.0](https://github.com/kv244/Synth/releases/tag/v1.6.0) | 11 Nov 2026 | Waveform sculpting: CHOP, Noise and Fold, with the SHAPE strip; cleaner band-limited oscillators; the illustrated manual and its PDF |
-| [v1.5.0](https://github.com/kv244/Synth/releases/tag/v1.5.0) | 5 Nov 2026 | Sample, Granular and Random sources; the sample is saved inside the session |
-| [v1.4.0](https://github.com/kv244/Synth/releases/tag/v1.4.0) | 5 Nov 2026 | Hardening: sample-accurate notes, the output soft clipper, a new envelope, no stuck notes. Renamed from BasicSynth to NeonSynth (old projects still open); licence changed from MIT to AGPLv3 |
-| [v1.3.0](https://github.com/kv244/Synth/releases/tag/v1.3.0) | 4 Nov 2026 | The 16-step sequencer |
-| [v1.2.0](https://github.com/kv244/Synth/releases/tag/v1.2.0) | 3 Nov 2026 | Visualisers, stereo width, a resizable window |
-| [v1.1.0](https://github.com/kv244/Synth/releases/tag/v1.1.0) | 3 Nov 2026 | Real-time safety, JUCE 9, a rewritten voice |
-| [v1.0.1](https://github.com/kv244/Synth/releases/tag/v1.0.1) | 21 Jun 2026 | Licence file, CI and README badges |
-| [v1.0.0](https://github.com/kv244/Synth/releases/tag/v1.0.0) | 2 Jun 2026 | First release: four waveforms, a low-pass filter, 8 voices |
+
+Every release is in the **[changelog](CHANGELOG.md)**, linked to its GitHub release with the installer
+(and, from v1.6.0, the manual as a PDF).
 
 ## JUCE or Qt for the GUI
 
