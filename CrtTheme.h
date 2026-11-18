@@ -132,7 +132,8 @@ namespace neon::crt
     //==========================================================================
     /**
         The scanlines: a component laid over the whole window that draws faint dark
-        lines every scanlinePitch units, from a cached image, and lets every click
+        lines every scanlinePitch units across the glass (not the bezel), and a faint
+        reflection high on the left, from a cached image, and lets every click
         through to the controls underneath. Its visibility is the SCANLINES switch.
     */
     class ScanlineOverlay : public juce::Component
@@ -148,9 +149,22 @@ namespace neon::crt
         {
             cache.paint (g, getLocalBounds(), [this] (juce::Graphics& ig)
             {
+                // Only the glass has scanlines; the bezel round it is plastic.
+                const auto glass = getLocalBounds().reduced (bezelWidth);
+                ig.reduceClipRegion (glass);
                 ig.setColour (juce::Colours::black.withAlpha (scanlineStrength));
-                for (int y = scanlinePitch - 1; y < getHeight(); y += scanlinePitch)
-                    ig.fillRect (0, y, getWidth(), 1);
+                for (int y = glass.getY() + scanlinePitch - 1; y < glass.getBottom(); y += scanlinePitch)
+                    ig.fillRect (glass.getX(), y, glass.getWidth(), 1);
+
+                // A faint reflection on the glass, high on the left, as a room light would
+                // make; faint enough that nothing under it gets harder to read.
+                const auto glassF = glass.toFloat();
+                const juce::Point<float> spot (glassF.getX() + glassF.getWidth() * 0.3f, glassF.getY() + glassF.getHeight() * 0.2f);
+                const float reach = glassF.getWidth() * 0.4f;
+                juce::ColourGradient sheen (juce::Colour (0xffb4ffdc).withAlpha (0.045f), spot.x, spot.y,
+                                            juce::Colours::transparentBlack, spot.x + reach, spot.y, true);
+                ig.setFillType (juce::FillType (sheen).transformed (juce::AffineTransform::scale (1.0f, 0.6f, spot.x, spot.y)));
+                ig.fillRect (glassF);
             });
         }
 

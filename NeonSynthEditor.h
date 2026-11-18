@@ -7,6 +7,7 @@
 #include "NeonSynthProcessor.h"
 #include "Visualisers.h"
 #include "CrtLookAndFeel.h"
+#include "CrtFrame.h"
 #include "SequencerView.h"
 #include "HelpOverlay.h"
 #include "SampleView.h"
@@ -643,7 +644,7 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        g.fillAll (neon::background);   // the strip around the content when the window is a pixel off the aspect ratio
+        g.fillAll (neon::crt::casing);   // the strip around the content when the window is a pixel off the aspect ratio: the casing
     }
 
 private:
@@ -914,47 +915,46 @@ private:
         g.fillRect (juce::jlimit (area.getX(), area.getRight() - 2.0f, cutoffBand.now - 1.0f), area.getY(), 2.0f, area.getHeight());
     }
 
-    /** The panels and the static labels, drawn on the design grid (under the controls). */
+    /** The CRT frame, the panels and the static labels, drawn on the design grid (under the
+        controls) and cached in `backdrop`; how each piece looks lives in CrtFrame.h. */
     void paintContent (juce::Graphics& g)
     {
-        g.fillAll (neon::background);
-        // Each panel glows in its own colour, with a header strip behind its title (neon::drawSection).
-        struct Panel { juce::Rectangle<int> area; juce::Colour colour; int header; };
-        for (const auto& p : { Panel { { 16, 14, 1248, 56 },   neon::cyan,    0 },    // header
-                               Panel { { 16, 82, 400, 548 },   neon::cyan,    30 },   // source
-                               Panel { { 428, 82, 524, 262 },  neon::cyan,    42 },   // view
-                               Panel { { 428, 356, 330, 274 }, envTab == 1 ? neon::magenta : neon::amber, 30 },   // envelope: the tab's colour
-                               Panel { { 770, 356, 182, 274 }, neon::magenta, 30 },   // filter
-                               Panel { outputPanel,            neon::cyan,    30 },   // output
-                               Panel { modPanel,               neon::green,   30 },   // modulation (v1.9.0)
-                               Panel { { 16, 642, 1248, 204 }, neon::amber,   46 } }) // sequencer: its control row
-            neon::drawSection (g, p.area.toFloat(), p.colour, (float) p.header);
+        namespace frame = neon::crt::frame;
+        const auto window = juce::Rectangle<int> (0, 0, baseWidth, baseHeight).toFloat();
+        frame::drawBackdrop (g, window);
+
+        {
+            // The panels' outer glow stops at the glass, as light inside a tube would.
+            juce::Graphics::ScopedSaveState state (g);
+            g.reduceClipRegion (frame::glassShape (window));
+            struct Panel { juce::Rectangle<int> area; juce::Colour colour; int header; };
+            for (const auto& p : { Panel { { 16, 82, 400, 548 },   neon::cyan,    30 },   // source
+                                   Panel { { 428, 82, 524, 262 },  neon::cyan,    42 },   // view
+                                   Panel { { 428, 356, 330, 274 }, envTab == 1 ? neon::magenta : neon::amber, 30 },   // envelope: the tab's colour
+                                   Panel { { 770, 356, 182, 274 }, neon::magenta, 30 },   // filter
+                                   Panel { outputPanel,            neon::cyan,    30 },   // output
+                                   Panel { modPanel,               neon::green,   30 },   // modulation (v1.9.0)
+                                   Panel { { 16, 642, 1248, 204 }, neon::amber,   46 } }) // sequencer: its control row
+                frame::drawSection (g, p.area.toFloat(), p.colour, (float) p.header);
+            frame::drawHeaderRule (g, { 16.0f, 14.0f, 1248.0f, 56.0f });   // the header band (16, 14, 1248 x 56) has no box
+        }
 
         // Header
-        juce::AttributedString name;
-        name.append ("NEON ", neon::font (22.0f, true), neon::text);
-        name.append ("SYNTH", neon::font (22.0f, true), neon::cyan);
-        name.draw (g, juce::Rectangle<float> (32.0f, 29.0f, 300.0f, 28.0f));
+        frame::drawName (g, { 30.0f, 20.0f, 300.0f, 44.0f });
 
         const auto title = [&g] (const char* text, juce::Colour colour, int x, int y, int w = 150)
         {
-            g.setColour (colour);
-            g.setFont (neon::font (14.0f, true));
-            g.drawText (text, x, y, w, 18, juce::Justification::left);
+            frame::drawTitle (g, text, juce::Rectangle<int> (x, y, w, 18).toFloat(), colour);
         };
         const auto label = [&g] (const char* text, juce::Colour colour, int x, int y, int w, int h, juce::Justification j = juce::Justification::left)
         {
-            g.setColour (colour);
-            g.setFont (neon::font (12.0f, true));
-            g.drawText (text, x, y, w, h, j);
+            frame::drawLabel (g, text, juce::Rectangle<int> (x, y, w, h).toFloat(), colour, j);
         };
 
         // SOURCE: the title, what the strip below shows, and the names of the knobs under it
-        title ("SOURCE", neon::cyan, 32, 92);
-        g.setColour (neon::muted);
-        g.setFont (neon::font (12.0f));
-        g.drawText (stripMode == StripMode::shape ? "SHAPE - one cycle" : stripMode == StripMode::sample ? "SAMPLE - drag the markers" : "GRAINS - drag POS",
-                    152, 92, 248, 18, juce::Justification::right);
+        title ("SOURCE", neon::cyan, 32, 92, 118);
+        frame::drawHint (g, stripMode == StripMode::shape ? "SHAPE - one cycle" : stripMode == StripMode::sample ? "SAMPLE - drag the markers" : "GRAINS - drag POS",
+                         { 152.0f, 92.0f, 248.0f, 18.0f }, juce::Justification::centredRight);
         const auto row = knobRow();
         for (size_t i = 0; i < row.size(); ++i)
         {
@@ -964,13 +964,13 @@ private:
         }
 
         // Envelope: the knob names take the colour of the envelope shown
-        title ("ENVELOPE", neon::amber, 444, 366);
+        title ("ENVELOPE", envTab == 1 ? neon::magenta : neon::amber, 444, 366, 180);   // in the tab's colour, like its panel
         const char* names[] = { "ATTACK", "DECAY", "SUSTAIN", "RELEASE" };
         for (int i = 0; i < 4; ++i)
             label (names[i], envTab == 1 ? neon::magenta : neon::amber, 444 + 75 * i, 572, 70, 14, juce::Justification::centred);
 
         // Filter
-        title ("FILTER", neon::magenta, 786, 366, 80);
+        title ("FILTER", neon::magenta, 786, 366, 82);
         label ("CUTOFF", neon::magenta, 786, 394, 66, 16);
         label ("RES",   neon::magenta, 786, filterKnobRow1 + 42, 70, 14, juce::Justification::centred);
         label ("DRIVE", neon::magenta, 866, filterKnobRow1 + 42, 70, 14, juce::Justification::centred);
@@ -978,28 +978,23 @@ private:
         label ("VEL",   neon::magenta, 866, filterKnobRow2 + 42, 70, 14, juce::Justification::centred);
 
         // Output
-        title ("OUTPUT", neon::cyan, 980, 92);
+        title ("OUTPUT", neon::cyan, 980, 92, 268);
         label ("WIDTH", neon::cyan, 980, 132, 48, 16);
         label ("GAIN",  neon::cyan, 976, 162, 82, 14, juce::Justification::centred);
 
         // The fader's groove and its dB marks, at the fader's own positions for those values.
-        neon::drawPanel (g, gainSlider.getBounds().toFloat().expanded (4.0f, 2.0f), neon::cyan);
-        g.setFont (neon::font (12.0f));
+        frame::drawFaderGroove (g, gainSlider.getBounds().toFloat().expanded (4.0f, 2.0f));
         for (const float db : { 6.0f, 0.0f, -12.0f, -24.0f, -48.0f })
         {
             const float y = (float) gainSlider.getY() + gainSlider.getPositionOfValue (db);
-            g.setColour (db == 0.0f ? neon::cyan : neon::cyan.withAlpha (0.5f));
-            g.fillRect (1002.0f, y - 0.5f, db == 0.0f ? 8.0f : 5.0f, 1.0f);
-            if (db > 0.0f)
-                continue;   // +6 is a tick only: its number would crowd the 0 just below it
-            g.setColour (db == 0.0f ? neon::cyan : neon::muted);
-            g.drawText (juce::String (juce::roundToInt (db)), 972, juce::roundToInt (y) - 7, 28, 14,
-                        juce::Justification::centredRight);
+            // +6 is a tick only: its number would crowd the 0 just below it
+            const auto numberArea = db > 0.0f ? juce::Rectangle<float>() : juce::Rectangle<float> (972.0f, std::round (y) - 7.0f, 28.0f, 14.0f);
+            frame::drawDbMark (g, y, 1010.0f, juce::approximatelyEqual (db, 0.0f), numberArea, juce::String (juce::roundToInt (db)));
         }
 
         // Modulation
         const int m = modPanel.getY();
-        title ("MODULATION", neon::green, 980, m + 10);
+        title ("MODULATION", neon::green, 980, m + 10, 268);
         label ("LFO",  neon::green, 980, m + 39, 40, 18);
         label ("RATE", neon::green, 980, m + 69, 40, 16);
         const char* depthNames[] = { "PITCH", "CUTOFF", "AMP" };
@@ -1007,18 +1002,15 @@ private:
             label (depthNames[i], neon::green, 1068 + 60 * i, m + modKnobRow1 + 42, 60, 14, juce::Justification::centred);
         label ("BEND",    neon::green, 980,  m + modKnobRow2 + 42, 60, 14, juce::Justification::centred);
         label ("VIBRATO", neon::green, 1120, m + modKnobRow2 + 42, 60, 14, juce::Justification::centred);
-        g.setColour (neon::muted);
-        g.setFont (neon::font (12.0f));
-        g.drawText ("pitch bend", 1044, m + modKnobRow2 + 30, 64, 14, juce::Justification::centred);
-        g.drawText ("mod wheel",  1184, m + modKnobRow2 + 30, 64, 14, juce::Justification::centred);
+        frame::drawHint (g, "pitch bend", { 1044.0f, (float) (m + modKnobRow2 + 30), 64.0f, 14.0f }, juce::Justification::centred);
+        frame::drawHint (g, "mod wheel",  { 1184.0f, (float) (m + modKnobRow2 + 30), 64.0f, 14.0f }, juce::Justification::centred);
 
         // Sequencer
-        title ("SEQUENCER", neon::amber, 32, 657, 110);
+        title ("SEQUENCER", neon::amber, 32, 657, 114);
         label ("TEMPO", neon::amber, 544, 656, 56, 20);
         label ("SWING", neon::amber, 830, 656, 52, 20);
         label ("GATE",  neon::amber, 1056, 656, 42, 20);
     }
-
 
     /** name + details, with the name shortened ("...") so the details always fit the label. */
     juce::String fitSampleName (const juce::String& name, const juce::String& details) const
