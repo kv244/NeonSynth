@@ -196,6 +196,19 @@ juce::AudioProcessorValueTreeState::ParameterLayout NeonSynthProcessor::createPa
     // Voices (v1.9.0): how many of the 16 voices may play, 1 = mono. Set by clicking the VOICES
     // lights. The default, 16, is the full pool, so sessions saved before v1.9.0 play the same.
     layout.add (std::make_unique<AudioParameterInt>    (ParameterID { "voiceCount", 1 }, "Voices", 1, NeonSynthProcessor::numVoices, NeonSynthProcessor::numVoices));
+
+    // v1.11.0: playing (hold, glide, legato) and the sequencer's pattern length and scale lock.
+    // Every default leaves sessions saved before v1.11.0 sounding exactly as they did.
+    layout.add (std::make_unique<AudioParameterBool>   (ParameterID { "hold", 1 }, "Hold", false));          // keyboard notes held after release
+    layout.add (std::make_unique<AudioParameterFloat>  (ParameterID { "glide", 1 }, "Glide",                 // ms to slide to a new note; 0 = off
+                                                         NormalisableRange<float> (0.0f, 2000.0f, 1.0f, 0.4f), 0.0f));
+    layout.add (std::make_unique<AudioParameterBool>   (ParameterID { "legato", 1 }, "Legato", false));      // with Voices at 1: overlapping keys glide, no retrigger
+    layout.add (std::make_unique<AudioParameterInt>    (ParameterID { "seqLength", 1 }, "Sequencer Length", 1, StepSequencer::numSteps, StepSequencer::numSteps));
+    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "seqKey", 1 }, "Sequencer Key",
+                                                         StringArray { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" }, 0));
+    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "seqScale", 1 }, "Sequencer Scale",   // Off = no lock; order matches StepSequencer::Scale
+                                                         StringArray { "Off", "Major", "Natural minor", "Harmonic minor", "Dorian",
+                                                                       "Mixolydian", "Major pentatonic", "Minor pentatonic", "Blues" }, 0));
     return layout;
 }
 
@@ -271,6 +284,12 @@ NeonSynthProcessor::NeonSynthProcessor()
     bendRangeParameter     = getTypedParameter<juce::AudioParameterInt>    (apvts, "bendRange");
     vibratoParameter       = getTypedParameter<juce::AudioParameterFloat>  (apvts, "vibrato");
     voiceCountParameter    = getTypedParameter<juce::AudioParameterInt>    (apvts, "voiceCount");
+    holdParameter          = getTypedParameter<juce::AudioParameterBool>   (apvts, "hold");
+    glideParameter         = getTypedParameter<juce::AudioParameterFloat>  (apvts, "glide");
+    legatoParameter        = getTypedParameter<juce::AudioParameterBool>   (apvts, "legato");
+    seqLengthParameter     = getTypedParameter<juce::AudioParameterInt>    (apvts, "seqLength");
+    seqKeyParameter        = getTypedParameter<juce::AudioParameterChoice> (apvts, "seqKey");
+    seqScaleParameter      = getTypedParameter<juce::AudioParameterChoice> (apvts, "seqScale");
 
     loadDefaultPattern();
     publishSample (SampleLoader::makeDefaultSample());
@@ -465,6 +484,8 @@ namespace
     const juce::Identifier onId       { "on" };
     const juce::Identifier noteId     { "note" };
     const juce::Identifier velocityId { "velocity" };
+    const juce::Identifier tieId      { "tie" };     // v1.11.0; written only when set, absent = off
+    const juce::Identifier slideId    { "slide" };   // v1.11.0; written only when set, absent = off
 
     /**
         Saved-state format version, written as an attribute of the state tree.
@@ -587,6 +608,24 @@ Lfo::Transport NeonSynthProcessor::lfoTransport() const
     return transport;
 }
 
+void NeonSynthProcessor::pushEnteredNote (int note, int velocity) noexcept
+{
+    const auto scope = enteredNotesFifo.write (1);
+    if (scope.blockSize1 > 0)
+        enteredNotes[(size_t) scope.startIndex1] = (juce::uint16) ((velocity << 8) | note);
+}
+
+bool NeonSynthProcessor::popEnteredNote (int& note, int& velocity) noexcept
+{
+    const auto scope = enteredNotesFifo.read (1);
+    if (scope.blockSize1 == 0)
+        return false;
+    const auto packed = enteredNotes[(size_t) scope.startIndex1];
+    note = packed & 0x7f;
+    velocity = (packed >> 8) & 0x7f;
+    return true;
+}
+
 void NeonSynthProcessor::buildPlayMidi (const juce::MidiBuffer& input, int numSamples) noexcept
 {
     playMidi.clear();
@@ -632,6 +671,9 @@ void NeonSynthProcessor::buildPlayMidi (const juce::MidiBuffer& input, int numSa
 
         if ((noteOn || noteOff) && mode == SequencerMode::transpose)
             trackHeldKey (bytes[1], noteOn);
+
+        if (noteOn && noteEntryArmed.load (std::memory_order_relaxed))
+            pushEnteredNote (bytes[1], bytes[2]);
 
         if (! noteOn || mode == SequencerMode::layer)
         {
@@ -806,6 +848,8 @@ void NeonSynthProcessor::getStateInformation (juce::MemoryBlock& destData)
         step.setProperty (onId,       s.on,       nullptr);
         step.setProperty (noteId,     s.note,     nullptr);
         step.setProperty (velocityId, s.velocity, nullptr);
+        if (s.tie)   step.setProperty (tieId,   true, nullptr);   // so a session without ties or
+        if (s.slide) step.setProperty (slideId, true, nullptr);   // slides is saved as before
         pattern.appendChild (step, nullptr);
     }
     state.appendChild (pattern, nullptr);
@@ -930,7 +974,9 @@ void NeonSynthProcessor::setStateInformation (const void* data, int sizeInBytes)
         const auto step = pattern.getChild (i);
         sequencer.setStep (i, { (bool) step.getProperty (onId, false),
                                 (int)  step.getProperty (noteId, 60),
-                                (int)  step.getProperty (velocityId, 100) });
+                                (int)  step.getProperty (velocityId, 100),
+                                (bool) step.getProperty (tieId, false),
+                                (bool) step.getProperty (slideId, false) });
     }
 
     // CHOP's pattern; states from before v1.6.0 have none and get the default.

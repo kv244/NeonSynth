@@ -56,6 +56,17 @@
     loop, a locate, the sequencer being switched off), every pending note is
     released immediately so nothing hangs.
 
+    Tie and slide (v1.11.0; the contract between the sequencer and the voices)
+    ------------------------------------------------------------------------
+    Each step carries two more flags, stored in the same atomic word as the rest. A tied step
+    keeps its note sounding into the next step: the next step sends no note-on of its own and
+    the note-off moves to the end of the last step in the tie. A slide step's note-off is sent
+    just after the next step's note-on (both on channel 16), so for a moment both are held;
+    a voice that receives a channel-16 note-on while its own channel-16 note is still held and
+    marked as sliding glides to the new pitch at GLIDE time instead of restarting, whatever the
+    keyboard's mode. With GLIDE at 0 a slide is a plain legato step. Absent flags (every session
+    saved before v1.11.0) mean off, so old patterns play exactly as before.
+
     Thread safety
     -------------
     process() runs on the audio thread and never allocates or locks. The
@@ -84,10 +95,13 @@ public:
         bool on       = false;   ///< whether the step plays
         int  note     = 60;      ///< MIDI note number, 0..127 (kept while the step is off)
         int  velocity = 100;     ///< MIDI velocity, 1..127
+        bool tie      = false;   ///< v1.11.0: held into the next step, which does not retrigger
+        bool slide    = false;   ///< v1.11.0: overlaps the next step, so the voice glides to its note
 
         bool operator== (const Step& other) const noexcept
         {
-            return on == other.on && note == other.note && velocity == other.velocity;
+            return on == other.on && note == other.note && velocity == other.velocity
+                && tie == other.tie && slide == other.slide;
         }
     };
 
@@ -287,6 +301,8 @@ public:
     static juce::uint32 pack (const Step& s) noexcept
     {
         return (s.on ? 0x10000u : 0u)
+             | (s.tie   ? 0x20000u : 0u)
+             | (s.slide ? 0x40000u : 0u)
              | ((juce::uint32) juce::jlimit (1, 127, s.velocity) << 8)
              |  (juce::uint32) juce::jlimit (0, 127, s.note);
     }
@@ -296,6 +312,8 @@ public:
     {
         Step s;
         s.on       = (bits & 0x10000u) != 0;
+        s.tie      = (bits & 0x20000u) != 0;
+        s.slide    = (bits & 0x40000u) != 0;
         s.velocity = (int) ((bits >> 8) & 0x7fu);
         s.note     = (int) (bits & 0x7fu);
         return s;
