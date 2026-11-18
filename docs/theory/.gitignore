@@ -1,0 +1,6 @@
+# LaTeX by-products when the .tex is built by hand (build_compendium.sh builds in a temp dir)
+*.aux
+*.log
+*.out
+*.toc
+*.synctex.gz
