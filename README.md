@@ -6,13 +6,13 @@
 [![Release](https://github.com/kv244/Synth/actions/workflows/release.yml/badge.svg)](https://github.com/kv244/Synth/actions/workflows/release.yml)
 [![Latest release](https://img.shields.io/github/v/release/kv244/Synth)](https://github.com/kv244/Synth/releases/latest)
 
-A futuristic, neon-styled virtual analog synthesizer built with JUCE and C++17,
+A virtual analog synthesizer with the look of an old phosphor monitor, built with JUCE and C++17,
 by **Razvan Julian Petrescu** / **AudioDSP**.
 
 NeonSynth is a learning synthesizer for musicians and coders: every control shows what it does to the sound,
 and the **[user manual](docs/NeonSynth-User-Manual.md)** teaches it by ear and maps it to the C++ source.
 
-![NeonSynth v1.7.0 with a sawtooth and the sequencer running](docs/images/captures/ui-oscillator-running.png)
+![NeonSynth v1.10.0 in its retro CRT look, with a sawtooth and the sequencer running](docs/images/captures/ui-oscillator-running.png)
 
 **[If you want to hear it in action](https://github.com/kv244/Synth/releases/download/demo/neonsynth-demo.wav)**: a 33-second piece (WAV, 6 MB) in which every
 sound is NeonSynth. Six instances play together: a granular pad, a Random-source bass through CHOP and the
@@ -33,7 +33,8 @@ lead. [`docs/demo/make_demo.py`](docs/demo/make_demo.py) renders it from the VST
 - **16-step sequencer**: sample-accurate, synced to the DAW or its own tempo, with swing, gate and three
   keyboard modes.
 - **You see what you hear**: oscilloscope, spectrum with the filter curve, envelope with a dot per voice,
-  the LFO's shape and position, the bend and mod-wheel positions, voice lights and a stereo meter, in a window that scales from 75% to 150%.
+  the LFO's shape and position, the bend and mod-wheel positions, voice lights and a stereo meter, in a window that scales from 75% to 150%. It looks like an old
+  phosphor monitor: glowing traces with a short afterglow, a bezel, and scanlines you can switch off.
 - **Sessions keep everything**: the sample, the sequencer pattern and the CHOP pattern are saved with the
   DAW project, and every parameter can be automated.
 
@@ -79,6 +80,7 @@ MIDI logging and the layout of the source.
 
 | Version | Date | What changed |
 |---|---|---|
+| [v1.10.0](https://github.com/kv244/Synth/releases/tag/v1.10.0) | 18 Nov 2026 | The retro CRT look: phosphor text and traces on a dark green tube inside a bezel, scope and spectrum afterglow, block meters, arc-ring knobs, the sequencer's steps showing their notes, embedded VT323 and IBM Plex Mono fonts, and a SCANLINES switch saved with the session. The layout and the sound are unchanged: old sessions sound bit-identical |
 | [v1.9.0](https://github.com/kv244/Synth/releases/tag/v1.9.0) | 17 Nov 2026 | Movement: one LFO (five shapes, free or synced) on pitch, cutoff and level; pitch bend and a mod-wheel vibrato from MIDI, for keyboard and sequencer notes alike; click the voice lights to set how many voices play (1 = mono); a vertical GAIN fader beside the meters and a glow around every panel. Old sessions sound bit-identical; projects with recorded bend or mod-wheel data now respond to it |
 | [v1.8.0](https://github.com/kv244/Synth/releases/tag/v1.8.0) | 15 Nov 2026 | The filter: low-pass, high-pass, band-pass and notch; resonance up to self-oscillation that follows the envelope; drive; a filter envelope (AMP / FILTER tabs) and velocity to cutoff; the spectrum draws the real response. Old sessions sound bit-identical |
 | [v1.7.1](https://github.com/kv244/Synth/releases/tag/v1.7.1) | 13 Nov 2026 | Review fixes: sample loading and replacement, Granular bracket, CI runs once per commit, code statistics report; no change to controls or sound |
@@ -178,3 +180,9 @@ available under the same license; this repository is that source for the officia
 
 Releases up to and including v1.3.0 were published under the MIT license; from v1.4.0 the project
 is licensed under the AGPLv3.
+
+The two fonts compiled into the plugin since v1.10.0 are under the SIL Open Font License 1.1:
+[VT323](https://github.com/google/fonts/tree/main/ofl/vt323) by Peter Hull
+([`fonts/OFL-VT323.txt`](fonts/OFL-VT323.txt)) and
+[IBM Plex Mono](https://github.com/IBM/plex) by IBM ([`fonts/OFL-IBMPlexMono.txt`](fonts/OFL-IBMPlexMono.txt)).
+The installer copies both licences next to the plugin.

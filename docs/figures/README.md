@@ -1,6 +1,6 @@
 # Manual figures
 
-The figures in `docs/images/` for [the user manual](../NeonSynth-User-Manual.md), the scripts that make them, and how to remake them. Edition 1.7 of the manual, for NeonSynth v1.9.0. All four captures were retaken with v1.9.0, because every panel now has a glow outline and a header strip and the right-hand column is split into OUTPUT and the new MODULATION panel: Figure 1 now has ten regions, and `ui-oscillator-running` also has LFO CUTOFF +1.50 oct at RATE 2 Hz, so the LFO band under CUTOFF and the dot in the LFO view show. Its playhead is now on step 9, the step Figure 8's callout 5 points at (the v1.8.0 capture had it on step 4). The SOURCE panel and the sequencer did not move, so the boxes in Figures 3, 6 and 8 are unchanged. Figures 2, 4, 5 and 7 were rendered again with v1.9.0 and came out byte-identical; Figure 9 is new.
+The figures in `docs/images/` for [the user manual](../NeonSynth-User-Manual.md), the scripts that make them, and how to remake them. Edition 1.8 of the manual, for NeonSynth v1.10.0. v1.10.0 gives the editor the retro CRT look (a dark green tube in a bezel, scanlines, phosphor text in VT323 and IBM Plex Mono, knobs as arc rings, block sliders and meters, the playing step drawn inverted), so all four captures were retaken with v1.10.0, in the same states as before and with the scanlines on, the default. The layout did not move, so the boxes in Figures 1, 3, 6 and 8 are unchanged. Three things in `compose_ui.py` did change: Figure 1's marker 8 moved right (to x 766), clear of the new SCANLINES button in the header; Figure 8's key describes the new step cells (5 is now the inverted step, no longer a cyan outline; 4 a row of velocity blocks), and its pointer 3 sits a little further right, beside the wider VT323 note name. The white callouts read as before against the darker window, so their colours are unchanged. The cover was redrawn in the CRT look (see below). The sound did not change, so Figures 2, 4, 5, 7 and 9 were not rendered again: they and `render-settings.json` remain the v1.9.0 renders (revision `v1.9.0 (bc56754)`), which v1.10.0 reproduces bit for bit; Figure 10, drawn from the source code, is unchanged too.
 
 ## What each figure is
 
@@ -16,9 +16,9 @@ The figures in `docs/images/` for [the user manual](../NeonSynth-User-Manual.md)
 | 8 Step grid and gestures | `fig08-sequencer` | Actual application capture | `compose_ui.py` |
 | 9 The five LFO shapes | `fig09-lfo-shapes` | Plot derived from rendered audio | `render_plots.py` |
 | 10 The signal path | `fig10-signal-path` | Explanatory schematic, drawn from the source code (not from audio) | `signal_flow.py` |
-| Cover | `cover` | Drawn artwork, with the version and release date | `cover.py --date "<release date>"` (redraw on every version bump; CI checks the version) |
+| Cover | `cover` | Drawn artwork in the editor's CRT look, with the version and release date | `cover.py --date "<release date>"` (redraw on every version bump; CI checks the version) |
 
-Every figure is written as an SVG (text as outlines) and a PNG at 300 dpi. All are drawn 160 mm wide, the print text width, with 9 pt labels and 10 pt panel titles in DejaVu Sans. Lines are told apart by style and label as well as by colour, so they read in grayscale. The captions in the manual carry the same kind label.
+Every figure is written as an SVG (text as outlines) and a PNG at 300 dpi. All but the cover are drawn 160 mm wide, the print text width, with 9 pt labels and 10 pt panel titles in DejaVu Sans. Lines are told apart by style and label as well as by colour, so they read in grayscale. The captions in the manual carry the same kind label.
 
 ## Remaking them
 
@@ -46,17 +46,24 @@ The renders come from the Linux build of the VST3 at the revision above. The bui
 
 `docs/images/captures/` holds untouched screenshots of the Standalone, and `compose_ui.py` only adds numbered callouts, outlines and the keys. They were taken on Linux under a virtual display:
 
-1. Build the Standalone at the revision above. Start `Xvfb :99 -screen 0 2400x1600x24`, with a PulseAudio null sink so the audio device opens.
+1. Build the Standalone at the version being documented (the v1.10.0 captures: branch `gui-crt` at `e5c3db2`, the version bump). Start `Xvfb :99 -screen 0 2400x1600x24`, with a PulseAudio null sink so the audio device opens.
 2. Run the Standalone and size its window to 1924 × 1324 (`xdotool windowsize`). That makes the plugin area exactly 1920 × 1290, the 1280 × 860 design at 150%, the largest size the window allows; it is drawn at that size, not enlarged.
 3. Grab the screen with `ffmpeg -f x11grab -draw_mouse 0`, with the pointer parked off the window, and crop to the plugin area (x 4–1924, y 30–1320).
 4. States: `ui-oscillator-running`, from a fresh instance, has Sawtooth, LFO CUTOFF +1.50 oct and LFO RATE 2.00 Hz, and RUN on (the voices, scope, meters, LFO view, cutoff band and playhead are live); it is the frame of a 25 fps grab in which the playhead is on step 9. Then, from a second fresh instance with RUN off: `ui-shape` has Sawtooth with OVERTONE 100% and FOLD 100%; `ui-sample` then sets Source to Sample with START 45%, L.START 30%, L.END 79%; `ui-granular` then sets Source to Granular. Controls were set with the mouse (a click on a knob sets it by angle) and wheel, and each state was checked in the capture before it was used: a menu opens with the current item under the pointer, so its items are not always in the same place.
+
+The scanlines are part of the v1.10 look and stay on in the captures (the SCANLINES button in the header turns them off; a fresh instance has them on). Each `ui-oscillator-running` frame of the 25 fps grab shows the playhead on one step for about four frames; pick one from the middle of the run on step 9.
 
 Figure 1 has ten regions: 1 source and waveform menus, 2 the strip and its knob row, 3 the display, 4 the envelope with its AMP / FILTER tabs, 5 the filter, 6 OUTPUT (WIDTH, the GAIN fader and the meters), 7 MODULATION (LFO, BEND, VIBRATO), 8 the voice lights and their readout, 9 quick help, 10 the step sequencer. A white strip left of the capture holds the markers for 1, 2 and 10.
 
 Boxes in `compose_ui.py` are in design pixels (the coordinates used by `NeonSynthEditor::layout()`) and scaled by 1.5 to the captures. If the layout changes, move the boxes there and retake the captures.
 
+## The cover
+
+`cover.py` draws an A4 page (210 × 297 mm, no margins) in the editor's CRT look, with the colours of `CrtTheme.h` and `Visualisers.h`: the warm grey casing and bezel, with a name plate and a green power light below; the tube glass, a radial gradient from #07170f to #010402 with a faint graticule, scanlines and a soft sheen; on it the title NEON_SYNTH and "> USER MANUAL" in VT323 with a phosphor halo, the wave stack that morphs from sine to sawtooth, the 16-step row with the playing step inverted, and the author, version and date as terminal lines with a cursor. VT323 and IBM Plex Mono are loaded from `fonts/` through matplotlib's font manager (both OFL); the halo is layered strokes, so the SVG has no filters. The version comes from `CMakeLists.txt` and is written with the date to `cover.json`, which `docs/build_manual.py --check` compares with the project version. It was drawn with `--date "18 November 2026"`; redraw it with the real release date at release.
+
 ## Limits
 
 - Small text inside the screenshots (note names, LOAD, PAD) is the instrument's own and is smaller than 9 pt at 160 mm, even though the capture is not enlarged. The callouts, keys and captions are 9 pt or larger.
-- The SVG of a capture embeds the screenshot as a raster, so those files are large.
+- The SVG of a capture embeds the screenshot as a raster, so those files are large; the scanlines compress poorly, so the v1.10 captures and Figures 1, 6 and 8 are larger than before.
+- The cover's SVG is about 1.6 MB: the VT323 glyphs, drawn as outlines four times each for the halo, make up most of it.
 - Windows and Linux renders can differ in the last decimal places, which does not change anything visible in these plots.

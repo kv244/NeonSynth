@@ -1,11 +1,11 @@
 ; Neon Synth — NSIS installer script
-; Build:  makensis /DPRODUCT_VERSION=1.9.0 installer.nsi
+; Build:  makensis /DPRODUCT_VERSION=1.10.0 installer.nsi
 
 Unicode True
 
 ; ── Version (override from CI with /DPRODUCT_VERSION=x.y.z) ──────────────────
 !ifndef PRODUCT_VERSION
-  !define PRODUCT_VERSION "1.9.0"
+  !define PRODUCT_VERSION "1.10.0"
 !endif
 
 ; ── Constants ────────────────────────────────────────────────────────────────
@@ -56,6 +56,11 @@ Section "VST3 Plugin" SEC_VST3
 
   SetOutPath "$COMMONFILES64\VST3"
   File /r "build\NeonSynth_artefacts\Release\VST3\NeonSynth.vst3"
+
+  ; The licences of the two fonts compiled into the plugin (v1.10.0; SIL Open Font Licence).
+  SetOutPath "$INSTDIR\Licences"
+  File "fonts\OFL-VT323.txt"
+  File "fonts\OFL-IBMPlexMono.txt"
 SectionEnd
 
 Section "Standalone Application" SEC_STANDALONE
@@ -108,6 +113,8 @@ Section "Uninstall"
 
   Delete    "$INSTDIR\NeonSynth.exe"
   Delete    "$INSTDIR\NeonSynth-User-Manual-*.pdf"
+  Delete    "$INSTDIR\Licences\OFL-*.txt"
+  RMDir     "$INSTDIR\Licences"
   Delete    "$INSTDIR\uninstall.exe"
   RMDir     "$INSTDIR"
   RMDir     "$PROGRAMFILES64\${PRODUCT_PUBLISHER}"

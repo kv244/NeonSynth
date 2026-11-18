@@ -42,6 +42,9 @@
 */
 #include "NeonSynthProcessor.h"
 #include "Visualisers.h"
+#include "NeonSynthEditor.h"
+#include <array>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <map>
@@ -290,6 +293,22 @@ namespace
             }
     }
 
+    /** WCAG 2 contrast ratio between two opaque colours (1 to 21). */
+    double contrast (juce::Colour a, juce::Colour b)
+    {
+        auto luminance = [] (juce::Colour c)
+        {
+            auto channel = [] (juce::uint8 v)
+            {
+                const double x = v / 255.0;
+                return x <= 0.04045 ? x / 12.92 : std::pow ((x + 0.055) / 1.055, 2.4);
+            };
+            return 0.2126 * channel (c.getRed()) + 0.7152 * channel (c.getGreen()) + 0.0722 * channel (c.getBlue());
+        };
+        const double la = luminance (a), lb = luminance (b);
+        return (juce::jmax (la, lb) + 0.05) / (juce::jmin (la, lb) + 0.05);
+    }
+
     /** Pixels in an area that are clearly the modulation green (and not cyan, magenta or grey). */
     int greenPixels (const juce::Image& image)
     {
@@ -338,7 +357,8 @@ int main()
 
         for (const auto* id : { "stepGrid", "sampleView", "shapeView", "adsrView", "filterAdsrView", "scopeView", "spectrumView",
                                 "scopeButton", "spectrumButton", "ampEnvButton", "filterEnvButton",
-                                "loadButton", "padButton", "helpButton", "helpOverlay", "meter", "lfoView", "bendBar", "wheelBar" })
+                                "loadButton", "padButton", "helpButton", "helpOverlay", "meter", "lfoView", "bendBar", "wheelBar",
+                                "scanlinesButton", "scanlines" })
             check (find (ed, id) != nullptr, juce::String ("a component with ID ") + id);
     }
 
@@ -366,7 +386,8 @@ int main()
             {
                 for (auto* child : c.getChildren())
                 {
-                    if (child->getComponentID().isNotEmpty() && child->getComponentID() != "helpOverlay" && showing (*child, ed))
+                    if (child->getComponentID().isNotEmpty() && child->getComponentID() != "helpOverlay"
+                        && child->getComponentID() != "scanlines" && showing (*child, ed))
                         shown.add (child);
                     collect (*child);
                 }
@@ -958,6 +979,124 @@ int main()
     }
 
     //==========================================================================
+    std::printf ("\nSCANLINES (v1.10.0)\n");
+    {
+        auto* overlay = find (ed, "scanlines");
+        auto* button = dynamic_cast<juce::Button*> (find (ed, "scanlinesButton"));
+        auto* knob = find (ed, "attack");
+        if (overlay != nullptr && button != nullptr && knob != nullptr)
+        {
+            check (showing (*overlay, ed) && button->getToggleState(), "the scanlines are on by default");
+            auto* content = overlay->getParentComponent();
+            const auto centre = content->getLocalPoint (knob, knob->getLocalBounds().getCentre());
+            check (content->getComponentAt (centre) == knob, "a click on a knob reaches the knob through the scanlines");
+            button->triggerClick();
+            pump();
+            check (! showing (*overlay, ed) && ! button->getToggleState()
+                       && ! (bool) processor.getAPVTS().state.getProperty ("scanlines", true),
+                   "SCANLINES turns them off, and the choice is kept with the session");
+            button->triggerClick();
+            pump();
+            check (showing (*overlay, ed), "and on again");
+        }
+        else check (false, "scanlines overlay and SCANLINES button found");
+    }
+
+    //==========================================================================
+    std::printf ("\nThe CRT look (v1.10.0): legible, and drawn once\n");
+    {
+        // Text on the tube glass: the phosphor colours and the four hues (as the frame and the
+        // controls use them) against the brightest part of the glass, at least WCAG AA (4.5:1).
+        juce::StringArray weak;
+        const auto glass = neon::crt::screenCentre;
+        const std::pair<const char*, juce::Colour> inks[] = {
+            { "phosphor", neon::crt::phosphor }, { "phosphorDim", neon::crt::phosphorDim },
+            { "cyan", neon::cyan }, { "magenta", neon::magenta }, { "amber", neon::amber }, { "green", neon::green } };
+        for (const auto& [name, ink] : inks)
+            if (contrast (ink, glass) < 4.5)
+                weak.add (juce::String (name) + " " + juce::String (contrast (ink, glass), 1) + ":1");
+        check (weak.isEmpty(), "text colours reach 4.5:1 against the tube glass" + (weak.isEmpty() ? juce::String() : " (too faint: " + weak.joinIntoString (", ") + ")"));
+
+        auto* crtEditor = dynamic_cast<NeonSynthEditor*> (&ed);
+        auto* scope = dynamic_cast<OscilloscopeView*> (find (ed, "scopeView"));
+        auto* meter = dynamic_cast<LevelMeter*> (find (ed, "meter"));
+        auto* help = dynamic_cast<HelpOverlay*> (find (ed, "helpOverlay"));
+        auto* helpButton = dynamic_cast<juce::Button*> (find (ed, "helpButton"));
+        if (crtEditor != nullptr && scope != nullptr && meter != nullptr && help != nullptr && helpButton != nullptr)
+        {
+            // Two frames of a playing synth, some timer ticks apart: the backdrop, the scope's
+            // graticule and the meter's scale are drawn for the first and only copied for the second.
+            auto counts = [&] { return std::array<int, 3> { crtEditor->getBackdrop().getRedrawCount(),
+                                                            scope->getBackdrop().getRedrawCount(),
+                                                            meter->getBackdrop().getRedrawCount() }; };
+            play (processor, true);
+            pump (70);
+            (void) ed.createComponentSnapshot (ed.getLocalBounds(), true, 1.0f);
+            const auto first = counts();
+            play (processor, true);
+            pump (140);
+            (void) ed.createComponentSnapshot (ed.getLocalBounds(), true, 1.0f);
+            const auto second = counts();
+            play (processor, false);
+            check (first[0] >= 1 && first[1] >= 1 && first[2] >= 1 && first == second,
+                   "the backdrop, the scope's graticule and the meter's scale are drawn once, then reused");
+
+            ed.setSize (juce::roundToInt (baseWidth * 1.5f), juce::roundToInt (baseHeight * 1.5f));
+            (void) ed.createComponentSnapshot (ed.getLocalBounds(), true, 1.0f);
+            check (counts()[0] == second[0] + 1, "a new window size draws the backdrop again, once, at the new size");
+            ed.setSize (baseWidth, baseHeight);
+            (void) ed.createComponentSnapshot (ed.getLocalBounds(), true, 1.0f);
+
+            helpButton->triggerClick();
+            pump();
+            (void) ed.createComponentSnapshot (ed.getLocalBounds(), true, 1.0f);
+            const int pageDraws = help->getPageCache().getRedrawCount();
+            play (processor, true);
+            pump (140);
+            (void) ed.createComponentSnapshot (ed.getLocalBounds(), true, 1.0f);
+            play (processor, false);
+            check (pageDraws >= 1 && help->getPageCache().getRedrawCount() == pageDraws,
+                   "the help page is drawn once while the views under it keep moving");
+            helpButton->triggerClick();
+            pump();
+        }
+        else check (false, "editor, scope, meter and help page found");
+
+        // States the size sweep below does not show, saved for a look (NEONSYNTH_SNAPSHOT_DIR).
+        set (processor, "seqOn", 1.0f);
+        for (int i = 0; i < 6; ++i)
+            play (processor, true);   // about 0.5 s at 48 kHz: the playhead moves a few steps
+        pump (70);
+        saveSnapshot (ed.createComponentSnapshot (ed.getLocalBounds(), true, 1.0f), "100-sequencer-running");
+        play (processor, false);
+        set (processor, "seqOn", 0.0f);
+
+        set (processor, "filterEnabled", 0.0f);
+        saveSnapshot (ed.createComponentSnapshot (ed.getLocalBounds(), true, 1.0f), "100-filter-off");
+        set (processor, "filterEnabled", 1.0f);
+
+        // A pop-up menu, drawn the way the look-and-feel draws one (opening a real menu
+        // window needs a window manager, which the test's virtual display does not have).
+        if (auto* combo = dynamic_cast<juce::ComboBox*> (find (ed, "filterMode")))
+        {
+            auto& lf = combo->getLookAndFeel();
+            const int rowHeight = 24, width = 220, rows = combo->getNumItems();
+            juce::Image menu (juce::Image::ARGB, width, rows * rowHeight + 8, true);
+            {
+                juce::Graphics g (menu);
+                lf.drawPopupMenuBackground (g, width, menu.getHeight());
+                for (int i = 0; i < rows; ++i)
+                    lf.drawPopupMenuItem (g, { 0, 4 + i * rowHeight, width, rowHeight }, false, true, i == 1,
+                                          combo->getItemId (i) == combo->getSelectedId(), false,
+                                          combo->getItemText (i), {}, nullptr, nullptr);
+            }
+            saveSnapshot (menu, "100-popup-menu");
+            check (rows > 0 && menu.getPixelAt (width / 2, rowHeight + 4 + rowHeight / 2) != menu.getPixelAt (width / 2, 2),
+                   "a pop-up menu draws, with its highlighted row standing out");
+        }
+    }
+
+    //==========================================================================
     std::printf ("\nEvery view paints, at every size, for every source\n");
     {
         auto* spectrumButton = dynamic_cast<juce::Button*> (find (ed, "spectrumButton"));
@@ -1033,9 +1172,12 @@ int main()
     }
 
     //==========================================================================
-    std::printf ("\nThe envelope tab is kept with the plugin's state\n");
+    std::printf ("\nThe envelope tab and SCANLINES are kept with the plugin's state\n");
     {
         showEnvTab (ed, 1);
+        if (auto* scanlinesButton = dynamic_cast<juce::Button*> (find (ed, "scanlinesButton")))
+            scanlinesButton->triggerClick();   // off
+        pump();   // a click arrives as a message
         processor.editorBeingDeleted (editor.get());   // what a host's wrapper does before deleting the editor
         editor.reset();
         editor.reset (processor.createEditorAndMakeActive());
@@ -1045,6 +1187,8 @@ int main()
                    && allShowing (*editor, filterEnvControls, std::size (filterEnvControls), true)
                    && allShowing (*editor, ampEnvControls, std::size (ampEnvControls), false),
                "a reopened editor shows the FILTER tab it was closed on");
+        auto* overlay = editor != nullptr ? find (*editor, "scanlines") : nullptr;
+        check (overlay != nullptr && ! overlay->isVisible(), "and with the scanlines off, as it was closed");
         if (editor != nullptr)
             showEnvTab (*editor, 0);
     }
