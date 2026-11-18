@@ -84,7 +84,16 @@ CI also configures with `-DNEONSYNTH_WARNINGS_AS_ERRORS=ON`, so a compiler warni
 | `RealtimeSafetyTests` | Hooks `operator new`/`delete` and fails if `processBlock` allocates or frees while rendering chords, the sequencer, every waveform and every source, the LFO on all three depths, pitch bend, the mod wheel and the Voices limit moving, as another thread keeps replacing the sample |
 | `ParameterLayoutTests` | Every parameter's ID, place, type, range, skew, default and choices against `tests/parameter-layout.txt`: parameters may only be appended (hosts store sessions by ID and normalised value). After appending one, update the reference with `ParameterLayoutTests --write` |
 | `EditorTests` | Opens the editor offscreen and drives it with mouse events: every parameter has a control, each source shows its own controls with nothing overlapping, knobs, boxes and buttons write their parameter in one gesture and follow it, the step grid, the CHOP strip, the sample markers, the four envelope points, the view and help buttons (Esc closes help from any control), a replaced sample being freed once its notes end, and a background load that is overtaken; the SCANLINES switch (clicks pass through, the choice is saved); the CRT look's text contrast (4.5:1 on the glass) and that its backdrop, graticules and help page are drawn once and reused; then paints every view at 75%, 100% and 150% for every source (set `NEONSYNTH_SNAPSHOT_DIR` to keep the pictures). Finds controls only by component ID, so it carries over to a new layout. On Linux it needs an X display (`xvfb-run`) |
+| `SessionStateTests` | Saving and loading sessions: round trips, the embedded sample, missing and changed files, and sessions saved by v1.2, v1.4, v1.5 and v1.10 (`tests/fixtures/state`): each loads with every newer parameter at its neutral default, plays, and renders the same once saved again |
+| `StateFuzzTests` | About 1 600 damaged and hostile sessions (truncated or garbled XML, bad embedded-sample text, parameter values that are not numbers, deep nesting, huge patterns, long paths), seeded so a failure repeats; after each the plugin must still render finite audio, and the cases that crashed or hung v1.10.0 stay in the list |
 | `RenderBenchmark` | Times `processBlock` directly (no host) for idle, one note, 16 voices, 16 voices on each of the Sample, Random and Granular sources, 16 sculpted voices (CHOP, Noise and Fold all on), the LFO on the cutoff, the mod wheel's vibrato and a moving bend on the granular source (all on 16 voices), and a dense sequencer + chords load |
+
+### Sanitizers
+
+`-DNEONSYNTH_SANITIZE=ON` (GCC or Clang, a Debug or RelWithDebInfo build, without warnings as
+errors) builds the plugin and every test with AddressSanitizer and UndefinedBehaviorSanitizer;
+`ctest` then runs each test with leak detection on and stops at the first report. CI runs this
+as the `sanitizers` job on Ubuntu.
 
 ### Performance
 
@@ -392,7 +401,10 @@ The source files are listed in [Project Structure](#project-structure).
 | `tests/SampleReaderTests.cpp` | Unit tests for sample playback |
 | `tests/GranularTests.cpp` | Unit tests for the granular source |
 | `tests/RealtimeSafetyTests.cpp` | Fails if `processBlock` allocates |
-| `tests/RenderBenchmark.cpp` | CPU benchmark of `processBlock` |
+| `tests/RenderBenchmark.cpp` | CPU benchmark of `processBlock`; fails if any case renders a NaN or an infinity |
+| `tests/SessionStateTests.cpp`, `tests/fixtures/state/` | Session save and load, and the sessions saved by earlier releases |
+| `tests/StateFuzzTests.cpp` | Damaged and hostile sessions |
+| `tests/sanitizer-suppressions.txt` | The two JUCE-internal UBSan reports the sanitizer build tolerates, and why |
 | `tests/ParameterLayoutTests.cpp`, `tests/parameter-layout.txt` | The parameter-layout test and its reference |
 | `tests/EditorTests.cpp` | Offscreen editor tests (gestures, painting, the CRT look's contrast and caches) |
 | `tests/complexity_report.py` | Lines of code and the cyclomatic complexity of every plugin function, as Markdown (`pip install lizard`); CI runs it on every push and pull request |

@@ -89,9 +89,9 @@ MIDI logging and the layout of the source.
 
 | Version | Date | What changed |
 |---|---|---|
+| [v1.10.1](https://github.com/kv244/Synth/releases/tag/v1.10.1) | 18 Nov 2026 | Hardening: a damaged or hostile session can no longer crash or hang the plugin (a bad embedded-sample size, parameter values that are not numbers, XML nested hundreds of thousands deep, a relative sample path); the host hears of a background sample load on the message thread; new tests for broken sessions, sessions saved by v1.2 to v1.10, random sequencer and envelope settings, and an ASan/UBSan CI job; SECURITY, CONTRIBUTING and this changelog. No change to controls or sound |
 | [v1.10.0](https://github.com/kv244/Synth/releases/tag/v1.10.0) | 18 Nov 2026 | The retro CRT look: phosphor text and traces on a dark green tube inside a bezel, scope and spectrum afterglow, block meters, arc-ring knobs, the sequencer's steps showing their notes, embedded VT323 and IBM Plex Mono fonts, and a SCANLINES switch saved with the session. The layout and the sound are unchanged: old sessions sound bit-identical |
 | [v1.9.0](https://github.com/kv244/Synth/releases/tag/v1.9.0) | 17 Nov 2026 | Movement: one LFO (five shapes, free or synced) on pitch, cutoff and level; pitch bend and a mod-wheel vibrato from MIDI, for keyboard and sequencer notes alike; click the voice lights to set how many voices play (1 = mono); a vertical GAIN fader beside the meters and a glow around every panel. Old sessions sound bit-identical; projects with recorded bend or mod-wheel data now respond to it |
-| [v1.8.0](https://github.com/kv244/Synth/releases/tag/v1.8.0) | 15 Nov 2026 | The filter: low-pass, high-pass, band-pass and notch; resonance up to self-oscillation that follows the envelope; drive; a filter envelope (AMP / FILTER tabs) and velocity to cutoff; the spectrum draws the real response. Old sessions sound bit-identical |
 
 Every release is in the **[changelog](CHANGELOG.md)**, linked to its GitHub release with the installer
 (and, from v1.6.0, the manual as a PDF).

@@ -4,6 +4,7 @@
 
 #pragma once
 #include <juce_audio_basics/juce_audio_basics.h>
+#include <cmath>
 
 /**
     @file StepSequencer.h
@@ -178,8 +179,10 @@ public:
         if (numSamples <= 0)
             return;
 
-        // Stopped: release whatever is sounding and park the playhead.
-        if (! transport.playing || transport.bpm <= 0.0)
+        // Stopped: release whatever is sounding and park the playhead. A tempo or position that is
+        // not a finite number (a broken session, a host bug) counts as stopped too: written as
+        // !(bpm > 0) so NaN lands here, since the step loop below would never end on it.
+        if (! transport.playing || ! (transport.bpm > 0.0) || ! std::isfinite (transport.bpm) || ! std::isfinite (transport.beat))
         {
             releaseAll (midi, 0);
             wasPlaying = false;

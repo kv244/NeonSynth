@@ -20,9 +20,9 @@
     stateVersion; very long names and paths; paths to files that are not audio. At the end the
     seeds must still load and save back byte for byte.
 
-    The random cases are seeded, so a failure always reproduces. Cases that are known to crash
-    today and wait for a fix in the plugin run only with --open-bugs (see openBugCases());
-    --verbose names every case before it is loaded, so a crash points at its case.
+    The random cases are seeded, so a failure always reproduces. The cases in bugCases() crashed
+    or hung v1.10.0 and are fixed since v1.10.1; --verbose names every case before it is loaded,
+    so a crash points at its case.
 
     Build with CMake:  cmake -B build -DJUCE_DIR=... -DNEONSYNTH_BUILD_TESTS=ON
                        cmake --build build --target StateFuzzTests
@@ -187,12 +187,11 @@ namespace
         }
     };
 
-    /** Cases that crash the processor today (an uncaught exception, or an abort in the sanitizer
-        build). They run with --open-bugs only, so that ctest stays green until the fix lands;
-        remove the guard (call this from main unconditionally) once it has. */
-    void openBugCases (Harness& h, const juce::MemoryBlock& pad, const juce::MemoryBlock& embedded)
+    /** Cases that crashed or hung v1.10.0 (an uncaught exception, a stack overflow, an endless
+        sequencer loop, a crash in the grain reader), found by this test and fixed in v1.10.1. */
+    void bugCases (Harness& h, const juce::MemoryBlock& pad, const juce::MemoryBlock& embedded)
     {
-        std::printf ("Open bugs (--open-bugs)\n");
+        std::printf ("Cases that broke v1.10.0\n");
 
         // MemoryBlock::fromBase64Encoding() sizes its block from the number before the dot, without
         // checking it against the text: "-1." asks for SIZE_MAX bytes (std::bad_alloc escapes
@@ -243,10 +242,9 @@ namespace
 int main (int argc, char* argv[])
 {
     juce::ScopedJuceInitialiser_GUI juceInit;   // the processor's editor code needs the message manager
-    bool runOpenBugs = false, verbose = false;
+    bool verbose = false;
     for (int i = 1; i < argc; ++i)
     {
-        runOpenBugs = runOpenBugs || juce::String (argv[i]) == "--open-bugs";
         verbose     = verbose     || juce::String (argv[i]) == "--verbose";
     }
     const auto started = juce::Time::getMillisecondCounterHiRes();
@@ -634,8 +632,7 @@ int main (int argc, char* argv[])
     h.checkGroup ("nonsense parameter values and versions leave a usable processor");
 
     //==========================================================================
-    if (runOpenBugs)
-        openBugCases (h, padState, embeddedState);
+    bugCases (h, padState, embeddedState);
 
     //==========================================================================
     std::printf ("Afterwards\n");

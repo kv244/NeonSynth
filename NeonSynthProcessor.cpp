@@ -854,8 +854,43 @@ void NeonSynthProcessor::getStateInformation (juce::MemoryBlock& destData)
         copyXmlToBinary (*xml, destData);
 }
 
+namespace
+{
+    /** How deeply the elements in a state's XML nest, stopping once past `limit`. juce::XmlDocument
+        parses nested elements recursively, so a hostile session nested a few hundred thousand deep
+        would overflow the stack; ours nest three deep. A rough count is enough: '<' starts an
+        element unless '/', '?' or '!' follows, "</" and "/>" end one; attribute values cannot
+        contain '<' in well-formed XML, and anything else fails to parse later anyway. */
+    int xmlNestingDepth (const void* data, int sizeInBytes, int limit) noexcept
+    {
+        const auto* text = static_cast<const char*> (data);
+        int depth = 0, deepest = 0;
+        for (int i = 0; i + 1 < sizeInBytes && deepest <= limit; ++i)
+        {
+            if (text[i] == '<')
+            {
+                const char next = text[i + 1];
+                if (next == '/')
+                    --depth;
+                else if (next != '?' && next != '!')
+                    deepest = juce::jmax (deepest, ++depth);
+            }
+            else if (text[i] == '/' && text[i + 1] == '>')
+            {
+                --depth;
+            }
+        }
+        return deepest;
+    }
+}
+
 void NeonSynthProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
+    // A session is untrusted input: from a host, a project file, a preset someone sent.
+    constexpr int maxNesting = 64;
+    if (data == nullptr || sizeInBytes <= 0 || xmlNestingDepth (data, sizeInBytes, maxNesting) > maxNesting)
+        return;
+
     auto xml = getXmlFromBinary (data, sizeInBytes);
     if (xml == nullptr || ! xml->hasTagName (apvts.state.getType()))
         return;
@@ -870,6 +905,18 @@ void NeonSynthProcessor::setStateInformation (const void* data, int sizeInBytes)
     for (int i = parameters.getNumChildren(); --i >= 0;)
         if (const auto type = parameters.getChild (i).getType(); type == patternId || type == chopId || type == sampleId)
             parameters.removeChild (i, nullptr);
+
+    // A value that is not a finite number ("nan" parses as NaN and the APVTS passes it through
+    // unchecked) would reach the DSP as NaN, where it can stall the sequencer, crash the grain
+    // reader or poison a voice for good. It falls back to the parameter's default; infinities
+    // are clamped by the parameter's range, but they are not real settings either.
+    for (int i = 0; i < parameters.getNumChildren(); ++i)
+    {
+        auto param = parameters.getChild (i);
+        if (auto* p = apvts.getParameter (param.getProperty ("id").toString()); p != nullptr && param.hasProperty ("value")
+                                                                               && ! std::isfinite ((double) param.getProperty ("value")))
+            param.setProperty ("value", p->convertFrom0to1 (p->getDefaultValue()), nullptr);
+    }
     apvts.replaceState (parameters);
 
     // A state without a pattern (sessions saved before v1.3, or a preset that
@@ -942,8 +989,23 @@ void NeonSynthProcessor::restoreSample (const juce::ValueTree& sampleTree)
     // 1. The embedded copy.
     // Its base64 text is at most 4/3 of SampleLoader::maxEmbeddedBytes plus a short size prefix (getStateInformation writes
     // no more); a longer one comes from a damaged or hostile session and is not decoded at all.
+    // JUCE's encoding starts with the decoded size and a dot ("35242.lwTX..."), and
+    // fromBase64Encoding() allocates whatever that number says before checking it against the
+    // text, so a negative or huge one would throw bad_alloc or take gigabytes: it must be a plain
+    // number, no larger than the cap, and no larger than the text after the dot can hold.
+    auto plausibleEncoding = [] (const juce::String& encoded)
+    {
+        const int dot = encoded.indexOfChar ('.');
+        if (dot <= 0 || dot > 9 || ! encoded.substring (0, dot).containsOnly ("0123456789"))
+            return false;
+        const auto size = (size_t) encoded.substring (0, dot).getLargeIntValue();
+        const auto payload = (size_t) (encoded.length() - dot - 1);
+        return size > 0 && size <= SampleLoader::maxEmbeddedBytes && size <= payload * 3 / 4 + 3;
+    };
+
     if (const auto encoded = sampleTree.getProperty (sampleFlacId).toString();
-        encoded.isNotEmpty() && (size_t) encoded.length() <= SampleLoader::maxEmbeddedBytes / 3 * 4 + 64)
+        encoded.isNotEmpty() && (size_t) encoded.length() <= SampleLoader::maxEmbeddedBytes / 3 * 4 + 64
+            && plausibleEncoding (encoded))
     {
         juce::MemoryBlock flac;
         if (flac.fromBase64Encoding (encoded))
@@ -960,8 +1022,9 @@ void NeonSynthProcessor::restoreSample (const juce::ValueTree& sampleTree)
         }
     }
 
-    // 2. The file, where it was saved from.
-    if (origin.path.isNotEmpty())
+    // 2. The file, where it was saved from (only a full path: a relative one means nothing here,
+    // and juce::File asserts on it).
+    if (origin.path.isNotEmpty() && juce::File::isAbsolutePath (origin.path))
     {
         if (auto result = SampleLoader::loadFile (juce::File (origin.path)); result.sample != nullptr)
         {
