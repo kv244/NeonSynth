@@ -386,6 +386,20 @@ private:
     // is also the newest request, so one that was overtaken can't leave the status stuck.
     std::atomic<int> sampleLoadGeneration { 0 };
     std::atomic<int> backgroundLoadGeneration { 0 };
+    /** Tells the host the session changed (a sample loaded in the background), on the message
+        thread: the loader's thread posts it here instead of calling updateHostDisplay itself. */
+    struct HostNotifier : juce::AsyncUpdater
+    {
+        explicit HostNotifier (juce::AudioProcessor& p) : processor (p) {}
+        ~HostNotifier() override { cancelPendingUpdate(); }
+        void handleAsyncUpdate() override
+        {
+            processor.updateHostDisplay (juce::AudioProcessor::ChangeDetails().withNonParameterStateChanged (true));
+        }
+        juce::AudioProcessor& processor;
+    };
+    HostNotifier hostNotifier { *this };   // before sampleLoader, so it outlives the jobs that trigger it
+
     juce::ThreadPool  sampleLoader { juce::ThreadPoolOptions{}.withThreadName ("NeonSynth sample loader").withNumberOfThreads (1) };
 
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();

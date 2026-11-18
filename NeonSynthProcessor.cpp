@@ -51,7 +51,16 @@ namespace
     ParamType* getTypedParameter (juce::AudioProcessorValueTreeState& state, const char* id)
     {
         auto* p = dynamic_cast<ParamType*> (state.getParameter (id));
-        jassert (p != nullptr);   // wrong ID or wrong type
+        if (p == nullptr)
+        {
+            // A wrong ID or type here is a programming error that would otherwise surface as a
+            // null dereference somewhere in the audio code, in release builds too. This runs once,
+            // in the constructor, so stopping loudly is safe: every test that builds the processor
+            // (ParameterLayoutTests first) then fails at once, never a user's session.
+            jassertfalse;
+            std::fprintf (stderr, "NeonSynth: no parameter \"%s\" of the expected type\n", id);
+            std::abort();
+        }
         return p;
     }
 }
@@ -531,6 +540,8 @@ void NeonSynthProcessor::loadDefaultPattern() noexcept
 
 void NeonSynthProcessor::setSequencerStep (int index, const StepSequencer::Step& step)
 {
+    // Message thread: the step grid's mouse handlers call this (and tests, from their main thread),
+    // so the host can be told here directly.
     sequencer.setStep (index, step);
     updateHostDisplay (ChangeDetails().withNonParameterStateChanged (true));
 }
@@ -726,7 +737,11 @@ void NeonSynthProcessor::loadSampleFileAsync (const juce::File& file)
 
         int expected = generation;
         backgroundLoadGeneration.compare_exchange_strong (expected, 0);   // done, unless a newer load has started
-        updateHostDisplay (ChangeDetails().withNonParameterStateChanged (true));
+
+        // Hosts expect to be told about state changes on the message thread, and this is the
+        // loader's thread: post it there. The AsyncUpdater is a member, so a notification still
+        // pending when the processor goes is cancelled rather than delivered to a dead object.
+        hostNotifier.triggerAsyncUpdate();
     });
 }
 
@@ -925,7 +940,10 @@ void NeonSynthProcessor::restoreSample (const juce::ValueTree& sampleTree)
     }
 
     // 1. The embedded copy.
-    if (const auto encoded = sampleTree.getProperty (sampleFlacId).toString(); encoded.isNotEmpty())
+    // Its base64 text is at most 4/3 of SampleLoader::maxEmbeddedBytes plus a short size prefix (getStateInformation writes
+    // no more); a longer one comes from a damaged or hostile session and is not decoded at all.
+    if (const auto encoded = sampleTree.getProperty (sampleFlacId).toString();
+        encoded.isNotEmpty() && (size_t) encoded.length() <= SampleLoader::maxEmbeddedBytes / 3 * 4 + 64)
     {
         juce::MemoryBlock flac;
         if (flac.fromBase64Encoding (encoded))
