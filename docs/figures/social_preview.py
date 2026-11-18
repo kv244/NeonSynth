@@ -75,7 +75,7 @@ def main():
                               "every control shows what", "it does to the sound."]):
         d.text((x, 330 + 28 * i), line, font=plex, fill=PHOSPHOR_DIM)
     d.text((x, 498), "VST3 · STANDALONE · AGPLv3", font=font("VT323-Regular.ttf", 30), fill=AMBER)
-    d.text((x, 532), "github.com/kv244/Synth", font=plex, fill=PHOSPHOR_DIM)
+    d.text((x, 532), "github.com/kv244/NeonSynth", font=plex, fill=PHOSPHOR_DIM)
 
     # Scanlines over the glass only.
     lines = Image.new("RGBA", (W, H), (0, 0, 0, 0))

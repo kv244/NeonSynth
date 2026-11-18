@@ -15,7 +15,7 @@ Reports of such bugs are welcome.
 
 Please report privately, not in a public issue or pull request.
 
-1. Open the repository's **[Security](https://github.com/kv244/Synth/security)** tab.
+1. Open the repository's **[Security](https://github.com/kv244/NeonSynth/security)** tab.
 2. Choose **Report a vulnerability**. This opens a private advisory that only you and the maintainer
    can see.
 

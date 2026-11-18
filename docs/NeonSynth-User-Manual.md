@@ -4,14 +4,14 @@
 
 # NeonSynth User Manual
 
-NeonSynth is a learning synthesizer: a place to hear what a waveform sounds like, see what changes when you shape it, and explore the code that makes it happen. Its oscillator, sample, random, and granular engines provide different starting points for that exploration, with source code available to read, build, and modify ([NeonSynth project](https://github.com/kv244/Synth)).
+NeonSynth is a learning synthesizer: a place to hear what a waveform sounds like, see what changes when you shape it, and explore the code that makes it happen. Its oscillator, sample, random, and granular engines provide different starting points for that exploration, with source code available to read, build, and modify ([NeonSynth project](https://github.com/kv244/NeonSynth)).
 
-For musicians, begin with one note and one waveform, without stacked oscillator layers obscuring what you are hearing. For coders, follow the same sound into the C++ implementation, from waveform generation through envelope, filter, and output; the interface and the code become two views of the same instrument ([voice architecture](https://github.com/kv244/Synth/blob/v1.10.1/NeonSynthVoice.h)).
+For musicians, begin with one note and one waveform, without stacked oscillator layers obscuring what you are hearing. For coders, follow the same sound into the C++ implementation, from waveform generation through envelope, filter, and output; the interface and the code become two views of the same instrument ([voice architecture](https://github.com/kv244/NeonSynth/blob/v1.10.1/NeonSynthVoice.h)).
 
 **Instrument:** NeonSynth by Razvan Julian Petrescu / AudioDSP  
 **Edition:** 1.9, updated 18 November 2026 (v1.10.1: hardening against damaged sessions; no change to controls or sound)<br>
 **Applies to:** NeonSynth v1.10.1, source tag `v1.10.1`  
-**Formats:** VST3 instrument and standalone application; a Windows installer is supplied for this release ([v1.10.1 release](https://github.com/kv244/Synth/releases/tag/v1.10.1)).
+**Formats:** VST3 instrument and standalone application; a Windows installer is supplied for this release ([v1.10.1 release](https://github.com/kv244/NeonSynth/releases/tag/v1.10.1)).
 
 ### About this manual
 
@@ -44,7 +44,7 @@ The sound-design settings are starting points, not factory presets. Begin at a l
 
 ### Install the Windows release
 
-Download `NeonSynth-1.10.1-Windows-Setup.exe` from the [v1.10.1 release page](https://github.com/kv244/Synth/releases/tag/v1.10.1). The installer provides the VST3 instrument and an optional standalone application (see [Installation](../README.md#installation) in the README).
+Download `NeonSynth-1.10.1-Windows-Setup.exe` from the [v1.10.1 release page](https://github.com/kv244/NeonSynth/releases/tag/v1.10.1). The installer provides the VST3 instrument and an optional standalone application (see [Installation](../README.md#installation) in the README).
 
 | Component | Default location |
 |---|---|
@@ -661,7 +661,7 @@ Check the VST3 installation location and run the DAW's plugin rescan. This relea
 
 ### An instrument you can inspect
 
-The source is available in the public [NeonSynth repository](https://github.com/kv244/Synth), alongside the build instructions, tests, and support utilities. Treat the instrument as an executable explanation: hear a change, find its control in the code, and trace how its value affects the samples being produced.
+The source is available in the public [NeonSynth repository](https://github.com/kv244/NeonSynth), alongside the build instructions, tests, and support utilities. Treat the instrument as an executable explanation: hear a change, find its control in the code, and trace how its value affects the samples being produced.
 
 You do not need to understand the whole application before investigating one part. Start with the relationship between a single waveform and a single voice, then work outwards towards polyphony, sample playback, and the sequencer.
 
@@ -685,7 +685,7 @@ It is an editorial guide, not a requirement to read every file in this order.
 
 ### Make a small change, then test it
 
-A useful first experiment is to change a default envelope time in `createParameterLayout()`, rebuild, and open a fresh instance to hear the result. Existing saved sessions can restore their own settings, so they are not a reliable way to check that a new default has taken effect ([parameter definitions and state restoration](https://github.com/kv244/Synth/blob/v1.10.1/NeonSynthProcessor.cpp)).
+A useful first experiment is to change a default envelope time in `createParameterLayout()`, rebuild, and open a fresh instance to hear the result. Existing saved sessions can restore their own settings, so they are not a reliable way to check that a new default has taken effect ([parameter definitions and state restoration](https://github.com/kv244/NeonSynth/blob/v1.10.1/NeonSynthProcessor.cpp)).
 
 For a deeper exercise, inspect why a waveform change waits for a cycle boundary or how grain size and density affect overlap. Make one change at a time, work on a branch, and run the relevant tests before comparing the result with the original; the developer notes' [Unit tests and benchmark](DEVELOPMENT.md#unit-tests-and-benchmark) section lists what each test checks.
 
@@ -701,11 +701,11 @@ The project identifies Claude-assisted development, but Claude is not a runtime 
 
 ### Signal path
 
-The voice engine places its amplitude envelope before the filter and panner; voices are then summed, followed by output gain and soft clipping. The filter's drive and its limiter scale with the envelope, so the filter behaves as if the envelope came after it. This is the implemented path, rather than a generic synthesis diagram ([voice engine](https://github.com/kv244/Synth/blob/v1.10.1/NeonSynthVoice.h), [filter](https://github.com/kv244/Synth/blob/v1.10.1/CytomicSvf.h), [processor](https://github.com/kv244/Synth/blob/v1.10.1/NeonSynthProcessor.cpp)).
+The voice engine places its amplitude envelope before the filter and panner; voices are then summed, followed by output gain and soft clipping. The filter's drive and its limiter scale with the envelope, so the filter behaves as if the envelope came after it. This is the implemented path, rather than a generic synthesis diagram ([voice engine](https://github.com/kv244/NeonSynth/blob/v1.10.1/NeonSynthVoice.h), [filter](https://github.com/kv244/NeonSynth/blob/v1.10.1/CytomicSvf.h), [processor](https://github.com/kv244/NeonSynth/blob/v1.10.1/NeonSynthProcessor.cpp)).
 
 ![The signal path. Keyboard MIDI and the step sequencer go through MIDI routing to voice allocation (up to 16 voices, set by the VOICES limit). Inside each voice, Oscillator and Random pass through CHOP, Noise and Fold; all four sources then go through velocity times the amp envelope, drive and the filter (bypassed together by the filter's ON switch), and the pitch-based pan. The voices are summed, then tremolo, output gain and the soft clipper lead to the audio output and the displays. A shared modulation stage, worked out once per block, sends the pitch ratio to all four sources, the LFO cutoff to the filter and the tremolo to the mix.](images/fig10-signal-path.png)
 
-Figure 10. The signal path in v1.10.0 (unchanged since v1.9.0). *Explanatory schematic,* drawn from the source code: each box is a stage in the order the [processor](https://github.com/kv244/Synth/blob/v1.10.1/NeonSynthProcessor.cpp) and the [voice](https://github.com/kv244/Synth/blob/v1.10.1/NeonSynthVoice.h) run them. Solid arrows carry audio, dashed ones the shared modulation, which is worked out once per block for all voices. Drive and the filter form one stage: switching the filter OFF bypasses both. The same path in text:
+Figure 10. The signal path in v1.10.0 (unchanged since v1.9.0). *Explanatory schematic,* drawn from the source code: each box is a stage in the order the [processor](https://github.com/kv244/NeonSynth/blob/v1.10.1/NeonSynthProcessor.cpp) and the [voice](https://github.com/kv244/NeonSynth/blob/v1.10.1/NeonSynthVoice.h) run them. Solid arrows carry audio, dashed ones the shared modulation, which is worked out once per block for all voices. Drive and the filter form one stage: switching the filter OFF bypasses both. The same path in text:
 
 ```text
 MIDI keyboard / DAW notes ─┐
@@ -740,7 +740,7 @@ voice sum → tremolo → output gain → soft clipper → mono/stereo output an
 | Random / granular variation | Seeded for reproducible renders from the same reset state and event sequence. |
 | Imported sample audio | Prepared mono audio; original file is not modified. |
 
-These details follow the [voice engine](https://github.com/kv244/Synth/blob/v1.10.1/NeonSynthVoice.h), [modulation](https://github.com/kv244/Synth/blob/v1.10.1/Modulation.h), [LFO](https://github.com/kv244/Synth/blob/v1.10.1/Lfo.h), [processor](https://github.com/kv244/Synth/blob/v1.10.1/NeonSynthProcessor.cpp), [grain engine](https://github.com/kv244/Synth/blob/v1.10.1/GrainCloud.h), and [sample preparation](https://github.com/kv244/Synth/blob/v1.10.1/SampleData.h).
+These details follow the [voice engine](https://github.com/kv244/NeonSynth/blob/v1.10.1/NeonSynthVoice.h), [modulation](https://github.com/kv244/NeonSynth/blob/v1.10.1/Modulation.h), [LFO](https://github.com/kv244/NeonSynth/blob/v1.10.1/Lfo.h), [processor](https://github.com/kv244/NeonSynth/blob/v1.10.1/NeonSynthProcessor.cpp), [grain engine](https://github.com/kv244/NeonSynth/blob/v1.10.1/GrainCloud.h), and [sample preparation](https://github.com/kv244/NeonSynth/blob/v1.10.1/SampleData.h).
 
 ### Optional MIDI diagnostics
 

@@ -1,10 +1,10 @@
 # Neon Synth
 
-[![Test](https://github.com/kv244/Synth/actions/workflows/test.yml/badge.svg)](https://github.com/kv244/Synth/actions/workflows/test.yml)
-[![Build](https://github.com/kv244/Synth/actions/workflows/build.yml/badge.svg)](https://github.com/kv244/Synth/actions/workflows/build.yml)
-[![Lint](https://github.com/kv244/Synth/actions/workflows/lint.yml/badge.svg)](https://github.com/kv244/Synth/actions/workflows/lint.yml)
-[![Release](https://github.com/kv244/Synth/actions/workflows/release.yml/badge.svg)](https://github.com/kv244/Synth/actions/workflows/release.yml)
-[![Latest release](https://img.shields.io/github/v/release/kv244/Synth)](https://github.com/kv244/Synth/releases/latest)
+[![Test](https://github.com/kv244/NeonSynth/actions/workflows/test.yml/badge.svg)](https://github.com/kv244/NeonSynth/actions/workflows/test.yml)
+[![Build](https://github.com/kv244/NeonSynth/actions/workflows/build.yml/badge.svg)](https://github.com/kv244/NeonSynth/actions/workflows/build.yml)
+[![Lint](https://github.com/kv244/NeonSynth/actions/workflows/lint.yml/badge.svg)](https://github.com/kv244/NeonSynth/actions/workflows/lint.yml)
+[![Release](https://github.com/kv244/NeonSynth/actions/workflows/release.yml/badge.svg)](https://github.com/kv244/NeonSynth/actions/workflows/release.yml)
+[![Latest release](https://img.shields.io/github/v/release/kv244/NeonSynth)](https://github.com/kv244/NeonSynth/releases/latest)
 
 A virtual analog synthesizer with the look of an old phosphor monitor, built with JUCE and C++17,
 by **Razvan Julian Petrescu** / **AudioDSP**.
@@ -14,7 +14,7 @@ and the **[user manual](docs/NeonSynth-User-Manual.md)** teaches it by ear and m
 
 ![NeonSynth v1.10.0 in its retro CRT look, with a sawtooth and the sequencer running](docs/images/captures/ui-oscillator-running.png)
 
-**[If you want to hear it in action](https://github.com/kv244/Synth/releases/download/demo/neonsynth-demo.wav)**: a 33-second piece (WAV, 6 MB) in which every
+**[If you want to hear it in action](https://github.com/kv244/NeonSynth/releases/download/demo/neonsynth-demo.wav)**: a 33-second piece (WAV, 6 MB) in which every
 sound is NeonSynth. Six instances play together: a granular pad, a Random-source bass through CHOP and the
 wavefolder, a chopped sawtooth arpeggio, the built-in step sequencer with swing, noise hats and a looped-sample
 lead. [`docs/demo/make_demo.py`](docs/demo/make_demo.py) renders it from the VST3.
@@ -49,7 +49,7 @@ as a PDF.
 ## Installation
 
 Windows 10 or 11, 64-bit. Download `NeonSynth-x.y.z-Windows-Setup.exe` from the
-**[latest release](https://github.com/kv244/Synth/releases/latest)** and run it.
+**[latest release](https://github.com/kv244/NeonSynth/releases/latest)** and run it.
 
 | Installed | Where |
 |---|---|
@@ -89,9 +89,9 @@ MIDI logging and the layout of the source.
 
 | Version | Date | What changed |
 |---|---|---|
-| [v1.10.1](https://github.com/kv244/Synth/releases/tag/v1.10.1) | 18 Nov 2026 | Hardening: a damaged or hostile session can no longer crash or hang the plugin (a bad embedded-sample size, parameter values that are not numbers, XML nested hundreds of thousands deep, a relative sample path); the host hears of a background sample load on the message thread; new tests for broken sessions, sessions saved by v1.2 to v1.10, random sequencer and envelope settings, and an ASan/UBSan CI job; SECURITY, CONTRIBUTING and this changelog. No change to controls or sound |
-| [v1.10.0](https://github.com/kv244/Synth/releases/tag/v1.10.0) | 18 Nov 2026 | The retro CRT look: phosphor text and traces on a dark green tube inside a bezel, scope and spectrum afterglow, block meters, arc-ring knobs, the sequencer's steps showing their notes, embedded VT323 and IBM Plex Mono fonts, and a SCANLINES switch saved with the session. The layout and the sound are unchanged: old sessions sound bit-identical |
-| [v1.9.0](https://github.com/kv244/Synth/releases/tag/v1.9.0) | 17 Nov 2026 | Movement: one LFO (five shapes, free or synced) on pitch, cutoff and level; pitch bend and a mod-wheel vibrato from MIDI, for keyboard and sequencer notes alike; click the voice lights to set how many voices play (1 = mono); a vertical GAIN fader beside the meters and a glow around every panel. Old sessions sound bit-identical; projects with recorded bend or mod-wheel data now respond to it |
+| [v1.10.1](https://github.com/kv244/NeonSynth/releases/tag/v1.10.1) | 18 Nov 2026 | Hardening: a damaged or hostile session can no longer crash or hang the plugin (a bad embedded-sample size, parameter values that are not numbers, XML nested hundreds of thousands deep, a relative sample path); the host hears of a background sample load on the message thread; new tests for broken sessions, sessions saved by v1.2 to v1.10, random sequencer and envelope settings, and an ASan/UBSan CI job; SECURITY, CONTRIBUTING and this changelog. No change to controls or sound |
+| [v1.10.0](https://github.com/kv244/NeonSynth/releases/tag/v1.10.0) | 18 Nov 2026 | The retro CRT look: phosphor text and traces on a dark green tube inside a bezel, scope and spectrum afterglow, block meters, arc-ring knobs, the sequencer's steps showing their notes, embedded VT323 and IBM Plex Mono fonts, and a SCANLINES switch saved with the session. The layout and the sound are unchanged: old sessions sound bit-identical |
+| [v1.9.0](https://github.com/kv244/NeonSynth/releases/tag/v1.9.0) | 17 Nov 2026 | Movement: one LFO (five shapes, free or synced) on pitch, cutoff and level; pitch bend and a mod-wheel vibrato from MIDI, for keyboard and sequencer notes alike; click the voice lights to set how many voices play (1 = mono); a vertical GAIN fader beside the meters and a glow around every panel. Old sessions sound bit-identical; projects with recorded bend or mod-wheel data now respond to it |
 
 Every release is in the **[changelog](CHANGELOG.md)**, linked to its GitHub release with the installer
 (and, from v1.6.0, the manual as a PDF).
