@@ -93,11 +93,16 @@ public:
         const float stepWidth = inner.getWidth() / (float) steps;
 
         // Chopped steps, shaded; step edges as faint lines (only where they are far enough apart to read).
+        // Chopped steps also get an amber block along the bottom edge, like a lit step in a row of them.
         for (int s = 0; s < steps; ++s)
             if (((shown.pattern >> (s % Chop::stepsPerPattern)) & 1u) != 0)
             {
-                g.setColour (neon::amber.withAlpha (shown.overtone > 0.0f ? 0.22f : 0.08f));
-                g.fillRect (juce::Rectangle<float> (inner.getX() + (float) s * stepWidth, inner.getY(), stepWidth, inner.getHeight()));
+                const float strength = shown.overtone > 0.0f ? 1.0f : 0.4f;
+                const auto column = juce::Rectangle<float> (inner.getX() + (float) s * stepWidth, inner.getY(), stepWidth, inner.getHeight());
+                g.setColour (neon::amber.withAlpha (0.18f * strength));
+                g.fillRect (column);
+                g.setColour (neon::amber.withAlpha (0.75f * strength));
+                g.fillRect (column.withTop (column.getBottom() - 4.0f).reduced (stepWidth >= 6.0f ? 1.0f : 0.0f, 0.0f));
             }
         if (stepWidth >= 3.0f)
         {
@@ -121,8 +126,7 @@ public:
             if (i == 0) wave.startNewSubPath (x, y);
             else        wave.lineTo (x, y);
         }
-        g.setColour (neon::cyan);
-        g.strokePath (wave, juce::PathStrokeType (1.5f));
+        neon::strokeGlow (g, wave, neon::cyan, 1.5f);
     }
 
     void mouseDown (const juce::MouseEvent& e) override

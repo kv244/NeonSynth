@@ -75,6 +75,7 @@ public:
                 }
             }
             changed = true;
+            waveform.invalidate();
         });
 
         const Markers m { startValue->load(), loopStartValue->load(), loopEndValue->load(),
@@ -101,12 +102,37 @@ public:
     void paint (juce::Graphics& g) override
     {
         const auto bounds = getLocalBounds().toFloat();
-        neon::drawPanel (g, bounds, neon::cyan);
-
         const bool active = markers.source == NeonSynthVoice::Source::sample
                          || markers.source == NeonSynthVoice::Source::granular;   // dimmed while the oscillator or Random plays
         const float alpha = active ? 1.0f : 0.35f;
         const auto inner = bounds.reduced (4.0f, 3.0f);
+        const float mid = inner.getCentreY(), halfHeight = inner.getHeight() * 0.5f;
+
+        // The inset and the waveform change only with the sample (or the dimming): drawn once, then
+        // copied, while the markers and playheads on top move.
+        if (std::exchange (waveformActive, active) != active)
+            waveform.invalidate();
+        waveform.paint (g, getLocalBounds(), [&] (juce::Graphics& wg)
+        {
+            neon::drawPanel (wg, bounds, neon::cyan);
+            wg.setColour (neon::cyan.withAlpha (0.14f * alpha));
+            wg.fillRect (juce::Rectangle<float> (inner.getX(), std::round (mid), inner.getWidth(), 1.0f));   // the zero line
+
+            // One min/max line per bucket: a faint wide pass (the phosphor's halo), then the trace
+            // (The buckets sit closer than a unit apart, so the core stays mostly hue: near-white
+            // there would merge into one pale block.)
+            for (const auto& [width, colour] : { std::pair { 2.0f, neon::cyan.withAlpha (0.10f * alpha) },
+                                                 std::pair { 1.0f, neon::cyan.interpolatedWith (juce::Colours::white, 0.25f).withAlpha (0.6f * alpha) } })
+            {
+                wg.setColour (colour);
+                for (int b = 0; b < numBuckets; ++b)
+                {
+                    const float x = inner.getX() + inner.getWidth() * ((float) b + 0.5f) / (float) numBuckets;
+                    const auto [lo, hi] = peaks[(size_t) b];
+                    wg.fillRect (juce::Rectangle<float> (x - width * 0.5f, mid - hi * halfHeight, width, (hi - lo) * halfHeight + 1.0f));
+                }
+            }
+        });
 
         const bool granular = markers.source == NeonSynthVoice::Source::granular;
 
@@ -115,7 +141,7 @@ public:
         {
             const float half = 0.5f * markers.spray;
             const float x0 = xFor (markers.grainPos - half), x1 = xFor (markers.grainPos + half);
-            g.setColour (neon::magenta.withAlpha (0.12f));
+            g.setColour (neon::magenta.withAlpha (0.14f));
             g.fillRect (juce::Rectangle<float> (x0, inner.getY(), juce::jmax (1.0f, x1 - x0), inner.getHeight()));
         }
 
@@ -123,29 +149,21 @@ public:
         if (! granular && markers.loopMode != SampleReader::oneShot)
         {
             const float x0 = xFor (markers.loopStart), x1 = xFor (juce::jmax (markers.loopStart, markers.loopEnd));
-            g.setColour (neon::amber.withAlpha (0.10f * alpha));
+            g.setColour (neon::amber.withAlpha (0.12f * alpha));
             g.fillRect (juce::Rectangle<float> (x0, inner.getY(), x1 - x0, inner.getHeight()));
-            g.setColour (neon::amber.withAlpha (0.85f * alpha));
-            drawBracket (g, x0, inner, true);
-            drawBracket (g, x1, inner, false);
-        }
-
-        // Waveform: one vertical min/max line per bucket.
-        const float mid = inner.getCentreY(), halfHeight = inner.getHeight() * 0.5f;
-        g.setColour (neon::cyan.withAlpha (0.75f * alpha));
-        for (int b = 0; b < numBuckets; ++b)
-        {
-            const float x = inner.getX() + inner.getWidth() * ((float) b + 0.5f) / (float) numBuckets;
-            const auto [lo, hi] = peaks[(size_t) b];
-            g.drawVerticalLine ((int) x, mid - hi * halfHeight, mid - lo * halfHeight + 1.0f);
+            g.setColour (neon::amber.withAlpha (0.25f * alpha));   // the brackets' glow
+            drawBracket (g, x0, inner, true, 2.0f);
+            drawBracket (g, x1, inner, false, 2.0f);
+            g.setColour (neon::phosphorOf (neon::amber).withAlpha (0.9f * alpha));
+            drawBracket (g, x0, inner, true, 0.0f);
+            drawBracket (g, x1, inner, false, 0.0f);
         }
 
         if (granular)
         {
             // Position, and a short tick per sounding grain
-            g.setColour (neon::magenta);
-            g.fillRect (juce::Rectangle<float> (xFor (markers.grainPos) - 1.0f, inner.getY(), 2.0f, inner.getHeight()));
-            g.setColour (juce::Colours::white.withAlpha (0.85f));
+            neon::drawGlowLine (g, xFor (markers.grainPos), inner.getY(), inner.getBottom(), neon::magenta);
+            g.setColour (neon::crt::phosphor.withAlpha (0.9f));
             for (const float grain : grains)
                 if (grain >= 0.0f)
                     g.fillRect (juce::Rectangle<float> (xFor (grain) - 0.5f, mid - halfHeight * 0.45f, 1.5f, halfHeight * 0.9f));
@@ -153,14 +171,13 @@ public:
         }
 
         // Start marker
-        g.setColour (neon::cyan.withAlpha (alpha));
-        g.fillRect (juce::Rectangle<float> (xFor (markers.start) - 1.0f, inner.getY(), 2.0f, inner.getHeight()));
+        neon::drawGlowLine (g, xFor (markers.start), inner.getY(), inner.getBottom(), neon::cyan.withAlpha (alpha));
 
         // Playheads
-        g.setColour (juce::Colours::white.withAlpha (0.8f * alpha));
         for (const float head : playheads)
             if (head >= 0.0f)
-                g.drawVerticalLine ((int) xFor (head), inner.getY(), inner.getBottom());
+                neon::drawGlowLine (g, std::floor (xFor (head)) + 0.5f, inner.getY(), inner.getBottom(),
+                                    neon::crt::phosphor.withAlpha (0.85f * alpha), 1.0f);
     }
 
     void mouseDown (const juce::MouseEvent& e) override
@@ -224,12 +241,13 @@ private:
         return juce::jlimit (0.0f, 1.0f, (x - inner.getX()) / juce::jmax (1.0f, inner.getWidth()));
     }
 
-    static void drawBracket (juce::Graphics& g, float x, juce::Rectangle<float> r, bool opening)
+    /** A loop bracket; grow > 0 draws it fatter, for the glow pass under it. */
+    static void drawBracket (juce::Graphics& g, float x, juce::Rectangle<float> r, bool opening, float grow)
     {
         const float tick = opening ? 5.0f : -5.0f;
-        g.fillRect (juce::Rectangle<float> (x - 1.0f, r.getY(), 2.0f, r.getHeight()));
-        g.fillRect (juce::Rectangle<float> (juce::jmin (x, x + tick), r.getY(), std::abs (tick), 2.0f));
-        g.fillRect (juce::Rectangle<float> (juce::jmin (x, x + tick), r.getBottom() - 2.0f, std::abs (tick), 2.0f));
+        g.fillRect (juce::Rectangle<float> (x - 1.0f, r.getY(), 2.0f, r.getHeight()).expanded (grow, 0.0f));
+        g.fillRect (juce::Rectangle<float> (juce::jmin (x, x + tick), r.getY(), std::abs (tick), 2.0f).expanded (grow, grow * 0.5f));
+        g.fillRect (juce::Rectangle<float> (juce::jmin (x, x + tick), r.getBottom() - 2.0f, std::abs (tick), 2.0f).expanded (grow, grow * 0.5f));
     }
 
     NeonSynthProcessor& processor;
@@ -250,6 +268,8 @@ private:
     static constexpr size_t numShownGrains = (size_t) NeonSynthProcessor::numVoices * NeonSynthVoice::Telemetry::maxShownGrains;
     std::array<float, numShownGrains> grains {};
     juce::String dragging;
+    neon::crt::CachedPainter waveform;   // the inset and the waveform
+    bool waveformActive = true;          // the dimming the cached waveform was drawn with
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SampleView)
 };

@@ -94,11 +94,7 @@ public:
         // Where the LFO is now
         const float y = shown.shape == Lfo::Shape::random ? yFor (juce::jlimit (-1.0f, 1.0f, shown.value))
                                                           : yFor (shapeAt (shown.shape, shown.phase));
-        const juce::Point<float> dot (xFor (shown.phase), y);
-        g.setColour (neon::green.withAlpha (0.3f * alpha));
-        g.fillEllipse (juce::Rectangle<float> (9.0f, 9.0f).withCentre (dot));
-        g.setColour (juce::Colours::white.withAlpha (0.9f * alpha));
-        g.fillEllipse (juce::Rectangle<float> (4.5f, 4.5f).withCentre (dot));
+        neon::drawPhosphorDot (g, { xFor (shown.phase), y }, neon::green, 4.5f, alpha);
     }
 
 private:
@@ -149,18 +145,35 @@ public:
             const float v = juce::jlimit (-1.0f, 1.0f, value);
             const float mid = inner.getCentreX(), end = mid + 0.5f * inner.getWidth() * v;
             lit = { juce::jmin (mid, end), inner.getY(), std::abs (end - mid), inner.getHeight() };
-            g.setColour (neon::green.withAlpha (0.35f));
-            g.fillRect (mid - 0.5f, bounds.getY() + 1.0f, 1.0f, bounds.getHeight() - 2.0f);   // centre mark
         }
         else
         {
             lit = inner.withWidth (inner.getWidth() * juce::jlimit (0.0f, 1.0f, value));
         }
-        g.setColour (neon::green.withAlpha (0.85f));
-        g.fillRoundedRectangle (lit, 1.5f);
+        // A block bar: the lit part glows, then thin dark gaps cut it into blocks. The lit edge
+        // stays exact (the gaps are drawn over it), so the bar reads as finely as before.
+        g.setColour (neon::green.withAlpha (0.10f));
+        g.fillRect (inner);
+        if (! lit.isEmpty())
+        {
+            g.setColour (neon::green.withAlpha (0.25f));
+            g.fillRect (lit.expanded (1.0f, 0.5f).getIntersection (bounds));
+            g.setColour (neon::phosphorOf (neon::green).withAlpha (0.9f));
+            g.fillRect (lit);
+        }
+        g.setColour (neon::displayInset);
+        for (float x = inner.getX() + blockPitch; x < inner.getRight() - 1.0f; x += blockPitch)
+            g.fillRect (juce::Rectangle<float> (x - 0.5f, inner.getY(), 1.0f, inner.getHeight()));
+        if (centred)
+        {
+            g.setColour (neon::green.withAlpha (0.6f));
+            g.fillRect (inner.getCentreX() - 0.5f, bounds.getY() + 1.0f, 1.0f, bounds.getHeight() - 2.0f);   // centre mark, on top
+        }
     }
 
 private:
+    static constexpr float blockPitch = 4.0f;   // design units from one block to the next
+
     const bool centred;
     float value = 0.0f;
 

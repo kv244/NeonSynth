@@ -7,6 +7,7 @@
 #include "NeonSynthProcessor.h"
 #include "CrtTheme.h"
 #include <tuple>
+#include <deque>
 
 /*
     GUI-side visualisers for Neon Synth.
@@ -41,12 +42,53 @@ namespace neon
         return crt::labelFont (height, bold);
     }
 
+    /** The glass behind a display (v1.10.0): darker than the tube around it, so a view reads as
+        a screen set into the panel. */
+    inline const juce::Colour displayInset { 0xff020906 };
+
+    /** A display's inset (v1.10.0 CRT look): the dark glass, square corners, a thin 1 px edge in
+        the view's hue and a faint glow just inside it. Flat fills and strokes only: cheap enough
+        for the views that repaint every frame. */
     inline void drawPanel (juce::Graphics& g, juce::Rectangle<float> r, juce::Colour edge)
     {
-        g.setColour (panel);
-        g.fillRoundedRectangle (r, 6.0f);
-        g.setColour (edge.withAlpha (0.35f));
-        g.drawRoundedRectangle (r.reduced (0.5f), 6.0f, 1.0f);
+        g.setColour (displayInset);
+        g.fillRect (r);
+        g.setColour (edge.withAlpha (0.05f));
+        g.drawRect (r.reduced (2.0f), 2.0f);
+        g.setColour (edge.withAlpha (0.10f));
+        g.drawRect (r.reduced (1.0f), 1.0f);
+        g.setColour (edge.withAlpha (0.55f));
+        g.drawRect (r, 1.0f);
+    }
+
+    /** The colour a trace's core burns at: its hue pushed most of the way to white, as phosphor
+        looks where the beam is brightest (keeps the colour's alpha, so dimmed traces stay dim). */
+    inline juce::Colour phosphorOf (juce::Colour hue)
+    {
+        return hue.interpolatedWith (juce::Colours::white.withAlpha (hue.getFloatAlpha()), 0.62f);
+    }
+
+    /** A scope graticule: faint division lines, a brighter centre cross with minor ticks (five
+        per division) like a real scope's. Static: callers draw it into a crt::CachedPainter. */
+    inline void drawGraticule (juce::Graphics& g, juce::Rectangle<float> area, juce::Colour hue, int columns, int rows)
+    {
+        g.setColour (hue.withAlpha (0.09f));
+        for (int i = 1; i < columns; ++i)
+            g.fillRect (juce::Rectangle<float> (std::round (area.getX() + area.getWidth() * (float) i / (float) columns), area.getY(), 1.0f, area.getHeight()));
+        for (int i = 1; i < rows; ++i)
+            g.fillRect (juce::Rectangle<float> (area.getX(), std::round (area.getY() + area.getHeight() * (float) i / (float) rows), area.getWidth(), 1.0f));
+
+        const float cx = std::round (area.getCentreX()), cy = std::round (area.getCentreY());
+        g.setColour (hue.withAlpha (0.18f));
+        g.fillRect (juce::Rectangle<float> (cx, area.getY(), 1.0f, area.getHeight()));
+        g.fillRect (juce::Rectangle<float> (area.getX(), cy, area.getWidth(), 1.0f));
+
+        g.setColour (hue.withAlpha (0.26f));
+        const float dx = area.getWidth() / (float) (columns * 5), dy = area.getHeight() / (float) (rows * 5);
+        for (int i = 1; i < columns * 5; ++i)
+            g.fillRect (juce::Rectangle<float> (std::round (area.getX() + dx * (float) i), cy - 2.0f, 1.0f, 5.0f));
+        for (int i = 1; i < rows * 5; ++i)
+            g.fillRect (juce::Rectangle<float> (cx - 2.0f, std::round (area.getY() + dy * (float) i), 5.0f, 1.0f));
     }
 
     /** A panel of controls (v1.9.0 look): dark fill, a soft glow and edge in the panel's own
@@ -85,18 +127,92 @@ namespace neon
         g.drawRoundedRectangle (r.reduced (0.5f), radius, 1.0f);
     }
 
-    /** Strokes a path with a soft neon glow: two wide faint passes under a thin bright one. */
+    /** Strokes a path as a phosphor trace: two wide faint passes in the hue (the halo) under a
+        thin core burnt nearly white. Three strokes, no blur. */
     inline void strokeGlow (juce::Graphics& g, const juce::Path& p, juce::Colour c, float width = 1.4f)
     {
-        const auto stroke = [&] (float w, float alpha)
+        const auto stroke = [&] (juce::Colour colour, float w)
         {
-            g.setColour (c.withMultipliedAlpha (alpha));
+            g.setColour (colour);
             g.strokePath (p, juce::PathStrokeType (w, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
         };
-        stroke (width * 5.0f, 0.10f);
-        stroke (width * 2.5f, 0.28f);
-        stroke (width, 1.0f);
+        stroke (c.withMultipliedAlpha (0.09f), width * 5.0f);
+        stroke (c.withMultipliedAlpha (0.30f), width * 2.4f);
+        stroke (phosphorOf (c), width);
     }
+
+    /** A phosphor dot (a voice on its envelope, the LFO's position): a halo in the hue, a near-white core. */
+    inline void drawPhosphorDot (juce::Graphics& g, juce::Point<float> centre, juce::Colour hue, float coreSize, float alpha = 1.0f)
+    {
+        g.setColour (hue.withMultipliedAlpha (0.18f * alpha));
+        g.fillEllipse (juce::Rectangle<float> (coreSize * 2.8f, coreSize * 2.8f).withCentre (centre));
+        g.setColour (hue.withMultipliedAlpha (0.40f * alpha));
+        g.fillEllipse (juce::Rectangle<float> (coreSize * 1.7f, coreSize * 1.7f).withCentre (centre));
+        g.setColour (phosphorOf (hue).withMultipliedAlpha (alpha));
+        g.fillEllipse (juce::Rectangle<float> (coreSize, coreSize).withCentre (centre));
+    }
+
+    /** A vertical marker line with a glow (sample start, playheads, the cutoff): a faint wider bar under it. */
+    inline void drawGlowLine (juce::Graphics& g, float x, float top, float bottom, juce::Colour colour, float width = 2.0f)
+    {
+        g.setColour (colour.withMultipliedAlpha (0.22f));
+        g.fillRect (juce::Rectangle<float> (x - width * 1.5f, top, width * 3.0f, bottom - top));
+        g.setColour (colour);
+        g.fillRect (juce::Rectangle<float> (x - width * 0.5f, top, width, bottom - top));
+    }
+
+    //==========================================================================
+    /**
+        The phosphor's afterglow (v1.10.0) for the scope and the spectrum: the last few traces,
+        each fading out over crt::afterglowSeconds after it left the screen. Kept as paths, not
+        as an image, so it costs one thin stroke per remembered trace and stays sharp at every
+        zoom. Once the last one has faded, advance() says so and the view can stop repainting.
+    */
+    class Afterglow
+    {
+    public:
+        /** Keeps a trace that is leaving the screen (nowMs: juce::Time::getMillisecondCounterHiRes()). */
+        void push (const juce::Path& trace, double nowMs)
+        {
+            if (trace.isEmpty())
+                return;
+            if (ghosts.size() >= maxGhosts)
+                ghosts.pop_back();
+            ghosts.push_front ({ trace, nowMs });
+        }
+
+        /** Drops the traces that have faded. True if any was still glowing: the view must
+            repaint once more to fade it further (or to clear the last one). */
+        bool advance (double nowMs)
+        {
+            const bool glowing = ! ghosts.empty();
+            while (! ghosts.empty() && nowMs - ghosts.back().bornMs >= lifetimeMs)
+                ghosts.pop_back();
+            return glowing;
+        }
+
+        void clear() { ghosts.clear(); }
+
+        /** Strokes the remembered traces, oldest faintest. */
+        void paint (juce::Graphics& g, juce::Colour hue, float width) const
+        {
+            const double nowMs = juce::Time::getMillisecondCounterHiRes();
+            for (auto it = ghosts.rbegin(); it != ghosts.rend(); ++it)
+            {
+                const float left = 1.0f - (float) ((nowMs - it->bornMs) / lifetimeMs);
+                if (left <= 0.0f)
+                    continue;
+                g.setColour (hue.withMultipliedAlpha (0.45f * left * left));
+                g.strokePath (it->trace, juce::PathStrokeType (width, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+            }
+        }
+
+    private:
+        struct Ghost { juce::Path trace; double bornMs = 0.0; };
+        static constexpr size_t maxGhosts = 6;   // 0.15 s at the editor's 30 Hz is under five frames
+        static constexpr double lifetimeMs = 1000.0 * (double) crt::afterglowSeconds;
+        std::deque<Ghost> ghosts;
+    };
 
     inline juce::String formatTime (float seconds)
     {
@@ -197,39 +313,71 @@ public:
         const float newRange = juce::jmax (peak, range * 0.92f, 0.02f);
 
         // Silence that is already on screen needs no repaint (the flat line and
-        // its label don't change while the range shrinks towards its floor).
+        // its label don't change while the range shrinks towards its floor),
+        // once the afterglow of what was there before has faded.
+        const double now = juce::Time::getMillisecondCounterHiRes();
+        const bool glowing = afterglow.advance (now);
         const bool silent = peak == 0.0f;
         if (silent && shownSilent && lowestNoteHz == lockHz)
         {
             range = newRange;
+            if (glowing)
+                repaint();
             return;
         }
 
         range       = newRange;
         lockHz      = lowestNoteHz;
         shownSilent = silent;
+        afterglow.push (trace, now);   // the trace leaving the screen fades out behind the new one
+        buildTrace();
         repaint();
+    }
+
+    void resized() override
+    {
+        afterglow.clear();   // the old traces were drawn for the old size
+        buildTrace();
     }
 
     void paint (juce::Graphics& g) override
     {
-        const auto bounds = getLocalBounds().toFloat();
-        neon::drawPanel (g, bounds, neon::cyan);
-        auto area = bounds.reduced (8.0f);
-
-        g.setColour (neon::cyan.withAlpha (0.08f));
-        for (int i = 1; i < 8; ++i)
+        // The inset and graticule never change: drawn once, then copied.
+        backdrop.paint (g, getLocalBounds(), [this] (juce::Graphics& bg)
         {
-            const float x = area.getX() + area.getWidth() * (float) i / 8.0f;
-            g.drawVerticalLine (juce::roundToInt (x), area.getY(), area.getBottom());
-        }
-        for (int i = 1; i < 4; ++i)
-        {
-            const float y = area.getY() + area.getHeight() * (float) i / 4.0f;
-            g.drawHorizontalLine (juce::roundToInt (y), area.getX(), area.getRight());
-        }
+            const auto bounds = getLocalBounds().toFloat();
+            neon::drawPanel (bg, bounds, neon::cyan);
+            neon::drawGraticule (bg, bounds.reduced (8.0f), neon::cyan, 8, 4);
+        });
 
-        juce::Path trace;
+        auto area = traceArea();
+        afterglow.paint (g, neon::cyan, 2.0f);
+        neon::strokeGlow (g, trace, neon::cyan);
+
+        juce::String label ("free run");
+        if (lockHz > 0.0f)
+        {
+            const int note = juce::roundToInt (12.0f * std::log2 (lockHz / 440.0f)) + 69;
+            label = juce::MidiMessage::getMidiNoteName (note, true, true, 4) + "  " + neon::formatHz (lockHz);
+        }
+        neon::crt::drawGlowText (g, label, area.removeFromTop (16.0f), neon::phosphorOf (neon::cyan).withAlpha (0.8f),
+                                 neon::font (12.0f), juce::Justification::topRight, 0.3f);
+    }
+
+    /** How many times the graticule has been drawn (it should be once per size and scale). */
+    const neon::crt::CachedPainter& getBackdrop() const noexcept { return backdrop; }
+
+private:
+    juce::Rectangle<float> traceArea() const { return getLocalBounds().toFloat().reduced (8.0f); }
+
+    /** The trace for the samples in `display`, built once per new frame (paint only strokes it). */
+    void buildTrace()
+    {
+        trace.clear();
+        const auto area = traceArea();
+        if (area.isEmpty())
+            return;
+
         const float midY   = area.getCentreY();
         const float yScale = area.getHeight() * 0.45f / range;
         const int   columns = juce::jmax (2, juce::roundToInt (area.getWidth()));
@@ -262,20 +410,8 @@ public:
                     trace.lineTo (x, midY - lo * yScale);
             }
         }
-        neon::strokeGlow (g, trace, neon::cyan);
-
-        g.setFont (neon::font (12.0f));
-        g.setColour (neon::cyan.withAlpha (0.7f));
-        juce::String label ("free run");
-        if (lockHz > 0.0f)
-        {
-            const int note = juce::roundToInt (12.0f * std::log2 (lockHz / 440.0f)) + 69;
-            label = juce::MidiMessage::getMidiNoteName (note, true, true, 4) + "  " + neon::formatHz (lockHz);
-        }
-        g.drawText (label, area.removeFromTop (16.0f), juce::Justification::topRight);
     }
 
-private:
     static constexpr int baseSearchLength = 4096;   // at 48 kHz; times displayRateFactor()
     static constexpr int baseMaxDisplay   = 2048;
 
@@ -285,6 +421,9 @@ private:
     float range = 0.25f;
     float lockHz = 0.0f;
     bool  shownSilent = false;   // the last repaint showed silence
+    juce::Path trace;            // the frame on screen
+    neon::Afterglow afterglow;   // the frames before it, fading
+    neon::crt::CachedPainter backdrop;
 };
 
 //==============================================================================
@@ -312,7 +451,10 @@ public:
     {
         const bool filterChanged = newCutoffHz != cutoffHz || newFilterOn != filterOn || newSampleRate != sampleRate
                                 || newMode != filterMode || newResonance != resonance;
-        sampleRate = newSampleRate > 0.0 ? newSampleRate : 44100.0;
+        const double rate = newSampleRate > 0.0 ? newSampleRate : 44100.0;
+        if (! juce::approximatelyEqual (rate, sampleRate))
+            backdrop.invalidate();   // the frequency axis ends at the new Nyquist
+        sampleRate = rate;
         cutoffHz   = newCutoffHz;
         filterOn   = newFilterOn;
         filterMode = juce::jlimit (0, 3, newMode);
@@ -361,57 +503,71 @@ public:
             levels[(size_t) i] = next;
         }
 
-        // Once silence has decayed to the floor, the picture stops changing.
-        if (levelsChanged || filterChanged)
+        // Once silence has decayed to the floor, and the afterglow of the last
+        // frames has faded, the picture stops changing.
+        const double now = juce::Time::getMillisecondCounterHiRes();
+        const bool glowing = afterglow.advance (now);
+        if (levelsChanged)
+        {
+            afterglow.push (outline, now);
+            buildOutline();
+        }
+        if (levelsChanged || filterChanged || glowing)
             repaint();
+    }
+
+    void resized() override
+    {
+        afterglow.clear();
+        buildOutline();
     }
 
     void paint (juce::Graphics& g) override
     {
-        const auto bounds = getLocalBounds().toFloat();
-        neon::drawPanel (g, bounds, neon::cyan);
-        auto area = bounds.reduced (8.0f);
-        area.removeFromBottom (16.0f);   // room for frequency labels
+        const auto area = plotArea();
 
-        // Grid and labels
-        g.setFont (neon::font (12.0f));
-        for (const float f : { 50.0f, 100.0f, 200.0f, 500.0f, 1000.0f, 2000.0f, 5000.0f, 10000.0f })
+        // Inset, grid and labels never change (but for the sample rate): drawn once, then copied.
+        backdrop.paint (g, getLocalBounds(), [this, area] (juce::Graphics& bg)
         {
-            if (f >= maxHz()) continue;
-            const float x = xFor (area, f);
-            g.setColour (neon::cyan.withAlpha (0.08f));
-            g.drawVerticalLine (juce::roundToInt (x), area.getY(), area.getBottom());
-            g.setColour (neon::cyan.withAlpha (0.5f));
-            g.drawText (f < 1000.0f ? juce::String ((int) f) : juce::String ((int) (f / 1000.0f)) + "k",
-                        juce::Rectangle<float> (x - 18.0f, area.getBottom() + 1.0f, 36.0f, 14.0f),
-                        juce::Justification::centred);
-        }
-        for (const float db : { -24.0f, -48.0f, -72.0f })
-        {
-            const float y = yFor (area, db);
-            g.setColour (neon::cyan.withAlpha (0.08f));
-            g.drawHorizontalLine (juce::roundToInt (y), area.getX(), area.getRight());
-            g.setColour (neon::cyan.withAlpha (0.4f));
-            g.drawText (juce::String ((int) db), juce::Rectangle<float> (area.getX() + 2.0f, y - 15.0f, 36.0f, 14.0f),
-                        juce::Justification::left);
-        }
+            neon::drawPanel (bg, getLocalBounds().toFloat(), neon::cyan);
+            bg.setFont (neon::font (12.0f));
+            for (const float f : { 50.0f, 100.0f, 200.0f, 500.0f, 1000.0f, 2000.0f, 5000.0f, 10000.0f })
+            {
+                if (f >= maxHz()) continue;
+                const float x = std::round (xFor (area, f));
+                bg.setColour (neon::cyan.withAlpha (0.09f));
+                bg.fillRect (juce::Rectangle<float> (x, area.getY(), 1.0f, area.getHeight()));
+                bg.setColour (neon::cyan.withAlpha (0.3f));
+                bg.fillRect (juce::Rectangle<float> (x, area.getBottom() - 3.0f, 1.0f, 3.0f));   // a tick on the axis
+                bg.setColour (neon::phosphorOf (neon::cyan).withAlpha (0.55f));
+                bg.drawText (f < 1000.0f ? juce::String ((int) f) : juce::String ((int) (f / 1000.0f)) + "k",
+                             juce::Rectangle<float> (x - 18.0f, area.getBottom() + 1.0f, 36.0f, 14.0f),
+                             juce::Justification::centred);
+            }
+            for (const float db : { -24.0f, -48.0f, -72.0f })
+            {
+                const float y = std::round (yFor (area, db));
+                bg.setColour (neon::cyan.withAlpha (0.09f));
+                bg.fillRect (juce::Rectangle<float> (area.getX(), y, area.getWidth(), 1.0f));
+                bg.setColour (neon::phosphorOf (neon::cyan).withAlpha (0.45f));
+                bg.drawText (juce::String ((int) db), juce::Rectangle<float> (area.getX() + 2.0f, y - 15.0f, 36.0f, 14.0f),
+                             juce::Justification::left);
+            }
+            bg.setColour (neon::cyan.withAlpha (0.22f));
+            bg.fillRect (juce::Rectangle<float> (area.getX(), area.getBottom(), area.getWidth(), 1.0f));   // the axis
+        });
 
-        // Spectrum: filled area plus a glowing outline
-        juce::Path outline;
-        for (int i = 0; i < numPoints; ++i)
+        // Spectrum: a faint flat fill (no per-frame gradient) under the glowing outline and its afterglow
+        if (! outline.isEmpty())
         {
-            const float x = area.getX() + area.getWidth() * ((float) i + 0.5f) / (float) numPoints;
-            const float y = yFor (area, levels[(size_t) i]);
-            if (i == 0) outline.startNewSubPath (x, y);
-            else        outline.lineTo (x, y);
+            auto fill = outline;
+            fill.lineTo (area.getRight(), area.getBottom());
+            fill.lineTo (area.getX(), area.getBottom());
+            fill.closeSubPath();
+            g.setColour (neon::cyan.withAlpha (0.10f));
+            g.fillPath (fill);
         }
-        auto fill = outline;
-        fill.lineTo (area.getRight(), area.getBottom());
-        fill.lineTo (area.getX(), area.getBottom());
-        fill.closeSubPath();
-        g.setGradientFill (juce::ColourGradient (neon::cyan.withAlpha (0.30f), 0.0f, area.getY(),
-                                                 neon::cyan.withAlpha (0.02f), 0.0f, area.getBottom(), false));
-        g.fillPath (fill);
+        afterglow.paint (g, neon::cyan, 1.6f);
         neon::strokeGlow (g, outline, neon::cyan, 1.1f);
 
         // Filter response, from the same coefficients as the voices' filter
@@ -451,18 +607,41 @@ public:
         if (filterOn)
         {
             const float x = xFor (area, fc);
-            g.setColour (neon::magenta.withAlpha (0.35f));
-            g.drawVerticalLine (juce::roundToInt (x), area.getY(), area.getBottom());
-            g.setColour (neon::magenta);
-            g.setFont (neon::font (12.0f));
+            neon::drawGlowLine (g, x, area.getY(), area.getBottom(), neon::magenta.withAlpha (0.4f), 1.0f);
             const bool labelLeft = x > area.getRight() - 80.0f;
-            g.drawText (neon::formatHz (fc),
-                        juce::Rectangle<float> (labelLeft ? x - 74.0f : x + 4.0f, area.getY(), 70.0f, 15.0f),
-                        labelLeft ? juce::Justification::right : juce::Justification::left);
+            neon::crt::drawGlowText (g, neon::formatHz (fc),
+                                     juce::Rectangle<float> (labelLeft ? x - 74.0f : x + 4.0f, area.getY(), 70.0f, 15.0f),
+                                     neon::phosphorOf (neon::magenta), neon::font (12.0f),
+                                     labelLeft ? juce::Justification::right : juce::Justification::left, 0.35f);
         }
     }
 
+    const neon::crt::CachedPainter& getBackdrop() const noexcept { return backdrop; }
+
 private:
+    juce::Rectangle<float> plotArea() const
+    {
+        auto area = getLocalBounds().toFloat().reduced (8.0f);
+        area.removeFromBottom (16.0f);   // room for frequency labels
+        return area;
+    }
+
+    /** The outline for the current levels, built once per new frame (paint only strokes it). */
+    void buildOutline()
+    {
+        outline.clear();
+        const auto area = plotArea();
+        if (area.isEmpty())
+            return;
+        for (int i = 0; i < numPoints; ++i)
+        {
+            const float x = area.getX() + area.getWidth() * ((float) i + 0.5f) / (float) numPoints;
+            const float y = yFor (area, levels[(size_t) i]);
+            if (i == 0) outline.startNewSubPath (x, y);
+            else        outline.lineTo (x, y);
+        }
+    }
+
     static constexpr int   baseFftOrder = 12;   // 4096 points at 48 kHz
     static constexpr int   maxFftSize   = 1 << (baseFftOrder + 2);
     static constexpr int   numPoints = 160;
@@ -511,6 +690,10 @@ private:
     bool   filterOn = true;
     int    filterMode = 0;          // CytomicSvf::Mode
     float  resonance = 0.0f;        // 0..1
+
+    juce::Path outline;             // the frame on screen
+    neon::Afterglow afterglow;      // the frames before it, fading
+    neon::crt::CachedPainter backdrop;
 };
 
 //==============================================================================
@@ -560,59 +743,130 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        auto bounds = getLocalBounds().toFloat();
-        neon::drawPanel (g, bounds, neon::cyan);
-        bounds = bounds.reduced (4.0f);
-
-        // Clip light
-        const auto led = bounds.removeFromTop (10.0f);
-        const bool clipping = clipFrames > 0;
-        g.setColour (neon::red.withAlpha (clipping ? 0.35f : 0.12f));
-        g.fillRoundedRectangle (led.expanded (clipping ? 2.0f : 0.0f), 3.0f);
-        g.setColour (clipping ? neon::red : neon::red.withAlpha (0.35f));
-        g.fillRoundedRectangle (led, 2.0f);
-        bounds.removeFromTop (4.0f);
-
-        // L / R captions
-        auto captions = bounds.removeFromBottom (15.0f);
-        g.setFont (neon::font (12.0f));
-        g.setColour (neon::cyan.withAlpha (0.6f));
-        g.drawText ("L", captions.removeFromLeft (captions.getWidth() * 0.5f), juce::Justification::centred);
-        g.drawText ("R", captions, juce::Justification::centred);
-
-        const auto yFor = [&] (float db)
+        const auto layout = meterLayout();
+        const auto yFor = [&layout] (float db)
         {
-            return juce::jmap (juce::jlimit (minDb, maxDb, db), minDb, maxDb, bounds.getBottom(), bounds.getY());
+            return juce::jmap (juce::jlimit (minDb, maxDb, db), minDb, maxDb, layout.bars.getBottom(), layout.bars.getY());
         };
 
-        juce::ColourGradient gradient (neon::cyan, 0.0f, bounds.getBottom(), neon::red, 0.0f, bounds.getY(), false);
-        gradient.addColour ((double) ((-12.0f - minDb) / (maxDb - minDb)), neon::cyan);
-        gradient.addColour ((double) ((-3.0f - minDb) / (maxDb - minDb)), neon::amber);
+        // The inset, the unlit blocks, the captions and the 0 dBFS marks: drawn once, then copied.
+        backdrop.paint (g, getLocalBounds(), [this, &layout, &yFor] (juce::Graphics& bg)
+        {
+            neon::drawPanel (bg, getLocalBounds().toFloat(), neon::cyan);
+            for (int ch = 0; ch < 2; ++ch)
+                for (int s = 0; s < layout.segments; ++s)
+                {
+                    bg.setColour (segmentColour (layout, s).withAlpha (0.10f));
+                    bg.fillRect (segmentRect (layout, ch, s));
+                }
 
-        const float barWidth = bounds.getWidth() * 0.32f;
+            bg.setFont (neon::font (12.0f));
+            bg.setColour (neon::phosphorOf (neon::cyan).withAlpha (0.6f));
+            auto captions = layout.captions;
+            bg.drawText ("L", captions.removeFromLeft (captions.getWidth() * 0.5f), juce::Justification::centred);
+            bg.drawText ("R", captions, juce::Justification::centred);
+
+            // 0 dBFS: short red marks either side of each column, clear of the blocks
+            const float y0 = std::round (yFor (0.0f));
+            bg.setColour (neon::red.withAlpha (0.7f));
+            for (int ch = 0; ch < 2; ++ch)
+            {
+                const auto column = segmentRect (layout, ch, 0);
+                bg.fillRect (juce::Rectangle<float> (column.getX() - 6.0f, y0, 4.0f, 1.0f));
+                bg.fillRect (juce::Rectangle<float> (column.getRight() + 2.0f, y0, 4.0f, 1.0f));
+            }
+
+            bg.setColour (neon::red.withAlpha (0.16f));
+            bg.fillRect (layout.led);
+        });
+
+        // Clip light: a red block, lit with a glow while the soft clipper works hard
+        if (clipFrames > 0)
+        {
+            g.setColour (neon::red.withAlpha (0.3f));
+            g.fillRect (layout.led.expanded (2.0f, 1.5f));
+            g.setColour (neon::red);
+            g.fillRect (layout.led);
+            g.setColour (neon::phosphorOf (neon::red).withAlpha (0.8f));
+            g.fillRect (layout.led.reduced (layout.led.getWidth() * 0.2f, layout.led.getHeight() * 0.3f));
+        }
+
+        // The blocks: lit up to the RMS level, half lit on up to the peak
         for (size_t ch = 0; ch < channels.size(); ++ch)
         {
             const auto& c = channels[ch];
-            const float centre = bounds.getX() + bounds.getWidth() * (ch == 0 ? 0.27f : 0.73f);
-            const auto  bar = juce::Rectangle<float> (centre - barWidth * 0.5f, bounds.getY(), barWidth, bounds.getHeight());
+            for (int s = 0; s < layout.segments; ++s)
+            {
+                const float mid = minDb + (maxDb - minDb) * ((float) s + 0.5f) / (float) layout.segments;
+                const float level = c.rmsLevel >= mid ? 1.0f : c.peakLevel >= mid ? 0.45f : 0.0f;
+                if (level <= 0.0f)
+                    continue;
+                const auto block  = segmentRect (layout, (int) ch, s);
+                const auto colour = segmentColour (layout, s);
+                g.setColour (colour.withAlpha (0.22f * level));
+                g.fillRect (block.expanded (1.5f, 1.0f));
+                g.setColour (colour.withAlpha (level));
+                g.fillRect (block);
+            }
 
-            g.setColour (neon::cyan.withAlpha (0.08f));
-            g.fillRect (bar);
-            g.setGradientFill (gradient);
-            g.fillRect (bar.withTop (yFor (c.rmsLevel)));
-
-            g.setColour (juce::Colours::white.withAlpha (0.8f));
-            g.fillRect (bar.getX(), yFor (c.peakLevel) - 1.0f, bar.getWidth(), 2.0f);
-            g.setColour (neon::amber);
-            g.fillRect (bar.getX() - 1.0f, yFor (c.heldPeak) - 0.75f, bar.getWidth() + 2.0f, 1.5f);
+            // The held peak, exact: a thin amber line across the column
+            if (c.heldPeak > minDb)
+            {
+                const auto column = segmentRect (layout, (int) ch, 0);
+                const float y = yFor (c.heldPeak);
+                g.setColour (neon::amber.withAlpha (0.3f));
+                g.fillRect (column.getX() - 2.0f, y - 2.0f, column.getWidth() + 4.0f, 4.0f);
+                g.setColour (neon::phosphorOf (neon::amber));
+                g.fillRect (column.getX() - 1.0f, y - 0.75f, column.getWidth() + 2.0f, 1.5f);
+            }
         }
-
-        // 0 dBFS tick
-        g.setColour (neon::red.withAlpha (0.6f));
-        g.drawHorizontalLine (juce::roundToInt (yFor (0.0f)), bounds.getX(), bounds.getRight());
     }
 
+    void resized() override { backdrop.invalidate(); }
+
+    const neon::crt::CachedPainter& getBackdrop() const noexcept { return backdrop; }
+
 private:
+    /** Where the clip light, the two block columns and the captions go. */
+    struct Layout
+    {
+        juce::Rectangle<float> led, bars, captions;
+        float barWidth = 0.0f, pitch = 1.0f;
+        int segments = 1;
+    };
+
+    Layout meterLayout() const
+    {
+        Layout l;
+        auto bounds = getLocalBounds().toFloat().reduced (4.0f);
+        l.led = bounds.removeFromTop (10.0f).reduced (bounds.getWidth() * 0.18f, 0.0f);
+        bounds.removeFromTop (4.0f);
+        l.captions = bounds.removeFromBottom (15.0f);
+        l.bars = bounds;
+        l.barWidth = bounds.getWidth() * 0.32f;
+        // Blocks about 7 units apart (5 lit, 2 dark), so each is a few dB of the 66 dB range.
+        l.segments = juce::jmax (8, juce::roundToInt (bounds.getHeight() / 7.0f));
+        l.pitch = bounds.getHeight() / (float) l.segments;
+        return l;
+    }
+
+    static juce::Rectangle<float> segmentRect (const Layout& l, int channel, int segment)
+    {
+        const float centre = l.bars.getX() + l.bars.getWidth() * (channel == 0 ? 0.27f : 0.73f);
+        const float gap = juce::jmin (2.0f, l.pitch * 0.3f);
+        return { centre - l.barWidth * 0.5f, l.bars.getBottom() - l.pitch * (float) (segment + 1) + gap * 0.5f,
+                 l.barWidth, l.pitch - gap };
+    }
+
+    /** Phosphor green, amber from -12 dBFS, red from -2 dBFS (where the clip light comes on). */
+    static juce::Colour segmentColour (const Layout& l, int segment)
+    {
+        const float mid = minDb + (maxDb - minDb) * ((float) segment + 0.5f) / (float) l.segments;
+        return mid >= -2.0f ? juce::Colour (0xffff7a7a) : mid >= -12.0f ? juce::Colour (0xffffd28a) : juce::Colour (0xff8dffd0);
+    }
+
+    neon::crt::CachedPainter backdrop;
+
     static constexpr float minDb = -60.0f;
     static constexpr float maxDb = 6.0f;
     static constexpr float clipLightThreshold = 0.79432823f;   // -2 dBFS: the soft clipper is close to its ceiling
@@ -839,46 +1093,53 @@ public:
 
         auto fill = shape;
         fill.closeSubPath();
-        g.setColour (accent.withAlpha (0.10f));
+        g.setColour (accent.withAlpha (0.08f));
         g.fillPath (fill);
 
-        g.setColour (accent.withAlpha (0.15f));
+        // Stage boundaries: dotted, like a graticule's
+        g.setColour (accent.withAlpha (0.22f));
         for (const float x : { attackW, sustainStart(), releaseStart() })
-            g.drawVerticalLine (juce::roundToInt (pointAt (x, 0.0f).x), area.getY(), area.getBottom());
+        {
+            const float px = std::round (pointAt (x, 0.0f).x);
+            for (float y = area.getY(); y < area.getBottom(); y += 4.0f)
+                g.fillRect (juce::Rectangle<float> (px, y, 1.0f, 2.0f));
+        }
+        g.setColour (accent.withAlpha (0.18f));
+        g.fillRect (juce::Rectangle<float> (area.getX(), std::round (area.getBottom()), area.getWidth(), 1.0f));   // the zero line
 
         neon::strokeGlow (g, shape, accent, 1.3f);
 
         for (int i = 0; i < numMarkers; ++i)
-        {
-            const auto p = pointAt (markers[(size_t) i].x, markers[(size_t) i].level);
-            g.setColour (accent.withAlpha (0.25f));
-            g.fillEllipse (juce::Rectangle<float> (12.0f, 12.0f).withCentre (p));
-            g.setColour (juce::Colours::white);
-            g.fillEllipse (juce::Rectangle<float> (5.0f, 5.0f).withCentre (p));
-        }
+            neon::drawPhosphorDot (g, pointAt (markers[(size_t) i].x, markers[(size_t) i].level), accent, 5.0f);
 
         // The draggable points: round for the times (left / right), square for the level (up / down).
+        // Dark centres with a glowing ring; filled with the hue while hovered or dragged.
         static constexpr const char* letters[numHandles] = { "A", "D", "S", "R" };
-        g.setFont (neon::font (12.0f, true));
         for (int i = 0; i < numHandles; ++i)
         {
             const auto p = handlePosition (i);
             const bool active = i == hover || i == dragging;
             const auto box = juce::Rectangle<float> (handleSize, handleSize).withCentre (p);
-            g.setColour (active ? accent : neon::background);
-            if (i == sustainHandle) g.fillRoundedRectangle (box, 2.5f);
-            else                    g.fillEllipse (box);
+            const auto paintShape = [&g, i] (juce::Rectangle<float> r, float stroke)
+            {
+                if (i == sustainHandle) { if (stroke > 0.0f) g.drawRect (r, stroke); else g.fillRect (r); }
+                else                    { if (stroke > 0.0f) g.drawEllipse (r, stroke); else g.fillEllipse (r); }
+            };
+
+            g.setColour (accent.withAlpha (active ? 0.35f : 0.18f));
+            paintShape (box.expanded (2.5f), 0.0f);
+            g.setColour (active ? neon::phosphorOf (accent) : neon::displayInset);
+            paintShape (box, 0.0f);
             g.setColour (accent);
-            if (i == sustainHandle) g.drawRoundedRectangle (box, 2.5f, 2.0f);
-            else                    g.drawEllipse (box, 2.0f);
+            paintShape (box.reduced (0.75f), 1.5f);
 
             // The letter sits inside the plot: below A, above the others, left of R.
             const auto letter = juce::Rectangle<float> (16.0f, 14.0f)
                                     .withCentre (i == attackHandle  ? p.translated (14.0f, 10.0f)
                                                : i == releaseHandle ? p.translated (-14.0f, -10.0f)
                                                :                      p.translated (0.0f, p.y - area.getY() > 24.0f ? -15.0f : 15.0f));
-            g.setColour (accent.withAlpha (active ? 1.0f : 0.7f));
-            g.drawText (letters[i], letter, juce::Justification::centred);
+            neon::crt::drawGlowText (g, letters[i], letter, neon::phosphorOf (accent).withAlpha (active ? 1.0f : 0.75f),
+                                     neon::font (12.0f, true), juce::Justification::centred, active ? 0.4f : 0.2f);
         }
 
         // While a point is hovered or dragged, say what it is and its value.
@@ -887,11 +1148,10 @@ public:
         {
             static constexpr const char* names[numHandles] = { "ATTACK", "DECAY", "SUSTAIN", "RELEASE" };
             const float value = param->convertFrom0to1 (param->getValue());
-            g.setColour (accent);
-            g.setFont (neon::font (12.0f));
-            g.drawText (juce::String (names[shown]) + "  " + (shown == sustainHandle ? juce::String (juce::roundToInt (value * 100.0f)) + "%"
-                                                                                      : neon::formatTime (value)),
-                        area.withTrimmedTop (2.0f).withTrimmedRight (4.0f), juce::Justification::topRight);
+            neon::crt::drawGlowText (g, juce::String (names[shown]) + "  " + (shown == sustainHandle ? juce::String (juce::roundToInt (value * 100.0f)) + "%"
+                                                                                                        : neon::formatTime (value)),
+                                     area.withTrimmedTop (2.0f).withTrimmedRight (4.0f), neon::phosphorOf (accent),
+                                     neon::font (12.0f), juce::Justification::topRight, 0.35f);
         }
     }
 
@@ -999,32 +1259,36 @@ public:
 
     void paint (juce::Graphics& g) override
     {
+        // Phosphor dots, as the terminal draws them: a lit voice is a glowing filled dot (brighter
+        // the louder it is), an idle one that may play a dim ring, one above the limit a faint speck.
         const auto bounds  = getLocalBounds().toFloat();
         const float step   = bounds.getWidth() / (float) glow.size();
         const float radius = juce::jmin (step, bounds.getHeight()) * 0.30f;
+        const juce::Colour idle { 0xff2f5c49 }, lit { 0xff8dffd0 };
 
         for (size_t i = 0; i < glow.size(); ++i)
         {
             const juce::Point<float> c (bounds.getX() + step * ((float) i + 0.5f), bounds.getCentreY());
             const float level = glow[i];
+            const auto dot = juce::Rectangle<float> (radius * 2.0f, radius * 2.0f).withCentre (c);
 
             if (level > 0.01f)
             {
-                g.setColour (neon::cyan.withAlpha (0.35f * level));
-                g.fillEllipse (juce::Rectangle<float> (radius * 4.4f, radius * 4.4f).withCentre (c));
-                g.setColour (neon::cyan.withAlpha (0.25f + 0.75f * std::sqrt (level)));
-                g.fillEllipse (juce::Rectangle<float> (radius * 2.0f, radius * 2.0f).withCentre (c));
+                g.setColour (neon::crt::phosphorGlow.withAlpha (0.40f * level));
+                g.fillEllipse (dot.expanded (radius * 1.2f));
+                g.setColour (idle.interpolatedWith (lit, 0.5f + 0.5f * std::sqrt (level)));
+                g.fillEllipse (dot);
             }
             else if ((int) i < limit)
             {
-                g.setColour (neon::cyan.withAlpha (0.45f));
-                g.drawEllipse (juce::Rectangle<float> (radius * 2.0f, radius * 2.0f).withCentre (c), 1.0f);
+                g.setColour (idle.brighter (0.2f));
+                g.drawEllipse (dot.reduced (0.6f), 1.2f);
             }
             else
             {
-                // Above the limit: a faint dot, so the lights that can play stand out.
-                g.setColour (neon::cyan.withAlpha (0.14f));
-                g.fillEllipse (juce::Rectangle<float> (radius, radius).withCentre (c));
+                // Above the limit: a faint speck, so the lights that can play stand out.
+                g.setColour (idle.withAlpha (0.55f));
+                g.fillEllipse (juce::Rectangle<float> (radius * 0.8f, radius * 0.8f).withCentre (c));
             }
         }
     }
