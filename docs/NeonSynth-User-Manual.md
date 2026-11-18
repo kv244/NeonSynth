@@ -6,16 +6,16 @@
 
 NeonSynth is a learning synthesizer: a place to hear what a waveform sounds like, see what changes when you shape it, and explore the code that makes it happen. Its oscillator, sample, random, and granular engines provide different starting points for that exploration, with source code available to read, build, and modify ([NeonSynth project](https://github.com/kv244/Synth)).
 
-For musicians, begin with one note and one waveform, without stacked oscillator layers obscuring what you are hearing. For coders, follow the same sound into the C++ implementation, from waveform generation through envelope, filter, and output; the interface and the code become two views of the same instrument ([voice architecture](https://github.com/kv244/Synth/blob/v1.9.0/NeonSynthVoice.h)).
+For musicians, begin with one note and one waveform, without stacked oscillator layers obscuring what you are hearing. For coders, follow the same sound into the C++ implementation, from waveform generation through envelope, filter, and output; the interface and the code become two views of the same instrument ([voice architecture](https://github.com/kv244/Synth/blob/v1.10.0/NeonSynthVoice.h)).
 
 **Instrument:** NeonSynth by Razvan Julian Petrescu / AudioDSP  
-**Edition:** 1.7, updated 17 November 2026 (v1.9.0: the LFO, pitch bend and the mod wheel, the Voices limit, and the new MODULATION panel)<br>
-**Applies to:** NeonSynth v1.9.0, source tag `v1.9.0`  
-**Formats:** VST3 instrument and standalone application; a Windows installer is supplied for this release ([v1.9.0 release](https://github.com/kv244/Synth/releases/tag/v1.9.0)).
+**Edition:** 1.8, updated 18 November 2026 (v1.10.0: the retro CRT look and the SCANLINES switch)<br>
+**Applies to:** NeonSynth v1.10.0, source tag `v1.10.0`  
+**Formats:** VST3 instrument and standalone application; a Windows installer is supplied for this release ([v1.10.0 release](https://github.com/kv244/Synth/releases/tag/v1.10.0)).
 
 ### About this manual
 
-The instructions were checked against the v1.9.0 source code. Every recipe in the sound-design chapter was rendered through the plugin, to confirm that it sounds, releases cleanly to silence and stays clear of the output soft clipper: the first six through v1.6.0, which v1.7.0 to v1.9.0 keep bit-identical at the settings they use (each version's new controls start neutral), as the project's compare test checks; the wind recipe through v1.9.0. This is not a certification of compatibility with every audio device or DAW.
+The instructions were checked against the v1.10.0 source code. Every recipe in the sound-design chapter was rendered through the plugin, to confirm that it sounds, releases cleanly to silence and stays clear of the output soft clipper: the first six through v1.6.0, which v1.7.0 to v1.10.0 keep bit-identical at the settings they use (each version's new controls start neutral), as the project's compare test checks; the wind recipe through v1.9.0, which v1.10.0 keeps bit-identical (it changed only the look). This is not a certification of compatibility with every audio device or DAW.
 
 Each figure is labelled by how it was made: **Actual application capture** (a screenshot of the running instrument, with numbered callouts added), **Plot derived from rendered audio** (measured from sound the plugin produced, with the settings stated), or **Explanatory schematic** (a drawing that explains an idea and is not a measurement). How to regenerate them is in [figures/README.md](figures/README.md).
 
@@ -44,7 +44,7 @@ The sound-design settings are starting points, not factory presets. Begin at a l
 
 ### Install the Windows release
 
-Download `NeonSynth-1.9.0-Windows-Setup.exe` from the [v1.9.0 release page](https://github.com/kv244/Synth/releases/tag/v1.9.0). The installer provides the VST3 instrument and an optional standalone application (see [Installation](../README.md#installation) in the README).
+Download `NeonSynth-1.10.0-Windows-Setup.exe` from the [v1.10.0 release page](https://github.com/kv244/Synth/releases/tag/v1.10.0). The installer provides the VST3 instrument and an optional standalone application (see [Installation](../README.md#installation) in the README).
 
 | Component | Default location |
 |---|---|
@@ -127,9 +127,9 @@ Only after those differences become familiar should you add chords, sequencing, 
 
 ![The NeonSynth window with ten numbered regions: 1 source and waveform menus, 2 the strip and its knobs, 3 scope or spectrum, 4 envelope graph and knobs with the AMP and FILTER tabs, 5 filter, 6 output with the width slider, gain fader and meters, 7 modulation, 8 voice lights, 9 the help button, 10 the step sequencer.](images/fig01-interface.png)
 
-Figure 1. The main window (v1.9.0 at 150%, Source set to Oscillator, Sawtooth, with the sequencer running, and LFO CUTOFF at +1.5 octaves at 2 Hz, so the green band under CUTOFF and the dot in the LFO view show). *Actual application capture; the numbered outlines and the key below the picture were added.* Regions 1–10 are explained in the key, and the window is described panel by panel in the table below.
+Figure 1. The main window (v1.10.0 at 150%, Source set to Oscillator, Sawtooth, with the sequencer running, and LFO CUTOFF at +1.5 octaves at 2 Hz, so the green band under CUTOFF and the dot in the LFO view show). *Actual application capture; the numbered outlines and the key below the picture were added.* Regions 1–10 are explained in the key, and the window is described panel by panel in the table below.
 
-The window has six panels, each outlined in its own colour. SOURCE, on the left, is where the sound starts: what plays, and how it is shaped before the envelope. The middle column shows the sound (scope or spectrum) above the envelope and filter. On the right, OUTPUT sets and measures the level, and MODULATION below it makes the sound move. SEQUENCER runs along the bottom. Colours carry the same meaning everywhere: cyan for the source and output, amber for the envelope and sequencer, magenta for the filter and the granular controls, and green for modulation.
+The window looks like an old computer monitor: glowing phosphor text and traces on a dark green screen, behind a grey bezel, with faint scanlines across it. It has six panels, each outlined in its own colour. SOURCE, on the left, is where the sound starts: what plays, and how it is shaped before the envelope. The middle column shows the sound (scope or spectrum) above the envelope and filter. On the right, OUTPUT sets and measures the level, and MODULATION below it makes the sound move. SEQUENCER runs along the bottom. Colours carry the same meaning everywhere: cyan for the source and output, amber for the envelope and sequencer, magenta for the filter and the granular controls, and green for modulation.
 
 | Panel | What you do there |
 |---|---|
@@ -139,7 +139,7 @@ The window has six panels, each outlined in its own colour. SOURCE, on the left,
 | FILTER | Switch the filter in with ON, set its CUTOFF and mode, and the RES, DRIVE, ENV and VEL knobs. |
 | OUTPUT | Set WIDTH, raise or lower the volume with the GAIN fader beside the meters, and watch the left and right levels. |
 | MODULATION | Set the LFO (shape, rate, sync) and how far it moves the pitch, cutoff and level; set the pitch-bend range and the mod wheel's vibrato. |
-| Header | See which of the 16 voices are sounding, click a light to set how many voices can play, and open the quick help with **?**. |
+| Header | See which of the 16 voices are sounding, click a light to set how many voices can play, switch the scanlines with **SCANLINES**, and open the quick help with **?**. |
 | SEQUENCER | Start a pattern, edit its steps, and set timing and keyboard interaction. |
 
 ### Window size
@@ -147,6 +147,10 @@ The window has six panels, each outlined in its own colour. SOURCE, on the left,
 The window is laid out on a 1280 × 860 grid. It opens at full size (100%) when your screen has room for that plus a title bar, and at 75% otherwise. Drag the resize corner at the bottom right to set any size from 75% to 150%. The proportions stay fixed and everything scales together, text included, so nothing moves or hides as the window changes size. The size is not saved with the session: each time the window opens it chooses again.
 
 Labels are at least 12 pixels at 100%, so they stay readable at 75%. On a small laptop screen, 75% is the comfortable size; on a large monitor, 150% makes the step grid and envelope points easier to grab.
+
+### Scanlines
+
+**SCANLINES** in the header switches the faint horizontal lines across the screen on or off. They are on in a new instance. The choice is saved with the session, like the SCOPE / SPECTRUM choice; it is a view setting, not a parameter, so a DAW cannot automate it and it never changes the sound. Clicks pass straight through the lines to the controls under them.
 
 ### Quick help
 
@@ -185,7 +189,7 @@ With **Source** set to **Oscillator** or **Random**, three stages can reshape th
 
 ![The SOURCE panel with a sawtooth: in the SHAPE strip every second step is shaded amber and cut to the centre line at OVERTONE 100%, the wave between them is folded at FOLD 100%, and the five sculpting knobs are below.](images/fig03-shape-strip.png)
 
-Figure 3. The SOURCE panel with the SHAPE strip: a sawtooth, OVERTONE 100% and FOLD 100% (v1.9.0 at 150%). *Actual application capture.* The shaded steps are chopped, so the wave is cut to the centre line there; the folded curve between them is the sawtooth after FOLD. Every second step is chopped, which is the pattern a new instance starts with.
+Figure 3. The SOURCE panel with the SHAPE strip: a sawtooth, OVERTONE 100% and FOLD 100% (v1.10.0 at 150%). *Actual application capture.* The shaded steps are chopped, so the wave is cut to the centre line there; the folded curve between them is the sawtooth after FOLD. Every second step is chopped, which is the pattern a new instance starts with.
 
 ### The SHAPE strip
 
@@ -364,7 +368,7 @@ The 16 voice lights at the top of the window also set how many voices can play. 
 
 ![The SOURCE panel with Sample and with Granular selected. Panel a, Source Sample: numbered outlines on the LOAD, PAD and loop menu, the waveform, and the ROOT, START, L.START, L.END and XFADE knobs. Panel b, Source Granular: the same for the waveform with its POS line and SPRAY band, and the ROOT, POS, SCAN, SIZE, DENS, SPRAY and JITTER knobs.](images/fig06-sample-granular-ui.png)
 
-Figure 6. The SOURCE panel with **Source** set to **Sample** (a) and to **Granular** (b), with the built-in pad loaded (v1.9.0 at 150%). *Actual application capture; the numbered outlines and keys were added.* The same strip serves both sources, and the knob row changes with the source. Figure 7 draws what these controls do.
+Figure 6. The SOURCE panel with **Source** set to **Sample** (a) and to **Granular** (b), with the built-in pad loaded (v1.10.0 at 150%). *Actual application capture; the numbered outlines and keys were added.* The same strip serves both sources, and the knob row changes with the source. Figure 7 draws what these controls do.
 
 ### Load a recording
 
@@ -466,11 +470,11 @@ For a straightforward 16-step loop in 4/4, begin with **1/16**, zero swing, and 
 | Mouse wheel | Raises or lowers pitch by one semitone per wheel event. |
 | Shift + mouse wheel | Changes velocity in increments of four. |
 
-The grid supports MIDI notes 0–127 and enabled-step velocities 1–127; the cyan outline marks the current step, and each cell's lower bar indicates its velocity.
+The grid supports MIDI notes 0–127 and enabled-step velocities 1–127. Each step shows its note name, bright when the step is on and dim when it is off; the step playing now is a solid amber block with dark text, and the row of small blocks along each cell's bottom shows its velocity.
 
 ![The 16-step grid, with numbered pointers to an enabled step, a disabled step, a note name, a velocity bar and the playhead, and a list of the mouse and wheel gestures.](images/fig08-sequencer.png)
 
-Figure 8. The step grid (v1.9.0 at 150%, sequencer running). *Actual application capture; the numbered pointers and the gesture key were added.* The gestures are those in the table above, as coded in the step view: one semitone for every 6 pixels of vertical drag, velocity changes of one for each pixel of Shift-drag or right-drag, and steps of four for Shift with the wheel.
+Figure 8. The step grid (v1.10.0 at 150%, sequencer running). *Actual application capture; the numbered pointers and the gesture key were added.* The gestures are those in the table above, as coded in the step view: one semitone for every 6 pixels of vertical drag, velocity changes of one for each pixel of Shift-drag or right-drag, and steps of four for Shift with the wheel.
 
 To create a new pattern, first switch unwanted steps off, drag the remaining steps to their pitches, and adjust their velocities for accents. There is no separate pattern-bank or pattern-length control in this version.
 
@@ -629,6 +633,7 @@ Work through the signal path rather than changing several settings at once. In s
 - **LFO does nothing:** All three depths (PITCH, CUTOFF, AMP) are at 0, which the dimmed LFO view shows; LFO CUTOFF also needs the filter ON.
 - **Pitch bend or mod wheel has no effect:** Watch the bars beside BEND and VIBRATO while you move the wheel. If they stay still, the messages aren't arriving (check the MIDI routing); if they move, check that BEND or VIBRATO is not at 0.
 - **Only one note plays at a time:** The voice limit is set to MONO; click a higher voice light.
+- **The window looks striped or a little dim:** Those are the scanlines; click **SCANLINES** in the header to turn them off.
 
 These are expected behaviours, not faults.
 
@@ -680,7 +685,7 @@ It is an editorial guide, not a requirement to read every file in this order.
 
 ### Make a small change, then test it
 
-A useful first experiment is to change a default envelope time in `createParameterLayout()`, rebuild, and open a fresh instance to hear the result. Existing saved sessions can restore their own settings, so they are not a reliable way to check that a new default has taken effect ([parameter definitions and state restoration](https://github.com/kv244/Synth/blob/v1.9.0/NeonSynthProcessor.cpp)).
+A useful first experiment is to change a default envelope time in `createParameterLayout()`, rebuild, and open a fresh instance to hear the result. Existing saved sessions can restore their own settings, so they are not a reliable way to check that a new default has taken effect ([parameter definitions and state restoration](https://github.com/kv244/Synth/blob/v1.10.0/NeonSynthProcessor.cpp)).
 
 For a deeper exercise, inspect why a waveform change waits for a cycle boundary or how grain size and density affect overlap. Make one change at a time, work on a branch, and run the relevant tests before comparing the result with the original; the developer notes' [Unit tests and benchmark](DEVELOPMENT.md#unit-tests-and-benchmark) section lists what each test checks.
 
@@ -696,11 +701,11 @@ The project identifies Claude-assisted development, but Claude is not a runtime 
 
 ### Signal path
 
-The voice engine places its amplitude envelope before the filter and panner; voices are then summed, followed by output gain and soft clipping. The filter's drive and its limiter scale with the envelope, so the filter behaves as if the envelope came after it. This is the implemented path, rather than a generic synthesis diagram ([voice engine](https://github.com/kv244/Synth/blob/v1.9.0/NeonSynthVoice.h), [filter](https://github.com/kv244/Synth/blob/v1.9.0/CytomicSvf.h), [processor](https://github.com/kv244/Synth/blob/v1.9.0/NeonSynthProcessor.cpp)).
+The voice engine places its amplitude envelope before the filter and panner; voices are then summed, followed by output gain and soft clipping. The filter's drive and its limiter scale with the envelope, so the filter behaves as if the envelope came after it. This is the implemented path, rather than a generic synthesis diagram ([voice engine](https://github.com/kv244/Synth/blob/v1.10.0/NeonSynthVoice.h), [filter](https://github.com/kv244/Synth/blob/v1.10.0/CytomicSvf.h), [processor](https://github.com/kv244/Synth/blob/v1.10.0/NeonSynthProcessor.cpp)).
 
 ![The signal path. Keyboard MIDI and the step sequencer go through MIDI routing to voice allocation (up to 16 voices, set by the VOICES limit). Inside each voice, Oscillator and Random pass through CHOP, Noise and Fold; all four sources then go through velocity times the amp envelope, drive and the filter (bypassed together by the filter's ON switch), and the pitch-based pan. The voices are summed, then tremolo, output gain and the soft clipper lead to the audio output and the displays. A shared modulation stage, worked out once per block, sends the pitch ratio to all four sources, the LFO cutoff to the filter and the tremolo to the mix.](images/fig10-signal-path.png)
 
-Figure 10. The signal path in v1.9.0. *Explanatory schematic,* drawn from the source code: each box is a stage in the order the [processor](https://github.com/kv244/Synth/blob/v1.9.0/NeonSynthProcessor.cpp) and the [voice](https://github.com/kv244/Synth/blob/v1.9.0/NeonSynthVoice.h) run them. Solid arrows carry audio, dashed ones the shared modulation, which is worked out once per block for all voices. Drive and the filter form one stage: switching the filter OFF bypasses both. The same path in text:
+Figure 10. The signal path in v1.10.0 (unchanged since v1.9.0). *Explanatory schematic,* drawn from the source code: each box is a stage in the order the [processor](https://github.com/kv244/Synth/blob/v1.10.0/NeonSynthProcessor.cpp) and the [voice](https://github.com/kv244/Synth/blob/v1.10.0/NeonSynthVoice.h) run them. Solid arrows carry audio, dashed ones the shared modulation, which is worked out once per block for all voices. Drive and the filter form one stage: switching the filter OFF bypasses both. The same path in text:
 
 ```text
 MIDI keyboard / DAW notes ─┐
@@ -735,7 +740,7 @@ voice sum → tremolo → output gain → soft clipper → mono/stereo output an
 | Random / granular variation | Seeded for reproducible renders from the same reset state and event sequence. |
 | Imported sample audio | Prepared mono audio; original file is not modified. |
 
-These details follow the [voice engine](https://github.com/kv244/Synth/blob/v1.9.0/NeonSynthVoice.h), [modulation](https://github.com/kv244/Synth/blob/v1.9.0/Modulation.h), [LFO](https://github.com/kv244/Synth/blob/v1.9.0/Lfo.h), [processor](https://github.com/kv244/Synth/blob/v1.9.0/NeonSynthProcessor.cpp), [grain engine](https://github.com/kv244/Synth/blob/v1.9.0/GrainCloud.h), and [sample preparation](https://github.com/kv244/Synth/blob/v1.9.0/SampleData.h).
+These details follow the [voice engine](https://github.com/kv244/Synth/blob/v1.10.0/NeonSynthVoice.h), [modulation](https://github.com/kv244/Synth/blob/v1.10.0/Modulation.h), [LFO](https://github.com/kv244/Synth/blob/v1.10.0/Lfo.h), [processor](https://github.com/kv244/Synth/blob/v1.10.0/NeonSynthProcessor.cpp), [grain engine](https://github.com/kv244/Synth/blob/v1.10.0/GrainCloud.h), and [sample preparation](https://github.com/kv244/Synth/blob/v1.10.0/SampleData.h).
 
 ### Optional MIDI diagnostics
 

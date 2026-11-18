@@ -46,6 +46,9 @@ class NeonSynthEditor : public juce::AudioProcessorEditor,
                          private juce::Timer
 {
 public:
+    /** The cached backdrop (panels, titles, labels); EditorTests checks it is reused. */
+    const neon::crt::CachedPainter& getBackdrop() const noexcept { return backdrop; }
+
     explicit NeonSynthEditor (NeonSynthProcessor& p)
         : AudioProcessorEditor (&p), processor (p), apvts (p.getAPVTS()), sampleView (p, p.getAPVTS()), shapeView (p, p.getAPVTS()), stepGrid (p)
     {

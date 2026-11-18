@@ -83,7 +83,7 @@ CI also configures with `-DNEONSYNTH_WARNINGS_AS_ERRORS=ON`, so a compiler warni
 | `MidiModulationTests` | Pitch bend and the mod wheel through the whole processor: keyboard and sequencer notes (Replace and Layer) both bend, a bend mid-block starts on its sample, the wheel's vibrato, LFO CUTOFF moving the brightness |
 | `RealtimeSafetyTests` | Hooks `operator new`/`delete` and fails if `processBlock` allocates or frees while rendering chords, the sequencer, every waveform and every source, the LFO on all three depths, pitch bend, the mod wheel and the Voices limit moving, as another thread keeps replacing the sample |
 | `ParameterLayoutTests` | Every parameter's ID, place, type, range, skew, default and choices against `tests/parameter-layout.txt`: parameters may only be appended (hosts store sessions by ID and normalised value). After appending one, update the reference with `ParameterLayoutTests --write` |
-| `EditorTests` | Opens the editor offscreen and drives it with mouse events: every parameter has a control, each source shows its own controls with nothing overlapping, knobs, boxes and buttons write their parameter in one gesture and follow it, the step grid, the CHOP strip, the sample markers, the four envelope points, the view and help buttons (Esc closes help from any control), a replaced sample being freed once its notes end, and a background load that is overtaken; then paints every view at 75%, 100% and 150% for every source. Finds controls only by component ID, so it carries over to a new layout. On Linux it needs an X display (`xvfb-run`) |
+| `EditorTests` | Opens the editor offscreen and drives it with mouse events: every parameter has a control, each source shows its own controls with nothing overlapping, knobs, boxes and buttons write their parameter in one gesture and follow it, the step grid, the CHOP strip, the sample markers, the four envelope points, the view and help buttons (Esc closes help from any control), a replaced sample being freed once its notes end, and a background load that is overtaken; the SCANLINES switch (clicks pass through, the choice is saved); the CRT look's text contrast (4.5:1 on the glass) and that its backdrop, graticules and help page are drawn once and reused; then paints every view at 75%, 100% and 150% for every source (set `NEONSYNTH_SNAPSHOT_DIR` to keep the pictures). Finds controls only by component ID, so it carries over to a new layout. On Linux it needs an X display (`xvfb-run`) |
 | `RenderBenchmark` | Times `processBlock` directly (no host) for idle, one note, 16 voices, 16 voices on each of the Sample, Random and Granular sources, 16 sculpted voices (CHOP, Noise and Fold all on), the LFO on the cutoff, the mod wheel's vibrato and a moving bend on the granular source (all on 16 voices), and a dense sequencer + chords load |
 
 ### Performance
@@ -323,7 +323,14 @@ audio_bright = plugin.process(msgs, 2.5, SR, reset=True)
 | `GrainCloud.h` | The granular source: grain scheduler, 32-grain pool, Hann window, scan, spray and jitter |
 | `SampleView.h` | The sample's waveform in the editor, with draggable markers and live playheads |
 | `NeonSynthProcessor.h/cpp` | `AudioProcessor` — parameter management, MIDI, state |
-| `NeonSynthEditor.h` | Neon UI — layout, controls, resizing, the 30 Hz timer that feeds the visualisers |
+| `NeonSynthEditor.h` | The editor — layout, controls, resizing, the 30 Hz timer that feeds the visualisers, the SCANLINES switch |
+| `CrtTheme.h` | The retro CRT look's shared pieces (v1.10.0): palette, the embedded VT323 and IBM Plex Mono fonts, glow text, `CachedPainter` (draw once at the screen's pixel scale, then copy) and the scanline overlay |
+| `CrtFrame.h` | The CRT frame: bezel, tube glass, panels and their titles, the GAIN fader's groove and dB marks |
+| `CrtLookAndFeel.h` | How every stock control is drawn in the CRT look: knobs, sliders, buttons, combo boxes and pop-up menus |
+| `fonts/` | VT323 and IBM Plex Mono (SIL Open Font Licence, `OFL-*.txt`), compiled into the plugin as binary data |
+| `CytomicSvf.h` | The state-variable filter (low-pass, high-pass, band-pass, notch) with drive |
+| `Lfo.h` / `Modulation.h` | The LFO and the shared per-block modulation buffers (pitch, cutoff, tremolo), pitch bend and the mod wheel |
+| `LfoView.h` | The LFO's drawing in the MODULATION panel |
 | `MidiLogger.h` | Real-time-safe MIDI logging (lock-free FIFO + background writer thread) |
 | `StepSequencer.h` | Step sequencer engine — timing, swing, gate, note-off queue, lock-free pattern |
 | `SequencerView.h` | The 16-step grid in the editor (editing and playhead) |
@@ -340,10 +347,10 @@ audio_bright = plugin.process(msgs, 2.5, SR, reset=True)
 | `tests/RealtimeSafetyTests.cpp` | Fails if `processBlock` allocates |
 | `tests/RenderBenchmark.cpp` | CPU benchmark of `processBlock` |
 | `tests/ParameterLayoutTests.cpp`, `tests/parameter-layout.txt` | The parameter-layout test and its reference |
-| `tests/EditorTests.cpp` | Offscreen editor tests (gestures and painting) |
+| `tests/EditorTests.cpp` | Offscreen editor tests (gestures, painting, the CRT look's contrast and caches) |
 | `tests/complexity_report.py` | Lines of code and the cyclomatic complexity of every plugin function, as Markdown (`pip install lizard`); CI runs it on every push and pull request |
 | `tests/compare_versions.py` | Renders a set of sessions through two VST3 builds and requires identical audio (CI compares against the v1.6.0 release) |
-| `Visualisers.h` | Oscilloscope, spectrum analyser, ADSR graph, voice lights and L/R meter (message thread only) |
+| `Visualisers.h` | Oscilloscope and spectrum (with afterglow), ADSR graph, voice lights, the block L/R meter and the controller bars (message thread only) |
 | `CMakeLists.txt` | Build config — Standalone + VST3, JUCE path, the test programs |
 | `icon.png` | Application / plugin icon |
 | `test_midi.py` | Automated Python test suite |

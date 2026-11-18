@@ -91,42 +91,6 @@ namespace neon
             g.fillRect (juce::Rectangle<float> (cx - 2.0f, std::round (area.getY() + dy * (float) i), 5.0f, 1.0f));
     }
 
-    /** A panel of controls (v1.9.0 look): dark fill, a soft glow and edge in the panel's own
-        colour, and a header strip that fades down from the top behind the title, so each area
-        reads as one block. A handful of translucent fills and strokes, no blur, so it costs
-        next to nothing to repaint. headerHeight 0 leaves the strip out. */
-    inline void drawSection (juce::Graphics& g, juce::Rectangle<float> r, juce::Colour accent, float headerHeight)
-    {
-        constexpr float radius = 10.0f;
-
-        // Glow: three wide, faint strokes outside the edge, fainter further out.
-        for (const auto& [grow, alpha] : { std::pair { 3.5f, 0.05f }, std::pair { 2.0f, 0.09f }, std::pair { 1.0f, 0.14f } })
-        {
-            g.setColour (accent.withAlpha (alpha));
-            g.drawRoundedRectangle (r.expanded (grow), radius + grow, 2.0f);
-        }
-
-        g.setColour (section);
-        g.fillRoundedRectangle (r, radius);
-
-        if (headerHeight > 0.0f)
-        {
-            juce::Graphics::ScopedSaveState state (g);
-            juce::Path shape;
-            shape.addRoundedRectangle (r, radius);
-            g.reduceClipRegion (shape);
-            const auto strip = r.withHeight (headerHeight);
-            g.setGradientFill (juce::ColourGradient (accent.withAlpha (0.16f), 0.0f, strip.getY(),
-                                                     accent.withAlpha (0.03f), 0.0f, strip.getBottom(), false));
-            g.fillRect (strip);
-            g.setColour (accent.withAlpha (0.22f));
-            g.fillRect (strip.getX() + 12.0f, strip.getBottom() - 1.0f, strip.getWidth() - 24.0f, 1.0f);
-        }
-
-        g.setColour (accent.withAlpha (0.45f));
-        g.drawRoundedRectangle (r.reduced (0.5f), radius, 1.0f);
-    }
-
     /** Strokes a path as a phosphor trace: two wide faint passes in the hue (the halo) under a
         thin core burnt nearly white. Three strokes, no blur. */
     inline void strokeGlow (juce::Graphics& g, const juce::Path& p, juce::Colour c, float width = 1.4f)
