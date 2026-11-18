@@ -308,6 +308,53 @@ audio_bright = plugin.process(msgs, 2.5, SR, reset=True)
 
 ---
 
+## Architecture
+
+### Signal path
+
+![The signal path. Keyboard MIDI and the step sequencer go through MIDI routing to voice allocation (up to 16 voices, set by the VOICES limit). Inside each voice, Oscillator and Random pass through CHOP, Noise and Fold; all four sources then go through velocity times the amp envelope, drive and the filter (bypassed together by the filter's ON switch), and the pitch-based pan. The voices are summed, then tremolo, output gain and the soft clipper lead to the audio output and the displays. A shared modulation stage, worked out once per block, sends the pitch ratio to all four sources, the LFO cutoff to the filter and the tremolo to the mix.](images/fig10-signal-path.png)
+
+Figure 10 of the [user manual](NeonSynth-User-Manual.md#signal-path) (source: `docs/images/fig10-signal-path.svg`). Each box is a stage in the order the code runs it. Solid arrows carry audio, dashed ones the shared modulation.
+
+How to read it, top to bottom, with the code that does each part:
+
+| Stage | What happens | Code |
+|---|---|---|
+| Notes in | Keyboard MIDI, filtered by the sequencer mode, is merged with the sequencer's own notes into one MIDI buffer for the block | `NeonSynthProcessor::buildPlayMidi`, `StepSequencer.h` |
+| Modulation | The LFO, pitch bend and the mod wheel are worked out once per block for all voices: a pitch ratio, a cutoff offset and a tremolo | `Modulation.h`, `Lfo.h` |
+| Voices | Up to 16 voices (the VOICES limit). Each runs its source; Oscillator and Random then pass through CHOP, Noise and Fold. Then velocity times the amp envelope, drive and the filter (one stage, bypassed together by the filter's ON switch), and a pan set by pitch | `NeonSynthVoice.h`, `Oscillator.h`, `Sculpt.h`, `SampleReader.h`, `GrainCloud.h`, `VoiceEnvelope.h`, `CytomicSvf.h` |
+| Output | The voices are summed, then tremolo, output gain and the soft clipper (under −1 dBFS, untouched below −6 dBFS) | `NeonSynthProcessor::processBlock`, `softClip` |
+| Displays | The finished block is copied to the scope FIFO and each voice's state to the voice views | `pushScope`, `publishVoiceViews` |
+
+### Threads
+
+NeonSynth runs on three kinds of thread. The rule is that the audio thread never waits for the others.
+
+| Thread | What runs there | Must not |
+|---|---|---|
+| Audio thread (the host's) | `processBlock`: reading parameters, the sequencer, the modulation, the voices, the soft clipper, filling the scope FIFO and the voice views, queuing MIDI for the log | Allocate, free, lock, throw, do I/O |
+| Message thread | The editor and its views; the 30 Hz timer that drains the scope, reads the voice and modulation views and frees replaced samples; step edits in the sequencer grid (`setSequencerStep`); starting a sample load; telling the host the state changed (`updateHostDisplay`) | Block for long: it is the host's GUI thread too |
+| Background threads | The sample loader (a one-thread `juce::ThreadPool`, "NeonSynth sample loader") reads and prepares a file; the MIDI log writer (a `juce::Thread`, "NeonSynth MIDI log", only when `NEONSYNTH_MIDILOG` is set) formats and writes the log | Touch the editor or call the host |
+
+The host calls `getStateInformation` and `setStateInformation` on a thread of its choosing, usually the message thread. They use `sampleInfoLock`, which the audio thread never takes.
+
+How data crosses between them:
+
+| Data | From → to | How |
+|---|---|---|
+| Parameters | Controls and host automation → audio thread | JUCE's parameter objects (atomic values), read once per block |
+| The sample | Loader or message thread → audio thread | `SampleSlot.h`: an atomic pointer swapped by `publish()` and read once per block by `beginBlock()`. A replaced sample is retired and freed by `collectGarbage()` (on the next load, when the audio stops, or from the editor's timer) only after the audio thread has started a new block and no voice still plays it |
+| Scope audio | Audio thread → editor timer | A lock-free `juce::AbstractFifo` of stereo frames (`pushScope` / `drainScope`) |
+| MIDI log | Audio thread → log writer | A lock-free `juce::AbstractFifo` of fixed-size records in `MidiLogger.h`; when it is full, events are counted as dropped instead of waiting |
+| Sequencer pattern | Message thread ↔ audio thread | One `std::atomic<uint32>` per step in `StepSequencer.h`; the playing step is an atomic too |
+| CHOP pattern | Message thread → audio thread | One `std::atomic<uint16>`, bit k = step k |
+| Voice and modulation views | Audio thread → editor timer | Relaxed atomic stores once per block (`VoiceView`, `Modulation`'s LFO phase and value, bend and wheel positions, the sequencer's tempo); values may come from neighbouring blocks, which is fine for display |
+| "Sample loaded" host notification | Loader thread → message thread | The loader triggers an `AsyncUpdater` member (`HostNotifier`), which calls `updateHostDisplay` on the message thread; a notification still pending when the processor is destroyed is cancelled |
+
+The source files are listed in [Project Structure](#project-structure).
+
+---
+
 ## Project Structure
 
 | File | Purpose |
