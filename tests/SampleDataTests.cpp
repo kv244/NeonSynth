@@ -12,9 +12,9 @@
     Run the resulting SampleDataTests executable; it exits non-zero on failure.
 */
 #include <juce_audio_formats/juce_audio_formats.h>
-#include "../SampleData.h"
-#include "../SampleSlot.h"
-#include "../SampleLoader.h"
+#include "state/SampleData.h"
+#include "state/SampleSlot.h"
+#include "state/SampleLoader.h"
 #include <cstdio>
 #include <cmath>
 #include <random>

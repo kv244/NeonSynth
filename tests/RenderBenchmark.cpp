@@ -35,7 +35,7 @@
     in real time. Exits non-zero if any scenario renders a NaN or an infinity
     (checked outside the timed calls).
 */
-#include "NeonSynthProcessor.h"
+#include "plugin/NeonSynthProcessor.h"
 #include <chrono>
 #include <cmath>
 #include <cstdio>

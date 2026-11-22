@@ -22,7 +22,7 @@
                        cmake --build build --target PitchTests
     Run the resulting PitchTests executable; it exits non-zero on failure.
 */
-#include "NeonSynthProcessor.h"
+#include "plugin/NeonSynthProcessor.h"
 #include <cmath>
 #include <cstdio>
 #include <vector>

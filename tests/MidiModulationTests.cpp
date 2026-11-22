@@ -18,7 +18,7 @@
                        cmake --build build --target MidiModulationTests
     Run the resulting MidiModulationTests executable; it exits non-zero on failure.
 */
-#include "NeonSynthProcessor.h"
+#include "plugin/NeonSynthProcessor.h"
 #include <cstdio>
 #include <cstring>
 #include <cmath>

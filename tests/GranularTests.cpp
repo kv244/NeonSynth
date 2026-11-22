@@ -12,8 +12,8 @@
     Run the resulting GranularTests executable; it exits non-zero on failure.
 */
 #include <juce_audio_basics/juce_audio_basics.h>
-#include "../SampleData.h"
-#include "../GrainCloud.h"
+#include "state/SampleData.h"
+#include "dsp/GrainCloud.h"
 #include <cstdio>
 #include <cmath>
 #include <random>

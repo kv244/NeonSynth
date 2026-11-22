@@ -16,8 +16,8 @@
 */
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <juce_dsp/juce_dsp.h>
-#include "../CytomicSvf.h"
-#include "../Oscillator.h"
+#include "dsp/CytomicSvf.h"
+#include "dsp/Oscillator.h"
 #include <cstdio>
 #include <cstring>
 #include <cmath>

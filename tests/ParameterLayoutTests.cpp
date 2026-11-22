@@ -22,7 +22,7 @@
                        cmake --build build --target ParameterLayoutTests
     Run the resulting ParameterLayoutTests executable; it exits non-zero on failure.
 */
-#include "NeonSynthProcessor.h"
+#include "plugin/NeonSynthProcessor.h"
 #include <cstdio>
 
 namespace

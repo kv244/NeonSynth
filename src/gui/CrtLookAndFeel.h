@@ -4,7 +4,7 @@
 
 #pragma once
 #include <JuceHeader.h>
-#include "CrtTheme.h"
+#include "gui/CrtTheme.h"
 
 /*
     The CRT look for every stock JUCE control in the editor (v1.10.0).

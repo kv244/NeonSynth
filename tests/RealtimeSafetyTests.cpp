@@ -21,7 +21,7 @@
                        cmake --build build --target RealtimeSafetyTests
     Run the resulting RealtimeSafetyTests executable; it exits non-zero on failure.
 */
-#include "NeonSynthProcessor.h"
+#include "plugin/NeonSynthProcessor.h"
 #include <atomic>
 #include <cstdio>
 #include <cstdlib>

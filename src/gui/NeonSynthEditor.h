@@ -4,15 +4,21 @@
 
 #pragma once
 #include <JuceHeader.h>
-#include "NeonSynthProcessor.h"
-#include "Visualisers.h"
-#include "CrtLookAndFeel.h"
-#include "CrtFrame.h"
-#include "SequencerView.h"
-#include "HelpOverlay.h"
-#include "SampleView.h"
-#include "ShapeView.h"
-#include "LfoView.h"
+#include "plugin/NeonSynthProcessor.h"
+#include "gui/NeonStyle.h"
+#include "gui/SignalHistory.h"
+#include "gui/ScopeView.h"
+#include "gui/SpectrumView.h"
+#include "gui/LevelMeter.h"
+#include "gui/AdsrView.h"
+#include "gui/VoiceLights.h"
+#include "gui/CrtLookAndFeel.h"
+#include "gui/CrtFrame.h"
+#include "gui/SequencerView.h"
+#include "gui/HelpOverlay.h"
+#include "gui/SampleView.h"
+#include "gui/ShapeView.h"
+#include "gui/LfoView.h"
 
 /**
     Neon Synth editor.

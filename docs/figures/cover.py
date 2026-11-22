@@ -38,7 +38,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 FONTS = HERE.parent.parent / "fonts"
 
 W_MM, H_MM = 210.0, 297.0
-# The editor's palette (CrtTheme.h and Visualisers.h)
+# The editor's palette (CrtTheme.h and NeonStyle.h)
 CYAN, MAGENTA, AMBER, GREEN = "#19e6ff", "#ff4fd8", "#ffb319", "#5cff6a"
 PHOSPHOR, PHOSPHOR_DIM, PHOSPHOR_GLOW = "#c8ffe6", "#6fae95", "#3dffb0"
 SCREEN_CENTRE, SCREEN_EDGE = "#07170f", "#010402"

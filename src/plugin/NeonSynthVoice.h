@@ -4,13 +4,13 @@
 
 #pragma once
 #include <JuceHeader.h>
-#include "VoiceEnvelope.h"
-#include "Oscillator.h"
-#include "Sculpt.h"
-#include "SampleReader.h"
-#include "GrainCloud.h"
-#include "CytomicSvf.h"
-#include "Modulation.h"
+#include "dsp/VoiceEnvelope.h"
+#include "dsp/Oscillator.h"
+#include "dsp/Sculpt.h"
+#include "dsp/SampleReader.h"
+#include "dsp/GrainCloud.h"
+#include "dsp/CytomicSvf.h"
+#include "dsp/Modulation.h"
 
 class NeonSynthSound : public juce::SynthesiserSound
 {

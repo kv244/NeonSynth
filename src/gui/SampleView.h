@@ -4,8 +4,8 @@
 
 #pragma once
 #include <JuceHeader.h>
-#include "NeonSynthProcessor.h"
-#include "Visualisers.h"
+#include "plugin/NeonSynthProcessor.h"
+#include "gui/NeonStyle.h"
 
 /**
     The sample's waveform in the editor, with its markers and live playheads.

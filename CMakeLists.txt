@@ -103,31 +103,43 @@ juce_add_binary_data(NeonSynthFonts
 
 target_sources(NeonSynth
     PRIVATE
-        NeonSynthVoice.h
-        NeonSynthEditor.h
-        CrtTheme.h
-        CrtFrame.h
-        CrtLookAndFeel.h
-        NeonSynthProcessor.h
-        NeonSynthProcessor.cpp
-        MidiLogger.h
-        Visualisers.h
-        StepSequencer.h
-        SequencerView.h
-        HelpOverlay.h
-        VoiceEnvelope.h
-        Oscillator.h
-        Sculpt.h
-        SampleData.h
-        SampleSlot.h
-        SampleLoader.h
-        SampleReader.h
-        GrainCloud.h
-        SampleView.h
-        ShapeView.h
-        LfoView.h
-        Lfo.h
-        Modulation.h
+        # src/dsp
+        src/dsp/Oscillator.h
+        src/dsp/SampleReader.h
+        src/dsp/GrainCloud.h
+        src/dsp/CytomicSvf.h
+        src/dsp/VoiceEnvelope.h
+        src/dsp/Lfo.h
+        src/dsp/Modulation.h
+        src/dsp/Sculpt.h
+        # src/sequencer
+        src/sequencer/StepSequencer.h
+        # src/state
+        src/state/SampleData.h
+        src/state/SampleLoader.h
+        src/state/SampleSlot.h
+        # src/gui
+        src/gui/NeonSynthEditor.h
+        src/gui/CrtTheme.h
+        src/gui/CrtFrame.h
+        src/gui/CrtLookAndFeel.h
+        src/gui/NeonStyle.h
+        src/gui/SignalHistory.h
+        src/gui/ScopeView.h
+        src/gui/SpectrumView.h
+        src/gui/LevelMeter.h
+        src/gui/AdsrView.h
+        src/gui/VoiceLights.h
+        src/gui/SampleView.h
+        src/gui/ShapeView.h
+        src/gui/LfoView.h
+        src/gui/SequencerView.h
+        src/gui/HelpOverlay.h
+        # src/plugin
+        src/plugin/NeonSynthProcessor.h
+        src/plugin/NeonSynthProcessor.cpp
+        src/plugin/NeonSynthVoice.h
+        src/plugin/MidiLogger.h
 )
 
 target_compile_definitions(NeonSynth
@@ -157,9 +169,12 @@ target_link_libraries(NeonSynth
         neonsynth_sanitize
 )
 
+# Sources are grouped by job (v1.11.0): src/dsp (signal processing), src/sequencer,
+# src/state (samples and their hand-off), src/gui (the editor and its views) and src/plugin
+# (processor, voice, MIDI log). Includes name the folder: #include "dsp/Oscillator.h".
 target_include_directories(NeonSynth
     PRIVATE
-        ${CMAKE_CURRENT_LIST_DIR}
+        ${CMAKE_CURRENT_LIST_DIR}/src
 )
 
 # ---------------------------------------------------------------------------
@@ -182,6 +197,7 @@ if(NEONSYNTH_BUILD_TESTS)
     foreach(test ${NEONSYNTH_UNIT_TESTS})
         juce_add_console_app(${test} PRODUCT_NAME "${test}")
         target_sources(${test} PRIVATE tests/${test}.cpp)
+        target_include_directories(${test} PRIVATE ${CMAKE_CURRENT_LIST_DIR}/src)
         target_compile_definitions(${test} PRIVATE
             JUCE_WEB_BROWSER=0
             JUCE_USE_CURL=0)
@@ -210,8 +226,8 @@ if(NEONSYNTH_BUILD_TESTS)
     foreach(program RenderBenchmark RealtimeSafetyTests ParameterLayoutTests SessionStateTests StateFuzzTests EditorTests PitchTests MidiModulationTests)
         juce_add_console_app(${program} PRODUCT_NAME "${program}")
         juce_generate_juce_header(${program})
-        target_sources(${program} PRIVATE tests/${program}.cpp NeonSynthProcessor.cpp)
-        target_include_directories(${program} PRIVATE ${CMAKE_CURRENT_LIST_DIR})
+        target_sources(${program} PRIVATE tests/${program}.cpp src/plugin/NeonSynthProcessor.cpp)
+        target_include_directories(${program} PRIVATE ${CMAKE_CURRENT_LIST_DIR}/src)
         target_compile_definitions(${program} PRIVATE
             JUCE_WEB_BROWSER=0
             JUCE_USE_CURL=0

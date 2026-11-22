@@ -9,7 +9,7 @@
 #include <array>
 #include <cmath>
 #include <algorithm>
-#include "Lfo.h"
+#include "dsp/Lfo.h"
 
 /**
     What the voices read from the modulation each block (v1.9.0). Both buffers
