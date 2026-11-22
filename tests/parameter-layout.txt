@@ -51,3 +51,9 @@
 50 bendRange v1 "Pitch Bend Range" int 0 to 24 step 1 skew 1 default 2
 51 vibrato v1 "Vibrato Depth" float 0 to 100 step 0.1 skew 1 default 30
 52 voiceCount v1 "Voices" int 1 to 16 step 1 skew 1 default 16
+53 hold v1 "Hold" bool default off
+54 glide v1 "Glide" float 0 to 2000 step 1 skew 0.4 default 0
+55 legato v1 "Legato" bool default off
+56 seqLength v1 "Sequencer Length" int 1 to 16 step 1 skew 1 default 16
+57 seqKey v1 "Sequencer Key" choice [C, C#, D, D#, E, F, F#, G, G#, A, A#, B] default C
+58 seqScale v1 "Sequencer Scale" choice [Off, Major, Dorian, Phrygian, Lydian, Mixolydian, Natural minor, Locrian, Harmonic minor, Major pentatonic, Minor pentatonic, Blues, Whole tone] default Off
