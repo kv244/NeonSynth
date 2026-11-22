@@ -46,6 +46,14 @@ The **[user manual](docs/NeonSynth-User-Manual.md)** explains every control, wit
 sound-design starting points, troubleshooting and a tour of the C++ source. Each release also carries it
 as a PDF.
 
+For the theory behind it, two companion books live in [`docs/theory`](docs/theory):
+**[The DSP Behind NeonSynth](docs/theory/DSP-Behind-NeonSynth.md)**, a short textbook for musicians and
+programmers that connects each control to its mathematics, its code and its tests, with sixteen listening
+laboratories; and the **[Mathematical Compendium](docs/theory/Mathematical-Compendium.tex)** (LaTeX,
+[PDF](docs/theory/Mathematical-Compendium-v1.10.1.pdf)), the derivations: band-limited edges, the
+zero-delay-feedback filter and its self-oscillation limiter, anti-aliased drive, granular synthesis,
+resampling and modulation. Both are checked against the release they name, like the manual.
+
 ## Installation
 
 Windows 10 or 11, 64-bit. Download `NeonSynth-x.y.z-Windows-Setup.exe` from the
