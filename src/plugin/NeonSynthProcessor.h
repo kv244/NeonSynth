@@ -4,6 +4,7 @@
 
 #pragma once
 #include <JuceHeader.h>
+#include <array>
 #include "plugin/NeonSynthVoice.h"
 #include "plugin/MidiLogger.h"
 #include "sequencer/StepSequencer.h"
@@ -118,6 +119,14 @@ public:
         marked as modified.
     */
     void setSequencerStep (int index, const StepSequencer::Step& step);
+
+    /**
+        v1.11.0, ENTER: while armed, every keyboard note-on is also queued for the editor, which
+        writes it into the step being entered. Message thread arms and reads; the audio thread
+        only pushes (lock-free, dropped when the queue is full).
+    */
+    void setNoteEntryArmed (bool armed) noexcept     { noteEntryArmed.store (armed, std::memory_order_relaxed); }
+    bool popEnteredNote (int& note, int& velocity) noexcept;
 
     /** Step that most recently started, or -1 while the sequencer is stopped. Any thread. */
     int getSequencerPlayhead() const noexcept   { return sequencer.getCurrentStep(); }
@@ -279,6 +288,12 @@ private:
     bool   wasSequencerOn = false;
     std::array<int, 16> heldKeys {};           // Transpose mode: keys currently down, most recent last
     int    numHeldKeys = 0;
+
+    // ENTER's queue of keyboard notes (note in the low byte, velocity in the next).
+    std::atomic<bool> noteEntryArmed { false };
+    juce::AbstractFifo enteredNotesFifo { 64 };
+    std::array<juce::uint16, 64> enteredNotes {};
+    void pushEnteredNote (int note, int velocity) noexcept;
     std::atomic<float> sequencerTempo { 120.0f };
     std::atomic<bool>  sequencerFollowsHost { false };
 
@@ -340,6 +355,15 @@ private:
     juce::AudioParameterInt*    bendRangeParameter     = nullptr;
     juce::AudioParameterFloat*  vibratoParameter       = nullptr;
     juce::AudioParameterInt*    voiceCountParameter    = nullptr;
+
+    // v1.11.0. Shared base: the parameters exist and are read here; agent B (hold, glide,
+    // legato) and agent A (length, key, scale) give them their behaviour.
+    juce::AudioParameterBool*   holdParameter          = nullptr;
+    juce::AudioParameterFloat*  glideParameter         = nullptr;
+    juce::AudioParameterBool*   legatoParameter        = nullptr;
+    juce::AudioParameterInt*    seqLengthParameter     = nullptr;
+    juce::AudioParameterChoice* seqKeyParameter        = nullptr;
+    juce::AudioParameterChoice* seqScaleParameter      = nullptr;
 
     /** The LFO, pitch bend and mod wheel (v1.9.0), shared by all voices. */
     Modulation modulation;

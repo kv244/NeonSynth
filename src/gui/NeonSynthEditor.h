@@ -113,6 +113,7 @@ public:
         lfoAmpValue    = apvts.getRawParameterValue ("lfoAmp");
         bendRangeValue = apvts.getRawParameterValue ("bendRange");
         vibratoValue   = apvts.getRawParameterValue ("vibrato");
+        glideValue     = apvts.getRawParameterValue ("glide");   // v1.11.0
 
         // ── Oscillator ───────────────────────────────────────────────────────
         content.addAndMakeVisible (waveformCombo);
@@ -482,6 +483,28 @@ public:
         for (auto* label : { &lfoPitchReadout, &lfoCutoffReadout, &lfoAmpReadout, &bendRangeReadout, &vibratoReadout })
             setUpReadout (*label, neon::green, juce::Justification::centred);
 
+        // v1.11.0: GLIDE and LEGATO, beside the other pitch controls.
+        glideKnob.setSliderStyle (juce::Slider::Rotary);
+        glideKnob.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+        glideKnob.setColour (juce::Slider::rotarySliderFillColourId,    neon::green);
+        glideKnob.setColour (juce::Slider::rotarySliderOutlineColourId, neon::green.withAlpha (0.3f));
+        glideKnob.setColour (juce::Slider::thumbColourId,               neon::green);
+        glideKnob.setTooltip ("Glide: how long each voice takes to slide to a new note (0 = jump straight there)");
+        content.addAndMakeVisible (glideKnob);
+        glideAttachment = std::make_unique<SliderAttachment> (apvts, "glide", glideKnob);
+        setUpReadout (glideReadout, neon::green, juce::Justification::centred);
+
+        legatoButton.setClickingTogglesState (true);
+        legatoButton.setColour (juce::TextButton::buttonColourId,   juce::Colours::transparentBlack);
+        legatoButton.setColour (juce::TextButton::buttonOnColourId, neon::green.withAlpha (0.30f));
+        legatoButton.setColour (juce::TextButton::textColourOffId,  neon::green.withAlpha (0.55f));
+        legatoButton.setColour (juce::TextButton::textColourOnId,   neon::green);
+        legatoButton.setColour (juce::ComboBox::outlineColourId,    neon::green.withAlpha (0.6f));
+        legatoButton.setTooltip ("Legato (with the voice limit at MONO): a key pressed while another is held glides to "
+                                 "the new note without restarting the envelopes; letting it go returns to the key still held");
+        content.addAndMakeVisible (legatoButton);
+        legatoAttachment = std::make_unique<ButtonAttachment> (apvts, "legato", legatoButton);
+
         // SYNC swaps the rate slider (Hz) for the note length, in the same place.
         lfoSyncListener = std::make_unique<juce::ParameterAttachment> (
             *apvts.getParameter ("lfoSync"),
@@ -531,6 +554,42 @@ public:
         seqRateAttachment = std::make_unique<ComboBoxAttachment> (apvts, "seqRate", seqRateCombo);
         seqModeAttachment = std::make_unique<ComboBoxAttachment> (apvts, "seqMode", seqModeCombo);
 
+        // v1.11.0: the pattern row. LENGTH, KEY and SCALE are parameters; TOOLS, ENTER and UNDO
+        // act on the pattern (agent A gives them their behaviour).
+        for (auto* combo : { &seqLengthCombo, &seqKeyCombo, &seqScaleCombo })
+        {
+            combo->setColour (juce::ComboBox::outlineColourId, neon::amber);
+            combo->setColour (juce::ComboBox::textColourId,    neon::amber);
+            combo->setColour (juce::ComboBox::arrowColourId,   neon::amber);
+            content.addAndMakeVisible (combo);
+        }
+        for (int n = 1; n <= StepSequencer::numSteps; ++n)
+            seqLengthCombo.addItem (juce::String (n) + (n == 1 ? " step" : " steps"), n);
+        seqKeyCombo.addItemList ({ "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" }, 1);
+        seqScaleCombo.addItemList ({ "Scale off", "Major", "Dorian", "Phrygian", "Lydian", "Mixolydian",
+                                     "Natural minor", "Locrian", "Harmonic minor", "Major pentatonic",
+                                     "Minor pentatonic", "Blues", "Whole tone" }, 1);   // same order as the parameter
+        seqLengthCombo.setTooltip ("Pattern length: the pattern repeats after this many steps (try 5 or 7 against the beat)");
+        seqKeyCombo.setTooltip ("Key of the scale lock");
+        seqScaleCombo.setTooltip ("Scale lock: notes you set on the steps snap to this scale. Notes already there stay");
+        seqLengthAttachment = std::make_unique<ComboBoxAttachment> (apvts, "seqLength", seqLengthCombo);
+        seqKeyAttachment    = std::make_unique<ComboBoxAttachment> (apvts, "seqKey",    seqKeyCombo);
+        seqScaleAttachment  = std::make_unique<ComboBoxAttachment> (apvts, "seqScale",  seqScaleCombo);
+
+        for (auto* button : { &seqToolsButton, &seqEnterButton, &seqUndoButton })
+        {
+            button->setColour (juce::TextButton::buttonColourId,   juce::Colours::transparentBlack);
+            button->setColour (juce::TextButton::buttonOnColourId, neon::amber.withAlpha (0.30f));
+            button->setColour (juce::TextButton::textColourOffId,  neon::amber.withAlpha (0.8f));
+            button->setColour (juce::TextButton::textColourOnId,   neon::amber);
+            button->setColour (juce::ComboBox::outlineColourId,    neon::amber.withAlpha (0.6f));
+            content.addAndMakeVisible (button);
+        }
+        seqEnterButton.setClickingTogglesState (true);
+        seqToolsButton.setTooltip ("Pattern tools: shift, octave up or down, reverse, clear, randomise in the scale");
+        seqEnterButton.setTooltip ("Enter notes from the keyboard: click a step, then play; each key fills a step and moves on");
+        seqUndoButton.setTooltip ("Undo the last change to the pattern (Ctrl+Z)");
+
         content.addAndMakeVisible (stepGrid);
 
         setUpLinearSlider (seqSwingSlider, neon::amber);
@@ -568,6 +627,18 @@ public:
         scanlinesButton.onClick = [this] { setScanlines (scanlinesButton.getToggleState()); };
         content.addAndMakeVisible (scanlinesButton);
 
+        // v1.11.0: the preset bar (agent C fills it) and HOLD.
+        content.addAndMakeVisible (presetBar);
+        holdButton.setClickingTogglesState (true);
+        holdButton.setColour (juce::TextButton::buttonColourId,   juce::Colours::transparentBlack);
+        holdButton.setColour (juce::TextButton::buttonOnColourId, neon::cyan.withAlpha (0.25f));
+        holdButton.setColour (juce::TextButton::textColourOffId,  neon::cyan.withAlpha (0.55f));
+        holdButton.setColour (juce::TextButton::textColourOnId,   neon::cyan);
+        holdButton.setColour (juce::ComboBox::outlineColourId,    neon::cyan.withAlpha (0.6f));
+        holdButton.setTooltip ("Hold: keys keep sounding after you let go, until HOLD is switched off");
+        content.addAndMakeVisible (holdButton);
+        holdAttachment = std::make_unique<ButtonAttachment> (apvts, "hold", holdButton);
+
         content.addChildComponent (helpOverlay);   // above every control
         content.addChildComponent (scanlines);     // added last, over everything; clicks pass through it
 
@@ -602,7 +673,10 @@ public:
             { &scopeButton, "scopeButton" }, { &spectrumButton, "spectrumButton" },
             { &loadButton, "loadButton" }, { &padButton, "padButton" },
             { &voiceLeds, "voiceCount" }, { &helpButton, "helpButton" }, { &helpOverlay, "helpOverlay" },
-            { &scanlinesButton, "scanlinesButton" }, { &scanlines, "scanlines" } };
+            { &scanlinesButton, "scanlinesButton" }, { &scanlines, "scanlines" },
+            { &presetBar, "presetBar" }, { &holdButton, "hold" }, { &glideKnob, "glide" }, { &legatoButton, "legato" },
+            { &seqLengthCombo, "seqLength" }, { &seqKeyCombo, "seqKey" }, { &seqScaleCombo, "seqScale" },
+            { &seqToolsButton, "seqTools" }, { &seqEnterButton, "seqEnter" }, { &seqUndoButton, "seqUndo" } };
         for (const auto& [component, id] : ids)
             component->setComponentID (id);
 
@@ -750,7 +824,9 @@ private:
         voiceLeds.setBounds (880, 33, 288, 18);
         voiceCountReadout.setBounds (764, 33, 110, 18);
         helpButton.setBounds (1212, 26, 40, 32);
-        scanlinesButton.setBounds (620, 26, 128, 32);
+        presetBar.setBounds (248, 26, 308, 32);          // v1.11.0
+        holdButton.setBounds (564, 26, 72, 32);          // v1.11.0
+        scanlinesButton.setBounds (644, 26, 112, 32);
 
         // SOURCE panel (16, 82, 400 x 548)
         sourceCombo.setBounds (32, 118, 176, 32);
@@ -826,12 +902,16 @@ private:
             depthKnobs[i]->setBounds (1068 + 60 * i, m + modKnobRow1, 60, 42);
             depthReads[i]->setBounds (1068 + 60 * i, m + modKnobRow1 + 56, 60, 14);
         }
-        bendRangeKnob.setBounds (980, m + modKnobRow2, 60, 42);
-        bendRangeReadout.setBounds (980, m + modKnobRow2 + 56, 60, 14);
-        bendBar.setBounds (1044, m + modKnobRow2 + 14, 64, 12);
-        vibratoKnob.setBounds (1120, m + modKnobRow2, 60, 42);
-        vibratoReadout.setBounds (1120, m + modKnobRow2 + 56, 60, 14);
-        wheelBar.setBounds (1184, m + modKnobRow2 + 14, 64, 12);
+        // Row 2 (v1.11.0): the three pitch knobs, then LEGATO above the two controller bars.
+        bendRangeKnob.setBounds (980, m + modKnobRow2, 56, 42);
+        bendRangeReadout.setBounds (980, m + modKnobRow2 + 56, 56, 14);
+        vibratoKnob.setBounds (1036, m + modKnobRow2, 56, 42);
+        vibratoReadout.setBounds (1036, m + modKnobRow2 + 56, 56, 14);
+        glideKnob.setBounds (1092, m + modKnobRow2, 56, 42);
+        glideReadout.setBounds (1092, m + modKnobRow2 + 56, 56, 14);
+        legatoButton.setBounds (1156, m + modKnobRow2, 92, 22);
+        bendBar.setBounds (1156, m + modKnobRow2 + 30, 92, 10);
+        wheelBar.setBounds (1156, m + modKnobRow2 + 56, 92, 10);
 
         // SEQUENCER panel (16, 642, 1248 x 204)
         seqOnButton.setBounds (150, 652, 72, 28);
@@ -844,7 +924,14 @@ private:
         seqSwingReadout.setBounds (988, 656, 48, 20);
         seqGateSlider.setBounds (1100, 652, 92, 28);
         seqGateReadout.setBounds (1196, 656, 52, 20);
-        stepGrid.setBounds (32, 692, 1216, 142);
+        // The pattern row (v1.11.0), then the grid, 30 px shorter than before.
+        seqLengthCombo.setBounds (150, 690, 104, 24);
+        seqKeyCombo.setBounds (262, 690, 60, 24);
+        seqScaleCombo.setBounds (326, 690, 168, 24);
+        seqToolsButton.setBounds (502, 690, 84, 24);
+        seqEnterButton.setBounds (594, 690, 80, 24);
+        seqUndoButton.setBounds (682, 690, 72, 24);
+        stepGrid.setBounds (32, 722, 1216, 112);
 
         helpOverlay.setBounds (0, 0, baseWidth, baseHeight);
         scanlines.setBounds (0, 0, baseWidth, baseHeight);
@@ -854,7 +941,7 @@ private:
         for (auto* label : { &attackReadout, &decayReadout, &sustainReadout, &releaseReadout,
                              &filterAttackReadout, &filterDecayReadout, &filterSustainReadout, &filterReleaseReadout,
                              &cutoffReadout, &gainReadout, &widthReadout, &voiceCountReadout, &filterResReadout, &filterDriveReadout,
-                             &lfoRateReadout, &lfoPitchReadout, &lfoCutoffReadout, &lfoAmpReadout, &bendRangeReadout, &vibratoReadout,
+                             &lfoRateReadout, &lfoPitchReadout, &lfoCutoffReadout, &lfoAmpReadout, &bendRangeReadout, &vibratoReadout, &glideReadout,
                              &filterEnvAmtReadout, &filterVelReadout,
                              &seqTempoReadout, &seqSwingReadout, &seqGateReadout, &sampleNameLabel, &sampleStatusLabel,
                              &smpRootReadout, &smpStartReadout, &smpLoopStartReadout, &smpLoopEndReadout, &smpXfadeReadout,
@@ -1009,10 +1096,11 @@ private:
         const char* depthNames[] = { "PITCH", "CUTOFF", "AMP" };
         for (int i = 0; i < 3; ++i)
             label (depthNames[i], neon::green, 1068 + 60 * i, m + modKnobRow1 + 42, 60, 14, juce::Justification::centred);
-        label ("BEND",    neon::green, 980,  m + modKnobRow2 + 42, 60, 14, juce::Justification::centred);
-        label ("VIBRATO", neon::green, 1120, m + modKnobRow2 + 42, 60, 14, juce::Justification::centred);
-        frame::drawHint (g, "pitch bend", { 1044.0f, (float) (m + modKnobRow2 + 30), 64.0f, 14.0f }, juce::Justification::centred);
-        frame::drawHint (g, "mod wheel",  { 1184.0f, (float) (m + modKnobRow2 + 30), 64.0f, 14.0f }, juce::Justification::centred);
+        label ("BEND",    neon::green, 980,  m + modKnobRow2 + 42, 56, 14, juce::Justification::centred);
+        label ("VIBRATO", neon::green, 1036, m + modKnobRow2 + 42, 56, 14, juce::Justification::centred);
+        label ("GLIDE",   neon::green, 1092, m + modKnobRow2 + 42, 56, 14, juce::Justification::centred);
+        frame::drawHint (g, "pitch bend", { 1156.0f, (float) (m + modKnobRow2 + 40), 92.0f, 14.0f }, juce::Justification::centred);
+        frame::drawHint (g, "mod wheel",  { 1156.0f, (float) (m + modKnobRow2 + 66), 92.0f, 14.0f }, juce::Justification::centred);
 
         // Sequencer
         title ("SEQUENCER", neon::amber, 32, 657, 114);
@@ -1216,6 +1304,9 @@ private:
         set (lfoAmpReadout,    juce::String (juce::roundToInt (lfoAmpValue->load())) + "%");
         set (bendRangeReadout, juce::String (juce::CharPointer_UTF8 ("\xc2\xb1")) + juce::String (juce::roundToInt (bendRangeValue->load())) + " st");
         set (vibratoReadout,   juce::String (juce::roundToInt (vibratoValue->load())) + " ct");
+        const int glideMs = juce::roundToInt (glideValue->load());
+        set (glideReadout,     glideMs == 0 ? juce::String ("off") : glideMs < 1000 ? juce::String (glideMs) + " ms"
+                                                                                    : juce::String (glideMs / 1000.0f, 2) + " s");
 
         const auto percent = [] (float v) { return juce::String (juce::roundToInt (v * 100.0f)) + "%"; };
         set (smpRootReadout,      juce::MidiMessage::getMidiNoteName (juce::roundToInt (smpRootValue->load()), true, true, 4));
@@ -1359,6 +1450,7 @@ private:
     std::atomic<float>* lfoAmpValue = nullptr;
     std::atomic<float>* bendRangeValue = nullptr;
     std::atomic<float>* vibratoValue = nullptr;
+    std::atomic<float>* glideValue = nullptr;
 
     // Visualisers and their data
     SignalHistory    history;
@@ -1431,6 +1523,10 @@ private:
     std::unique_ptr<ButtonAttachment>   seqOnAttachment, seqSyncAttachment;
     std::unique_ptr<SliderAttachment>   seqTempoAttachment, seqSwingAttachment, seqGateAttachment;
     std::unique_ptr<ComboBoxAttachment> seqRateAttachment, seqModeAttachment;
+    // v1.11.0: the pattern row
+    juce::ComboBox     seqLengthCombo, seqKeyCombo, seqScaleCombo;
+    juce::TextButton   seqToolsButton { "TOOLS" }, seqEnterButton { "ENTER" }, seqUndoButton { "UNDO" };
+    std::unique_ptr<ComboBoxAttachment> seqLengthAttachment, seqKeyAttachment, seqScaleAttachment;
 
     // Modulation (v1.9.0)
     LfoView          lfoView;
@@ -1443,6 +1539,16 @@ private:
     std::unique_ptr<ButtonAttachment>   lfoSyncAttachment;
     std::unique_ptr<SliderAttachment>   lfoRateAttachment;
     std::array<std::unique_ptr<SliderAttachment>, 5> modKnobAttachments;
+    // v1.11.0: glide and legato
+    juce::Slider     glideKnob;
+    juce::Label      glideReadout;
+    juce::TextButton legatoButton { "LEGATO" };
+    std::unique_ptr<SliderAttachment> glideAttachment;
+    std::unique_ptr<ButtonAttachment> legatoAttachment;
+    // v1.11.0: the header's preset bar (a placeholder until agent C's PresetBar) and HOLD
+    juce::Component  presetBar;
+    juce::TextButton holdButton { "HOLD" };
+    std::unique_ptr<ButtonAttachment> holdAttachment;
     CutoffBand cutoffBand;   // as last drawn under the cutoff slider
 
     // Help
