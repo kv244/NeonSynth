@@ -8,7 +8,7 @@
 
 The check fails (exit 1) when the book does not match the code it ships with:
   * "Target instrument" must name the version in CMakeLists.txt;
-  * every link to the repository at a tag (github.com/kv244/Synth/.../vX.Y.Z) must
+  * every link to the repository at a tag (github.com/kv244/NeonSynth/.../vX.Y.Z) must
     name that version too;
   * every relative link and image must point at a file that exists, and a link to
     a #section (in the book or another Markdown file) at a heading that exists.
@@ -40,7 +40,7 @@ sys.dont_write_bytecode = True                  # no __pycache__ left in docs/
 sys.path.insert(0, str(DOCS))
 import build_manual  # noqa: E402  (docs/build_manual.py: project_version, heading_anchors, github_slug)
 
-REPO_TAG_LINK = re.compile(r"github\.com/kv244/Synth/(?:blob|tree)/v(\d+\.\d+\.\d+)")
+REPO_TAG_LINK = re.compile(r"github\.com/kv244/NeonSynth/(?:blob|tree)/v(\d+\.\d+\.\d+)")
 
 
 def check(md, version):

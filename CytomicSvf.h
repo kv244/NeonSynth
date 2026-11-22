@@ -36,8 +36,9 @@
     rate, where every other sample of it is close to zero.
     With k < 0 (resonance near 100%) the filter self-oscillates and settles
     where the damping balances, with a peak of about 1.05 L, the same within
-    1 dB from 100 Hz to 5 kHz, then falling towards Nyquist (-3.6 dB at
-    10 kHz, -5.6 dB at 15 kHz at 48 kHz; FilterTests prints it).
+    1 dB from 100 Hz to 5 kHz, then falling towards Nyquist (-2.1 dB at
+    10 kHz, -5.1 dB at 15 kHz at 48 kHz, against the level at 100 Hz;
+    FilterTests prints the peaks: 1.056, 0.831 and 0.585 x L).
     Because the filter is linear and the damping term depends only on
     A / L, scaling the input and L together scales the output by the same
     factor. The voice therefore passes L = L0 * velocity level * envelope and

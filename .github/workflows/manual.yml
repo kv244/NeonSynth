@@ -1,6 +1,7 @@
 name: Manual
 
-# Checks the user manual against the source and prints it to PDF.
+# Checks the user manual and the two companion books (docs/theory) against the source and
+# prints them to PDF.
 #   * fails if "Applies to" or the cover does not name the version in CMakeLists.txt,
 #     or a link/image is broken
 #   * uploads the PDF as a build artifact (Actions run page, kept 30 days)
@@ -39,6 +40,9 @@ jobs:
       - name: Check the manual against the source
         run: python docs/build_manual.py --check
 
+      - name: Check "The DSP Behind NeonSynth" against the source
+        run: python docs/theory/build_book.py --check
+
       - name: Install the PDF tools
         run: |
           pip install -r docs/requirements-manual.txt
@@ -52,9 +56,43 @@ jobs:
       - name: Print the manual to PDF
         run: python docs/build_manual.py --out build/manual
 
+      - name: Print "The DSP Behind NeonSynth" to PDF
+        run: python docs/theory/build_book.py --out build/theory
+
       - name: Upload the PDF
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02   # v4.6.2
         with:
           name: NeonSynth-User-Manual
           path: build/manual/*.pdf
+          retention-days: 30
+
+      - name: Upload the book
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02   # v4.6.2
+        with:
+          name: The-DSP-Behind-NeonSynth
+          path: build/theory/*.pdf
+          retention-days: 30
+
+  # The Mathematical Compendium is LaTeX; its build script fails if the .tex names another version.
+  compendium:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # v4.4.0
+
+      - name: Install LaTeX
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends \
+            texlive-latex-recommended texlive-latex-extra texlive-fonts-recommended
+
+      - name: Build the Mathematical Compendium
+        run: bash docs/theory/build_compendium.sh build/theory
+
+      - name: Upload the PDF
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02   # v4.6.2
+        with:
+          name: Mathematical-Compendium
+          path: build/theory/*.pdf
           retention-days: 30

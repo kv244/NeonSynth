@@ -11,7 +11,7 @@
 
 *A companion mini textbook for musicians and programmers*
 
-Third edition, revised • 18 November 2026 • Target instrument: NeonSynth v1.10.1
+Third edition, revised • 22 November 2026 • Target instrument: NeonSynth v1.10.1
 
 </div>
 
