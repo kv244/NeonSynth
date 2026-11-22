@@ -118,6 +118,8 @@ target_sources(NeonSynth
         src/state/SampleData.h
         src/state/SampleLoader.h
         src/state/SampleSlot.h
+        src/state/PresetManager.h
+        src/state/FactoryPresets.h
         # src/gui
         src/gui/NeonSynthEditor.h
         src/gui/CrtTheme.h
@@ -135,6 +137,7 @@ target_sources(NeonSynth
         src/gui/LfoView.h
         src/gui/SequencerView.h
         src/gui/HelpOverlay.h
+        src/gui/PresetBar.h
         # src/plugin
         src/plugin/NeonSynthProcessor.h
         src/plugin/NeonSynthProcessor.cpp
@@ -223,8 +226,9 @@ if(NEONSYNTH_BUILD_TESTS)
     #   StateFuzzTests        damaged and hostile sessions must not crash or break the processor (ctest)
     #   EditorTests           drives the editor offscreen with mouse events and paints it (ctest;
     #                         on Linux it needs an X display, e.g. xvfb-run)
+    #   PresetTests           presets: save and load, the factory bank renders cleanly, programs (ctest, v1.11.0)
     foreach(program RenderBenchmark RealtimeSafetyTests ParameterLayoutTests SessionStateTests StateFuzzTests EditorTests PitchTests MidiModulationTests
-            PlayingTests)   # v1.11.0, agent B
+            PlayingTests PresetTests)   # v1.11.0
         juce_add_console_app(${program} PRODUCT_NAME "${program}")
         juce_generate_juce_header(${program})
         target_sources(${program} PRIVATE tests/${program}.cpp src/plugin/NeonSynthProcessor.cpp)
@@ -247,7 +251,7 @@ if(NEONSYNTH_BUILD_TESTS)
     endforeach()
 
     foreach(program RealtimeSafetyTests ParameterLayoutTests SessionStateTests StateFuzzTests EditorTests PitchTests MidiModulationTests
-            PlayingTests)   # v1.11.0, agent B
+            PlayingTests PresetTests)   # v1.11.0
         add_dependencies(unit_tests ${program})
         add_test(NAME ${program} COMMAND ${program})
     endforeach()

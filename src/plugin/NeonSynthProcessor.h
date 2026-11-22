@@ -11,6 +11,7 @@
 #include "sequencer/StepSequencer.h"
 #include "state/SampleSlot.h"
 #include "state/SampleLoader.h"
+#include "state/PresetManager.h"
 
 class NeonSynthProcessor : public juce::AudioProcessor
 {
@@ -37,11 +38,17 @@ public:
     /** Release time plus the 5 ms hard-stop fade (the envelope's release is linear and exact). */
     double getTailLengthSeconds() const override { return (double) releaseParameter->get() + 0.005; }
 
-    int getNumPrograms() override { return 1; }
-    int getCurrentProgram() override { return 0; }
-    void setCurrentProgram (int) override {}
-    const juce::String getProgramName (int) override { return "Default"; }
-    void changeProgramName (int, const juce::String&) override {}
+    // v1.11.0, region C (presets): the 16 factory presets are the host's program list. The current
+    // program is the factory preset loaded last, remembered with the session (PresetManager.h); 0
+    // when there is none, as JUCE needs an index.
+    int getNumPrograms() override                         { return PresetManager::numFactoryPresets; }
+    int getCurrentProgram() override                      { return juce::jmax (0, presetManager.getCurrentProgramIndex()); }
+    void setCurrentProgram (int index) override           { presetManager.loadFactory (index); }
+    const juce::String getProgramName (int index) override { return PresetManager::getFactoryName (index); }
+    void changeProgramName (int, const juce::String&) override {}   // the factory names are fixed
+
+    /** Presets: the factory bank, the user folder, loading and saving (message thread). */
+    PresetManager& getPresetManager() noexcept            { return presetManager; }
 
     void getStateInformation (juce::MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
@@ -305,6 +312,7 @@ private:
     std::atomic<bool>  sequencerFollowsHost { false };
 
     juce::AudioProcessorValueTreeState apvts;
+    PresetManager presetManager { *this, apvts };   // v1.11.0, region C; after apvts, whose state it listens to
 
     juce::AudioParameterChoice* waveformParameter      = nullptr;
     juce::AudioParameterFloat*  cutoffParameter        = nullptr;
