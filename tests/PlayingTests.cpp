@@ -13,8 +13,9 @@
         the new key, and returns to the key still held; with more Voices it does nothing.
       - HOLD keeps keyboard notes after their keys go up and releases them all when it is
         switched off; the sequencer's notes pass through it; in Transpose mode it latches.
-      - SLIDE: a channel-16 note-on marked by CC 84 while the marked note is held glides
-        that voice instead of starting another; unmarked overlaps play exactly as before.
+      - SLIDE: the sequencer's slide MIDI (channel 16, one sample: CC 68 = 127, the new
+        note-on, the old note-off, CC 68 = 0) glides the voice holding the old note instead
+        of starting another, also to the same pitch; unmarked overlaps play exactly as before.
       - At their defaults (GLIDE 0, LEGATO off, HOLD off) nothing changes: the renders are
         identical to ones that never touch them, and LEGATO with 16 voices, or HOLD switched
         on and off with no key down, change nothing either. (That the defaults render
@@ -402,16 +403,19 @@ namespace
         }
     };
 
-    std::vector<std::pair<juce::int64, juce::MidiMessage>> slideMessages (bool marked)
+    std::vector<std::pair<juce::int64, juce::MidiMessage>> slideMessages (bool marked, int to = 55)
     {
-        // Step 1 (note 48) slides into step 2 (note 55): the mark and the note-on, then step 1's note-off.
+        // Step 1 (note 48) slides into step 2 (`to`), exactly as the sequencer sends it, all at one
+        // sample: CC 68 down, the new note-on, step 1's note-off, CC 68 up.
         const auto t = (juce::int64) (0.3 * rate);
         std::vector<std::pair<juce::int64, juce::MidiMessage>> m { { 0, juce::MidiMessage::noteOn (16, 48, (juce::uint8) 100) } };
         if (marked)
-            m.push_back ({ t, juce::MidiMessage::controllerEvent (16, PlayingSynthesiser::slideController, 48) });
-        m.push_back ({ t, juce::MidiMessage::noteOn (16, 55, (juce::uint8) 100) });
+            m.push_back ({ t, juce::MidiMessage::controllerEvent (16, 68, 127) });
+        m.push_back ({ t, juce::MidiMessage::noteOn (16, to, (juce::uint8) 100) });
         m.push_back ({ t, juce::MidiMessage::noteOff (16, 48) });
-        m.push_back ({ (juce::int64) (0.7 * rate), juce::MidiMessage::noteOff (16, 55) });
+        if (marked)
+            m.push_back ({ t, juce::MidiMessage::controllerEvent (16, 68, 0) });
+        m.push_back ({ (juce::int64) (0.7 * rate), juce::MidiMessage::noteOff (16, to) });
         return m;
     }
 
@@ -483,15 +487,28 @@ namespace
             check (identical (out, reference), "an unmarked channel-16 overlap plays as before v1.11.0 (bit for bit, GLIDE on: new voices start on their pitch)");
         }
 
-        // A mark whose note has already ended is dropped.
+        // A slide to the same pitch: one voice, no retrigger, and the old note-off doesn't end it.
+        {
+            SlideRig rig (0.08f);
+            std::vector<int> on;
+            const auto out = rig.run (slideMessages (true, 48), 0.9, &on);
+            std::snprintf (what, sizeof (what), "a slide to the same pitch goes on (%.3f -> %.3f, one voice) and ends at its own note-off (%.5f after)",
+                           peak (out, 0.25, 0.3), peak (out, 0.3, 0.65), peak (out, 0.8, 0.9));
+            check (*std::max_element (on.begin(), on.end()) == 1 && std::abs (peak (out, 0.3, 0.65) - peak (out, 0.25, 0.3)) < 0.02 * peak (out, 0.25, 0.3)
+                     && peak (out, 0.8, 0.9) < 1.0e-6, what);
+        }
+
+        // A slide whose old note has already ended starts the new one normally.
         {
             SlideRig rig (0.08f);
             std::vector<int> on;
             const auto t = (juce::int64) (0.3 * rate);
             const auto out = rig.run ({ { 0, juce::MidiMessage::noteOn (16, 48, (juce::uint8) 100) }, { t - 100, juce::MidiMessage::noteOff (16, 48) },
-                                        { t, juce::MidiMessage::controllerEvent (16, PlayingSynthesiser::slideController, 48) },
-                                        { t, juce::MidiMessage::noteOn (16, 55, (juce::uint8) 100) } }, 0.6, &on);
-            std::snprintf (what, sizeof (what), "a mark for a note already released starts the next note normally (it attacks to %.3f)", peak (out, 0.3, 0.35));
+                                        { t, juce::MidiMessage::controllerEvent (16, 68, 127) },
+                                        { t, juce::MidiMessage::noteOn (16, 55, (juce::uint8) 100) },
+                                        { t, juce::MidiMessage::noteOff (16, 48) },
+                                        { t, juce::MidiMessage::controllerEvent (16, 68, 0) } }, 0.6, &on);
+            std::snprintf (what, sizeof (what), "a slide after its old note was released starts the next note normally (it attacks to %.3f)", peak (out, 0.3, 0.35));
             check (on.back() == 1 && peak (out, 0.3, 0.35) > 2.0 * peak (out, 0.25, 0.29), what);
         }
     }

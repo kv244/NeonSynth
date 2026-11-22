@@ -20,16 +20,18 @@
     last key up releases the note as usual. With more than one voice LEGATO does nothing: a
     poly legato would have to guess which voice a key belongs to.
 
-    SLIDE (sequencer, on channel 16, whatever the keyboard's mode). The sequencer marks a
-    slide by sending MIDI CC 84 (Portamento Control: "the next note glides from this note")
-    on channel 16 with the sliding note's number, just before the next step's note-on, and
-    sends the sliding note's note-off just after it. If a voice still holds that note on
-    channel 16 when the note-on arrives, the voice takes the new note as a legato step,
-    exactly as LEGATO does. The mark is needed because channel 16 notes can overlap without
-    a slide (a gate of 100% puts the old note-off on the new note-on's sample, after it, and
-    swing with a long gate overlaps by up to half a step): those must keep retriggering as
-    they did before v1.11.0. A mark that finds no held note (it was released, or stolen) is
-    dropped and the note starts normally.
+    SLIDE (sequencer, on channel 16, whatever the keyboard's mode). At the step a slide goes
+    into, the sequencer sends, on channel 16 and at the same sample, in this order: CC 68
+    (Legato Footswitch) = 127, the new note-on, the sliding note's note-off, CC 68 = 0. A
+    channel-16 note-on that arrives while CC 68 is down, and finds a voice still holding a
+    channel-16 note, is taken by that voice as a legato step, exactly as LEGATO does (GLIDE
+    time; at GLIDE 0 a jump in pitch with no envelope restart). The old note-off that follows
+    finds no voice on its note any more and does nothing; for a slide to the same pitch it is
+    swallowed instead, so the note goes on. The mark is needed because channel 16 notes can
+    overlap without a slide (a gate of 100% puts the old note-off on the new note-on's sample,
+    after it, and swing with a long gate overlaps by up to half a step): those must keep
+    retriggering as they did before v1.11.0, and with no CC 68 they do. A slide that finds no
+    held note (it was released, or stolen) starts normally.
 
     Both work through juce::Synthesiser::startVoice() on the sounding voice, after
     NeonSynthVoice::prepareLegatoStep(), so the voice's note number, channel and age are the
@@ -43,8 +45,8 @@
 class PlayingSynthesiser : public juce::Synthesiser
 {
 public:
-    /** MIDI CC 84, Portamento Control: the sequencer's slide mark (see above). */
-    static constexpr int slideController = 84;
+    /** MIDI CC 68, Legato Footswitch: down (>= 64) around a slide's note-on (see above). */
+    static constexpr int slideController = 68;
 
     /** Audio thread, once per block: LEGATO is on and the voice limit is 1. */
     void setMonoLegato (bool shouldBeOn) noexcept   { monoLegato = shouldBeOn; }
@@ -55,12 +57,13 @@ public:
 
         if (midiChannel == StepSequencer::midiChannel)
         {
-            const int from = slideFrom;
-            slideFrom = -1;   // a mark applies to the next sequencer note-on only
-            if (from >= 0)
+            if (slideDown)
             {
-                if (auto* voice = findHeldVoice (midiChannel, from))
+                if (auto* voice = findHeldVoice (midiChannel, -1))
                 {
+                    // A slide to the pitch already held: the old note-off that follows must not end it.
+                    if (voice->getCurrentlyPlayingNote() == midiNoteNumber)
+                        swallowNoteOff = midiNoteNumber;
                     legatoStep (*voice, midiChannel, midiNoteNumber, velocity);
                     return;
                 }
@@ -88,6 +91,12 @@ public:
     {
         const juce::ScopedLock sl (lock);
 
+        if (midiChannel == StepSequencer::midiChannel && midiNoteNumber == swallowNoteOff)
+        {
+            swallowNoteOff = -1;   // the same-pitch slide's old note-off (see noteOn())
+            return;
+        }
+
         if (midiChannel != StepSequencer::midiChannel)
         {
             removeKey (midiNoteNumber);
@@ -113,7 +122,10 @@ public:
         if (midiChannel <= 0 || midiChannel != StepSequencer::midiChannel)
             numKeysDown = 0;
         if (midiChannel <= 0 || midiChannel == StepSequencer::midiChannel)
-            slideFrom = -1;
+        {
+            slideDown = false;
+            swallowNoteOff = -1;
+        }
         juce::Synthesiser::allNotesOff (midiChannel, allowTailOff);
     }
 
@@ -122,7 +134,9 @@ public:
         if (midiChannel == StepSequencer::midiChannel && controllerNumber == slideController)
         {
             const juce::ScopedLock sl (lock);
-            slideFrom = juce::jlimit (0, 127, controllerValue);
+            slideDown = controllerValue >= 64;
+            if (! slideDown)
+                swallowNoteOff = -1;   // a slide's MIDI ends with CC 68 = 0: nothing is left to swallow
         }
         juce::Synthesiser::handleController (midiChannel, controllerNumber, controllerValue);
     }
@@ -184,5 +198,6 @@ private:
     bool monoLegato = false;
     std::array<int, 16> keysDown {};   // keyboard keys down, most recent last
     int numKeysDown = 0;
-    int slideFrom = -1;                // the note a CC 84 mark slides from, until the next sequencer note-on
+    bool slideDown = false;            // CC 68 is down on channel 16: a note-on now is a slide
+    int swallowNoteOff = -1;           // a same-pitch slide's old note-off, to be ignored
 };
