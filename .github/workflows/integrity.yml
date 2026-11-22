@@ -5,7 +5,9 @@ name: Integrity
 # errors); cppcheck's unused-function and style checks; clang-tidy on the files a pull request
 # changes; and tests/integrity.py, for the consistency no compiler can see (versions, the manual
 # and help page against the parameters, links after the folder move, constants defined once).
-# docs/DEVELOPMENT.md ("Integrity check") says how to run each part locally.
+# Locally: python tests/integrity.py; python tests/integrity.py --cppcheck; a Clang build with
+# -DNEONSYNTH_INTEGRITY=ON -DNEONSYNTH_WARNINGS_AS_ERRORS=ON; clang-tidy -p build
+# --config-file=tests/clang-tidy.yaml <file>.
 
 on:
   push:
@@ -119,7 +121,9 @@ jobs:
           status=0
           while read -r file; do
             echo "::group::$file"
-            clang-tidy -p build --quiet --config-file=tests/clang-tidy.yaml "$file" \
+            extra=""
+            case "$file" in tests/*) extra="--checks=-cppcoreguidelines-avoid-magic-numbers" ;; esac
+            clang-tidy -p build --quiet --config-file=tests/clang-tidy.yaml $extra "$file" \
               --extra-arg=-Wno-unknown-warning-option --extra-arg=-Wno-pragma-once-outside-header || status=1
             echo "::endgroup::"
           done < changed.txt

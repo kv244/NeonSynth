@@ -224,6 +224,7 @@ namespace
     {
         ProcessorRun run (limit, releaseSeconds);
         std::vector<int> taken;
+        taken.reserve (events.size());
         for (const auto& e : events)
             taken.push_back (run.play (e));
         return taken;
@@ -256,6 +257,7 @@ namespace
         {
             const auto name = limitName (limit);
             std::vector<Event> fill;
+            fill.reserve ((size_t) limit);
             for (int i = 0; i < limit; ++i)
                 fill.push_back (on (40 + i));   // voice i plays note 40 + i, voice 0 the oldest
 

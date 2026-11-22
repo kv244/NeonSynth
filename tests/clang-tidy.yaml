@@ -2,12 +2,15 @@
 # changes. A short, fixed list (v1.11.0): likely bugs, performance, unused code, duplicate
 # includes; magic numbers are reported but do not fail the job (a synth is full of meaningful
 # numbers, and the review decides which deserve a name). Easily swappable parameters is left out:
-# DSP code passes runs of floats by design, and it would flag nearly every function.
+# DSP code passes runs of floats by design, and it would flag nearly every function. Enum size
+# is left out too (a byte saved per enum is not worth a cast at every use). The job leaves magic
+# numbers out for tests/, where every expected value is one.
 Checks: >
   -*,
   bugprone-*,
   -bugprone-easily-swappable-parameters,
   performance-*,
+  -performance-enum-size,
   misc-unused-*,
   readability-duplicate-include,
   cppcoreguidelines-avoid-magic-numbers

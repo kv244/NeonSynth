@@ -512,11 +512,9 @@ namespace
         {
             Scenario s;
             s.hostBpm = 120.0;
-            s.numerator = sig.numerator;
-            s.denominator = sig.denominator;
             s.seconds = 0.9;
             s.notes = { { 0.0101, 57, true } };
-            s.setup = [] (NeonSynthProcessor& p)
+            const auto setup = [] (NeonSynthProcessor& p)
             {
                 setParameter (p, "waveform", 3.0f);
                 setParameter (p, "lfoSync", 1.0f);
@@ -540,7 +538,7 @@ namespace
                     playHead.numerator = sig.numerator;
                     playHead.denominator = sig.denominator;
                     p.setPlayHead (&playHead);
-                    s.setup (p);
+                    setup (p);
                     p.setRateAndBufferSizeDetails (fs, maxBlockSize);
                     p.prepareToPlay (fs, maxBlockSize);
                     p.reset();

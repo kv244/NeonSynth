@@ -280,7 +280,7 @@ namespace
         for (int c = 0; c < 10; ++c)
         {
             const int start = c * period;
-            const float level = out[(size_t) (start + slew)];
+            const float level = out[(size_t) start + (size_t) slew];
             levels.push_back (level);
             for (int i = start + slew; i < start + period; ++i)
                 holds = holds && out[(size_t) i] == level;
