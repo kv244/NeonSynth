@@ -232,7 +232,7 @@ public:
             error = "The preset file could not be read";
             return false;
         }
-        if (! loadText (data.getData(), data.getSize(), file.getFileNameWithoutExtension(), -1, file))
+        if (! endsLikeAPreset (data) || ! loadText (data.getData(), data.getSize(), file.getFileNameWithoutExtension(), -1, file))
         {
             error = "Not a NeonSynth preset, or a damaged one";
             return false;
@@ -377,6 +377,23 @@ private:
         writeMetaToState();
         triggerAsyncUpdate();
         return true;
+    }
+
+    /**
+        A file cut short (a full disk, a copy that stopped) would often still parse: JUCE's XML
+        parser accepts an element that never closes, and the state would then load with its
+        parameters missing, which keep whatever values they had. A complete preset ends with the
+        root's closing tag (or "/>"), so anything else is refused before it is parsed at all.
+    */
+    bool endsLikeAPreset (const juce::MemoryBlock& data) const
+    {
+        const auto* text = static_cast<const char*> (data.getData());
+        auto end = data.getSize();
+        while (end > 0 && (text[end - 1] == 0 || juce::CharacterFunctions::isWhitespace (text[end - 1])))
+            --end;
+        const auto closing = "</" + apvts.state.getType().toString() + ">";
+        const auto tail = juce::String::fromUTF8 (text + end - juce::jmin (end, (size_t) 64), (int) juce::jmin (end, (size_t) 64));
+        return tail.endsWith (closing) || tail.endsWith ("/>");
     }
 
     static bool isViewProperty (const juce::Identifier& id)

@@ -53,18 +53,18 @@ namespace FactoryPresets
                 { "attack", 0.001f }, { "decay", 2.0f }, { "sustain", 0.0f }, { "release", 1.5f },
                 { "cutoff", 3000.0f }, { "filterEnvAmt", 1.6f }, { "filterAttack", 0.001f },
                 { "filterDecay", 1.8f }, { "filterSustain", 0.0f }, { "filterRelease", 1.5f },
-                { "gain", -2.0f } } },
+                { "gain", -9.0f } } },
 
             { "Comb Chime", "Keys", "A combed, lightly folded triangle: a metallic chime with a soft ring",
               { { "waveform", 2.0f }, { "chopOvertone", 100.0f }, { "chopComb", 3.0f },
                 { "foldMix", 40.0f }, { "foldDrive", 2.0f },
                 { "attack", 0.002f }, { "decay", 1.4f }, { "sustain", 0.0f }, { "release", 0.8f },
-                { "cutoff", 7000.0f } } },
+                { "cutoff", 7000.0f }, { "gain", -5.0f } } },
 
             { "Marimba Chop", "Keys", "A chopped square with a short decay: wooden, hollow mallet notes",
               { { "waveform", 1.0f }, { "chopOvertone", 100.0f }, { "chopComb", 4.0f },
                 { "attack", 0.001f }, { "decay", 0.45f }, { "sustain", 0.0f }, { "release", 0.3f },
-                { "cutoff", 3500.0f } } },
+                { "cutoff", 3500.0f }, { "gain", -7.0f } } },
 
             // ── Bass ──────────────────────────────────────────────────────────
             { "Warm Sub", "Bass", "A sine with a touch of fold, centred: a round sub bass for C1 to C3",
@@ -90,7 +90,7 @@ namespace FactoryPresets
               { { "source", 1.0f }, { "smpRoot", 60.0f }, { "smpLoop", 1.0f }, { "smpStart", 0.0f },
                 { "smpLoopStart", 0.25f }, { "smpLoopEnd", 0.75f }, { "smpXfade", 20.0f },
                 { "attack", 0.8f }, { "decay", 0.6f }, { "sustain", 0.75f }, { "release", 2.0f },
-                { "cutoff", 3000.0f }, { "width", 0.7f } } },
+                { "cutoff", 3000.0f }, { "width", 0.7f }, { "gain", -4.0f } } },
 
             { "Shimmer Cloud", "Pad", "Dense, short grains of the pad, slowly scanned; play octaves or fifths",
               { { "source", 2.0f }, { "grPos", 0.4f }, { "grScan", 0.1f }, { "grSize", 40.0f },
@@ -141,7 +141,8 @@ namespace FactoryPresets
                 { "attack", 2.5f }, { "sustain", 1.0f }, { "release", 3.0f },
                 { "filterEnvAmt", 2.0f }, { "filterAttack", 3.0f }, { "filterDecay", 4.0f },
                 { "filterSustain", 0.3f }, { "filterRelease", 3.0f }, { "filterVel", 1.0f },
-                { "lfoShape", 4.0f }, { "lfoRate", 0.2f }, { "lfoCutoff", 1.0f }, { "width", 0.8f } } },
+                { "lfoShape", 4.0f }, { "lfoRate", 0.2f }, { "lfoCutoff", 1.0f }, { "width", 0.8f },
+                { "gain", -3.0f } } },
 
             { "Gale", "FX", "Wind Sweep louder and wilder: a howling, gritty storm; add a fifth above",
               { { "noiseLevel", 100.0f }, { "filterMode", 2.0f }, { "cutoff", 900.0f }, { "filterRes", 80.0f },
@@ -150,7 +151,7 @@ namespace FactoryPresets
                 { "filterEnvAmt", 3.0f }, { "filterAttack", 3.0f }, { "filterDecay", 2.0f },
                 { "filterSustain", 0.3f }, { "filterRelease", 3.0f }, { "filterVel", 1.0f },
                 { "lfoShape", 1.0f }, { "lfoRate", 0.35f }, { "lfoCutoff", 1.5f }, { "lfoAmp", 30.0f },
-                { "width", 0.8f } } },
+                { "width", 0.8f }, { "gain", -9.0f } } },
 
             { "Drifting Cloud", "FX", "Grains scanning forward through the pad: a moving atmosphere",
               { { "source", 2.0f }, { "grPos", 0.2f }, { "grScan", 0.2f }, { "grSize", 100.0f },

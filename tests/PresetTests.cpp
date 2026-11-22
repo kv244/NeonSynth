@@ -83,7 +83,10 @@ namespace
         auto xml = juce::AudioProcessor::getXmlFromBinary (block.getData(), (int) block.getSize());
         if (xml == nullptr)
             return {};
-        for (const auto& id : { PresetManager::categoryId, PresetManager::presetId, PresetManager::programId })
+        // The preset's own attributes, and the window's view settings (compared on their own),
+        // whose order among the root's attributes depends on when they were set.
+        for (const auto& id : { PresetManager::categoryId, PresetManager::presetId, PresetManager::programId,
+                                juce::Identifier ("view"), juce::Identifier ("envelopeTab"), juce::Identifier ("scanlines") })
             xml->removeAttribute (id);
         return xml->toString();
     }
@@ -217,14 +220,17 @@ namespace
         RenderResult result;
         juce::AudioBuffer<float> buffer (2, blockSize);
         juce::MidiBuffer midi;
-        const int holdBlocks = (int) (holdSeconds * testRate / blockSize);
+        // The notes start after 50 ms, once the output gain has settled at the preset's level
+        // (it glides over 20 ms from the previous sound's).
+        const int firstBlock = (int) (0.05 * testRate / blockSize) + 1;
+        const int holdBlocks = firstBlock + (int) (holdSeconds * testRate / blockSize);
         const int totalBlocks = holdBlocks + (int) (tailSeconds * testRate / blockSize);
         const int tailBlocks = (int) (0.1 * testRate / blockSize) + 1;
 
         for (int b = 0; b < totalBlocks; ++b)
         {
             midi.clear();
-            if (b == 0)
+            if (b == firstBlock)
                 for (int i = 0; i < (int) notes.size(); ++i)
                     midi.addEvent (juce::MidiMessage::noteOn (1, notes[(size_t) i], (juce::uint8) 110), i * 40);
             if (b == holdBlocks)
@@ -386,7 +392,6 @@ namespace
         wav.deleteFile();   // the embedded copy must be what comes back
         check (presets.loadFile (file, error), "the preset file loads");
         p.getAPVTS().state.setProperty ("view", 0, nullptr);   // (the view is compared separately below)
-        if (sessionText (p) != before) { before.substring(0, 3000).toStdString(); juce::File ("/tmp/claude-0/-home-claude/b4908674-0ab9-5223-8f78-dfae9416cf95/scratchpad/a.xml").replaceWithText (before.substring (0, 20000)); juce::File ("/tmp/claude-0/-home-claude/b4908674-0ab9-5223-8f78-dfae9416cf95/scratchpad/b.xml").replaceWithText (sessionText (p).substring (0, 20000)); }
         check (sessionText (p) == before, "save then load gives back the same session: parameters, pattern, CHOP, sample");
         check (presets.getCurrentName() == file.getFileNameWithoutExtension() && presets.getCurrentCategory() == "Bass",
                "with the file's name and category");
@@ -444,17 +449,14 @@ namespace
         const auto good = sessionText (p);
         bool refused = true;
         const auto junk = dir.getChildFile ("junk.neonpreset");
-        for (const char* text : { "", "not xml", "<Other/>", "<Parameters stateVersion=\"4\"" })
+        for (const char* text : { "", "not xml", "<Other/>", "<Parameters stateVersion=\"4\"", "<Parameters stateVersion=\"4\"><PARAM id=\"cutoff\" value=\"30\"/>" })
         {
             junk.replaceWithText (text);
-            const bool r = ! presets.loadFile (junk, error) && error.isNotEmpty();
-            if (! r) std::printf ("DEBUG not refused: %s\n", text);
-            refused = refused && r;
+            refused = refused && ! presets.loadFile (junk, error) && error.isNotEmpty();
         }
         refused = refused && ! presets.loadFile (dir.getChildFile ("missing.neonpreset"), error);
-        std::printf ("DEBUG %d %d %d\n", (int) refused, (int) (sessionText (p) == good), presets.getCurrentProgramIndex());
         check (refused && sessionText (p) == good && presets.getCurrentProgramIndex() == 7,
-               "a missing, empty, non-XML or foreign file is refused, and the current sound stays");
+               "a missing, empty, non-XML, cut-short or foreign file is refused, and the current sound stays");
     }
 
     //==========================================================================
