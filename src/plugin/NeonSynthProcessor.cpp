@@ -371,6 +371,7 @@ void NeonSynthProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
                               grDensityParameter->get(), grSprayParameter->get(), grJitterParameter->get() };
     params.chop = { chopPattern.load (std::memory_order_relaxed), chopCombParameter->get(), chopOvertoneParameter->get() * 0.01f };
     params.sculpt = { noiseLevelParameter->get() * 0.01f, foldDriveParameter->get(), foldMixParameter->get() * 0.01f };
+    params.glideSeconds = glideParameter->get() * 0.001f;   // v1.11.0 (region B): GLIDE, ms to seconds
 
     // Modulation (v1.9.0): the LFO, pitch bend and the mod wheel, worked out once for all voices.
     // Bend and wheel are read from the incoming MIDI, with their sample positions, so they reach
@@ -385,6 +386,7 @@ void NeonSynthProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     modSettings.vibratoCents       = vibratoParameter->get();
     modulation.setSettings (modSettings);
     synth.setVoiceLimit (voiceCountParameter->get());   // new notes use only the first N voices
+    synth.setMonoLegato (legatoParameter->get() && voiceCountParameter->get() == 1);   // v1.11.0 (region B): LEGATO is MONO only
     modulation.handleMidi (midiMessages, numSamples);
     const auto modulationBlock = modulation.render (numSamples, lfoTransport());
 
@@ -586,6 +588,21 @@ void NeonSynthProcessor::trackHeldKey (int note, bool isDown) noexcept
         heldKeys[(size_t) numHeldKeys++] = note;
 }
 
+void NeonSynthProcessor::releaseHeldNotes (SequencerMode mode) noexcept
+{
+    // v1.11.0 (region B): HOLD switched off. Each kept-back note-off goes to the synth (which
+    // ignores one for a note no longer sounding) and, in Transpose mode, lets go of the key.
+    for (int note = 0; note < (int) notesHeldByHold.size(); ++note)
+    {
+        if (! notesHeldByHold[(size_t) note])
+            continue;
+        notesHeldByHold[(size_t) note] = false;
+        playMidi.addEvent (juce::MidiMessage::noteOff (keyboardChannel, note), 0);
+        if (mode == SequencerMode::transpose)
+            trackHeldKey (note, false);
+    }
+}
+
 Lfo::Transport NeonSynthProcessor::lfoTransport() const
 {
     // A playing host sets the LFO's phase from its song position (when SYNC is on); otherwise the
@@ -637,6 +654,15 @@ void NeonSynthProcessor::buildPlayMidi (const juce::MidiBuffer& input, int numSa
     if (mode != SequencerMode::transpose)
         numHeldKeys = 0;   // forget keys held under another mode
 
+    // v1.11.0 (region B), HOLD: like a sustain pedal for the keyboard. While it is on, keyboard
+    // note-offs are kept back (below); switching it off sends them all, at the block's first
+    // sample. The sequencer's notes are made after this and never pass through it. Off (the
+    // default), nothing here runs and the keyboard path is exactly v1.10.1's.
+    const bool holding = holdParameter->get();
+    if (wasHolding && ! holding)
+        releaseHeldNotes (mode);
+    wasHolding = holding;
+
     // 1. Keyboard input. Layer passes everything through; Replace and Transpose
     //    keep controllers, pitch bend and so on, but take note-ons out of the
     //    synth's path (Transpose uses them to steer the pattern instead).
@@ -669,6 +695,14 @@ void NeonSynthProcessor::buildPlayMidi (const juce::MidiBuffer& input, int numSa
         const int  status  = numBytes >= 3 ? (bytes[0] & 0xf0) : 0;
         const bool noteOn  = status == 0x90 && bytes[2] > 0;
         const bool noteOff = status == 0x80 || (status == 0x90 && bytes[2] == 0);
+
+        // v1.11.0 (region B), HOLD: the key stays down for the synth, and for Transpose mode too
+        // (the pattern goes on playing, latched), until HOLD is switched off.
+        if (noteOff && holding)
+        {
+            notesHeldByHold[(size_t) (bytes[1] & 0x7f)] = true;
+            continue;
+        }
 
         if ((noteOn || noteOff) && mode == SequencerMode::transpose)
             trackHeldKey (bytes[1], noteOn);

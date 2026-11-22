@@ -6,6 +6,7 @@
 #include <JuceHeader.h>
 #include <array>
 #include "plugin/NeonSynthVoice.h"
+#include "plugin/PlayingSynthesiser.h"
 #include "plugin/MidiLogger.h"
 #include "sequencer/StepSequencer.h"
 #include "state/SampleSlot.h"
@@ -220,8 +221,9 @@ private:
         16 is the full pool. At 16 it defers to juce::Synthesiser's own voice choice, so sessions
         saved before v1.9.0 allocate and steal voices exactly as before. Lowering N lets the voices
         above it finish their notes; new notes only go to the first N.
+        v1.11.0 (region B): built on PlayingSynthesiser, which adds LEGATO and the sequencer's SLIDE.
     */
-    class LimitedSynthesiser : public juce::Synthesiser
+    class LimitedSynthesiser : public PlayingSynthesiser
     {
     public:
         void setVoiceLimit (int newLimit) noexcept   { voiceLimit = newLimit; }
@@ -278,6 +280,11 @@ private:
 
     /** Keeps the list of held keys up to date (Transpose mode). */
     void trackHeldKey (int note, bool isDown) noexcept;
+
+    // v1.11.0 (region B), HOLD: keyboard note-offs kept back while it is on, sent when it goes off.
+    std::array<bool, 128> notesHeldByHold {};   // keyboard notes whose note-off HOLD is keeping back
+    bool wasHolding = false;
+    void releaseHeldNotes (SequencerMode mode) noexcept;
 
     /** Fills the pattern with the default bassline (used until a session supplies one). */
     void loadDefaultPattern() noexcept;
