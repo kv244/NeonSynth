@@ -223,7 +223,8 @@ if(NEONSYNTH_BUILD_TESTS)
     #   StateFuzzTests        damaged and hostile sessions must not crash or break the processor (ctest)
     #   EditorTests           drives the editor offscreen with mouse events and paints it (ctest;
     #                         on Linux it needs an X display, e.g. xvfb-run)
-    foreach(program RenderBenchmark RealtimeSafetyTests ParameterLayoutTests SessionStateTests StateFuzzTests EditorTests PitchTests MidiModulationTests)
+    foreach(program RenderBenchmark RealtimeSafetyTests ParameterLayoutTests SessionStateTests StateFuzzTests EditorTests PitchTests MidiModulationTests
+            PlayingTests)   # v1.11.0, agent B
         juce_add_console_app(${program} PRODUCT_NAME "${program}")
         juce_generate_juce_header(${program})
         target_sources(${program} PRIVATE tests/${program}.cpp src/plugin/NeonSynthProcessor.cpp)
@@ -245,7 +246,8 @@ if(NEONSYNTH_BUILD_TESTS)
             neonsynth_sanitize)
     endforeach()
 
-    foreach(program RealtimeSafetyTests ParameterLayoutTests SessionStateTests StateFuzzTests EditorTests PitchTests MidiModulationTests)
+    foreach(program RealtimeSafetyTests ParameterLayoutTests SessionStateTests StateFuzzTests EditorTests PitchTests MidiModulationTests
+            PlayingTests)   # v1.11.0, agent B
         add_dependencies(unit_tests ${program})
         add_test(NAME ${program} COMMAND ${program})
     endforeach()
