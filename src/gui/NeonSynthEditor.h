@@ -5,7 +5,13 @@
 #pragma once
 #include <JuceHeader.h>
 #include "plugin/NeonSynthProcessor.h"
-#include "gui/Visualisers.h"
+#include "gui/NeonStyle.h"
+#include "gui/SignalHistory.h"
+#include "gui/ScopeView.h"
+#include "gui/SpectrumView.h"
+#include "gui/LevelMeter.h"
+#include "gui/AdsrView.h"
+#include "gui/VoiceLights.h"
 #include "gui/CrtLookAndFeel.h"
 #include "gui/CrtFrame.h"
 #include "gui/SequencerView.h"

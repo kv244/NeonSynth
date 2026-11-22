@@ -41,7 +41,9 @@
     On Linux it needs an X display (in CI: xvfb-run).
 */
 #include "plugin/NeonSynthProcessor.h"
-#include "gui/Visualisers.h"
+#include "gui/ScopeView.h"
+#include "gui/LevelMeter.h"
+#include "gui/AdsrView.h"
 #include "gui/NeonSynthEditor.h"
 #include <array>
 #include <cmath>

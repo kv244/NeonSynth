@@ -6,7 +6,7 @@
 #include <JuceHeader.h>
 #include "plugin/NeonSynthProcessor.h"
 #include "dsp/Sculpt.h"
-#include "gui/Visualisers.h"
+#include "gui/NeonStyle.h"
 
 /**
     One cycle of the Oscillator or Random wave as it leaves the Fold stage

@@ -5,7 +5,7 @@
 #pragma once
 #include <JuceHeader.h>
 #include "gui/CrtTheme.h"
-#include "gui/Visualisers.h"
+#include "gui/NeonStyle.h"
 
 /*
     The CRT frame (v1.10.0): everything the editor paints under its controls. The warm

@@ -5,7 +5,7 @@
 #pragma once
 #include <JuceHeader.h>
 #include "dsp/Lfo.h"
-#include "gui/Visualisers.h"
+#include "gui/NeonStyle.h"
 
 /**
     The MODULATION panel's LFO picture (v1.9.0): one cycle of the chosen shape,

@@ -123,7 +123,13 @@ target_sources(NeonSynth
         src/gui/CrtTheme.h
         src/gui/CrtFrame.h
         src/gui/CrtLookAndFeel.h
-        src/gui/Visualisers.h
+        src/gui/NeonStyle.h
+        src/gui/SignalHistory.h
+        src/gui/ScopeView.h
+        src/gui/SpectrumView.h
+        src/gui/LevelMeter.h
+        src/gui/AdsrView.h
+        src/gui/VoiceLights.h
         src/gui/SampleView.h
         src/gui/ShapeView.h
         src/gui/LfoView.h

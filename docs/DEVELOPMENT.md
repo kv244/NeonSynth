@@ -398,7 +398,13 @@ The plugin's sources are grouped by job under `src/` (v1.11.0); includes name th
 | `src/gui/LfoView.h` | The LFO's drawing in the MODULATION panel |
 | `src/gui/SequencerView.h` | The 16-step grid in the editor (editing and playhead) |
 | `src/gui/HelpOverlay.h` | Quick-help page opened by the editor's ? button |
-| `src/gui/Visualisers.h` | Oscilloscope and spectrum (with afterglow), ADSR graph, voice lights, the block L/R meter and the controller bars (message thread only) |
+| `src/gui/NeonStyle.h` | The neon palette and the drawing helpers the views share: panel inset, graticule, phosphor glow, afterglow, readout formats |
+| `src/gui/SignalHistory.h` | The newest output samples from the scope FIFO, and the display window's scaling with the sample rate |
+| `src/gui/ScopeView.h` | The triggered oscilloscope, with afterglow |
+| `src/gui/SpectrumView.h` | The spectrum analyser and the filter's response curve, with afterglow |
+| `src/gui/LevelMeter.h` | The block L/R meter with peak hold and the clip light |
+| `src/gui/AdsrView.h` | The envelope graph with its draggable points and the voices' positions |
+| `src/gui/VoiceLights.h` | The 16 voice lights; clicking one sets the voice limit |
 | `src/plugin/NeonSynthProcessor.h`, `.cpp` | `AudioProcessor` — parameter management, MIDI, state |
 | `src/plugin/NeonSynthVoice.h` | Voice and sound classes — sound source, filter, envelope, pan |
 | `src/plugin/MidiLogger.h` | Real-time-safe MIDI logging (lock-free FIFO + background writer thread) |

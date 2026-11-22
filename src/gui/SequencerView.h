@@ -5,7 +5,7 @@
 #pragma once
 #include <JuceHeader.h>
 #include "plugin/NeonSynthProcessor.h"
-#include "gui/Visualisers.h"
+#include "gui/NeonStyle.h"
 
 /**
     @file SequencerView.h

@@ -4,7 +4,7 @@
 
 #pragma once
 #include <JuceHeader.h>
-#include "gui/Visualisers.h"
+#include "gui/NeonStyle.h"
 
 /**
     Quick-reference help for Neon Synth, shown over the whole editor when the

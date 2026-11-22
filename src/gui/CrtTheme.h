@@ -11,7 +11,7 @@
 
     Palette: phosphor white-green text on a near-black green tube, inside a warm grey
     bezel. The four panel hues (cyan, magenta, amber, green) stay as they were; they live
-    in Visualisers.h (namespace neon) with the rest of the v1.9 palette.
+    in NeonStyle.h (namespace neon) with the rest of the v1.9 palette.
 
     Fonts: VT323, a bitmap terminal face, for titles and values at 16 px and up; IBM Plex
     Mono (Regular and SemiBold) for everything smaller, where VT323 stops being legible.
