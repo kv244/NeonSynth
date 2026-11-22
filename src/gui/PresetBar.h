@@ -18,7 +18,9 @@
 
     One self-contained component, so a later page layout can move it whole. It talks only to the
     PresetManager, and follows it (a session restored by the host included) through its change
-    messages. Child component IDs, for the tests: presetPrev, presetName, presetNext, presetSave.
+    messages. Its children carry no component IDs on purpose: the bar is one control ("presetBar"),
+    and EditorTests checks that no two named controls overlap, parents and children included.
+    Children, in order: <, >, SAVE, the name.
 */
 class PresetBar : public juce::Component,
                   private juce::ChangeListener
@@ -43,11 +45,6 @@ public:
 
         nameButton.onClick = [this] { showMenu(); };
         addAndMakeVisible (nameButton);
-
-        prevButton.setComponentID ("presetPrev");
-        nameButton.setComponentID ("presetName");
-        nextButton.setComponentID ("presetNext");
-        saveButton.setComponentID ("presetSave");
 
         presets.addChangeListener (this);
         refresh();

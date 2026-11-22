@@ -534,12 +534,14 @@ namespace
 
         PresetBar bar (presets);
         bar.setBounds (0, 0, 308, 32);
-        const auto* prev = bar.findChildWithID ("presetPrev");
-        const auto* name = bar.findChildWithID ("presetName");
-        const auto* next = bar.findChildWithID ("presetNext");
-        const auto* saveButton = bar.findChildWithID ("presetSave");
-        check (prev != nullptr && name != nullptr && next != nullptr && saveButton != nullptr,
-               "the bar has previous, name, next and SAVE (by component ID)");
+        // The children, in the order the bar adds them: <, >, SAVE, the name.
+        auto* prev = dynamic_cast<juce::Button*> (bar.getChildComponent (0));
+        auto* next = dynamic_cast<juce::Button*> (bar.getChildComponent (1));
+        auto* saveButton = dynamic_cast<juce::Button*> (bar.getChildComponent (2));
+        auto* name = dynamic_cast<juce::Button*> (bar.getChildComponent (3));
+        check (bar.getNumChildComponents() == 4 && prev != nullptr && name != nullptr && next != nullptr && saveButton != nullptr
+                   && prev->getButtonText() == "<" && next->getButtonText() == ">" && saveButton->getButtonText() == "SAVE",
+               "the bar has previous, next, SAVE and the name");
         bool inside = true, apart = true;
         for (const auto* c : { prev, name, next, saveButton })
             inside = inside && c != nullptr && bar.getLocalBounds().contains (c->getBounds()) && c->getWidth() >= 30;
@@ -549,13 +551,13 @@ namespace
         check (inside && apart, "they fit in the bar's 308 x 32 without overlapping");
         check (bar.getShownName() == "Glass Bell" && bar.getShownCategory() == "Keys", "the bar shows the preset and its category");
 
-        if (auto* button = dynamic_cast<juce::Button*> (bar.findChildWithID ("presetNext")))
-            button->onClick();
+        if (next != nullptr)
+            next->onClick();
         check (presets.getCurrentProgramIndex() == 1 && bar.getShownName() == "Comb Chime", "> loads the next preset and shows it");
-        if (auto* button = dynamic_cast<juce::Button*> (bar.findChildWithID ("presetPrev")))
+        if (prev != nullptr)
         {
-            button->onClick();
-            button->onClick();
+            prev->onClick();
+            prev->onClick();
         }
         check (presets.getCurrentName() == "Mine" && bar.getShownCategory() == "Lead", "< from the first factory preset wraps to the user's");
 
