@@ -332,7 +332,7 @@ void NeonSynthProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 
     sequencer.prepare (sampleRate);
     playMidi.ensureSize (8192);   // bytes; far more than a block of keyboard + sequencer events needs
-    internalBeat   = 0.0;
+    restartInternalClock();
     numHeldKeys    = 0;
 
     sampleSlot.setAudioRunning (true);
@@ -736,7 +736,7 @@ void NeonSynthProcessor::buildPlayMidi (const juce::MidiBuffer& input, int numSa
     //    (the Standalone, or Sync off). The internal clock restarts at beat 0
     //    each time the sequencer is switched on.
     if (sequencerOn && ! wasSequencerOn)
-        internalBeat = 0.0;
+        restartInternalClock();
     wasSequencerOn = sequencerOn;
 
     StepSequencer::Transport transport;
@@ -762,9 +762,18 @@ void NeonSynthProcessor::buildPlayMidi (const juce::MidiBuffer& input, int numSa
 
     if (! followsHost)
     {
+        // The beat is worked out from the samples counted since the last tempo change, not
+        // summed block by block: a running sum gathers rounding error with every block, which
+        // at one-sample blocks and 192 kHz put a step one sample late (SweepTests). v1.11.0.
         const double tempo = seqTempoParameter->get();
-        transport = { true, internalBeat, tempo };
-        internalBeat += (double) numSamples * tempo / (60.0 * getSampleRate());
+        if (! juce::exactlyEqual (tempo, internalTempo))
+        {
+            internalBeatOrigin = internalBeatAt (internalSamples);
+            internalSamples    = 0;
+            internalTempo      = tempo;
+        }
+        transport = { true, internalBeatAt (internalSamples), tempo };
+        internalSamples += numSamples;
     }
 
     transport.playing = transport.playing && sequencerOn;   // switching off releases sounding notes

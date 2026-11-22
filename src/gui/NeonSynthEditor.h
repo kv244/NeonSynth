@@ -58,7 +58,7 @@ public:
     const neon::crt::CachedPainter& getBackdrop() const noexcept { return backdrop; }
 
     explicit NeonSynthEditor (NeonSynthProcessor& p)
-        : AudioProcessorEditor (&p), processor (p), apvts (p.getAPVTS()), sampleView (p, p.getAPVTS()), shapeView (p, p.getAPVTS()), stepGrid (p)
+        : AudioProcessorEditor (&p), synthProcessor (p), apvts (p.getAPVTS()), sampleView (p, p.getAPVTS()), shapeView (p, p.getAPVTS()), stepGrid (p)
     {
         addAndMakeVisible (content);
         content.setLookAndFeel (&crtLook);   // every control inherits the CRT look (v1.10.0)
@@ -153,7 +153,7 @@ public:
         loadButton.setTooltip ("Load a WAV, AIFF or FLAC file (or drop one on the synth)");
         padButton.setTooltip ("Go back to the built-in pad");
         loadButton.onClick = [this] { chooseSampleFile(); };
-        padButton.onClick  = [this] { processor.useDefaultSample(); };
+        padButton.onClick  = [this] { synthProcessor.useDefaultSample(); };
 
         content.addAndMakeVisible (smpLoopCombo);
         smpLoopCombo.addItemList ({ "One-shot", "Loop", "Loop until release" }, 1);   // same order as the parameter
@@ -503,7 +503,7 @@ public:
         legatoButton.setColour (juce::TextButton::textColourOnId,   neon::green);
         legatoButton.setColour (juce::ComboBox::outlineColourId,    neon::green.withAlpha (0.6f));
         legatoButton.setTooltip ("Legato (with the voice limit at MONO): a key pressed while another is held glides to "
-                                 "the new note without restarting the envelopes; letting it go returns to the key still held");
+                                 "the new note without restarting the envelopes; letting it go returns to the key still held. With more voices it does nothing");
         content.addAndMakeVisible (legatoButton);
         legatoAttachment = std::make_unique<ButtonAttachment> (apvts, "legato", legatoButton);
 
@@ -664,7 +664,7 @@ public:
 
         // While the editor was closed the scope FIFO filled up with old audio;
         // throw it away so the first frame shows what is playing now.
-        while (processor.drainScope (scratchLeft.data(), scratchRight.data(), (int) scratchLeft.size()) > 0) {}
+        while (synthProcessor.drainScope (scratchLeft.data(), scratchRight.data(), (int) scratchLeft.size()) > 0) {}
 
         updateReadouts();
         startTimerHz (timerHz);
@@ -957,7 +957,7 @@ private:
         band.shown = true;
         band.low   = xFor (cutoff / swing);
         band.high  = xFor (cutoff * swing);
-        band.now   = xFor (cutoff * std::exp2 ((double) (octaves * processor.getModulation().getLfoValue())));
+        band.now   = xFor (cutoff * std::exp2 ((double) (octaves * synthProcessor.getModulation().getLfoValue())));
         return band;
     }
 
@@ -1119,7 +1119,7 @@ private:
                               [this] (const juce::FileChooser& fc)
                               {
                                   if (const auto file = fc.getResult(); file.existsAsFile())
-                                      processor.loadSampleFileAsync (file);
+                                      synthProcessor.loadSampleFileAsync (file);
                               });
     }
 
@@ -1132,7 +1132,7 @@ public:
     void filesDropped (const juce::StringArray& files, int, int) override
     {
         if (files.size() == 1 && isSampleFile (files[0]))
-            processor.loadSampleFileAsync (juce::File (files[0]));
+            synthProcessor.loadSampleFileAsync (juce::File (files[0]));
     }
 
 private:
@@ -1246,8 +1246,8 @@ private:
         set (widthReadout, juce::String (juce::roundToInt (widthValue->load() * 100.0f)) + "%");
 
         // Shows the tempo actually in use: the host's while following it, otherwise the TEMPO slider.
-        set (seqTempoReadout, processor.isSequencerFollowingHost()
-                                  ? "HOST " + juce::String (processor.getSequencerTempo(), 1)
+        set (seqTempoReadout, synthProcessor.isSequencerFollowingHost()
+                                  ? "HOST " + juce::String (synthProcessor.getSequencerTempo(), 1)
                                   : juce::String (seqTempoValue->load(), 1) + " BPM");
         set (seqSwingReadout, juce::String (juce::roundToInt (seqSwingValue->load() * 100.0f)) + "%");
         set (seqGateReadout,  juce::String (juce::roundToInt (seqGateValue->load() * 100.0f)) + "%");
@@ -1293,7 +1293,7 @@ private:
         set (foldDriveReadout,    juce::String (foldDriveValue->load(), 1));
         set (foldMixReadout,      juce::String (juce::roundToInt (foldMixValue->load())) + "%");
 
-        const auto status = processor.getSampleStatus();
+        const auto status = synthProcessor.getSampleStatus();
         // Re-fitted only when the text or the label's size changes (it measures glyphs).
         const auto details = "  " + juce::String (status.seconds, 1) + " s  " + formatSampleRate (status.sampleRate);
         if (status.name + details != fittedFor || sampleNameLabel.getWidth() != fittedWidth)
@@ -1308,7 +1308,7 @@ private:
 
     void timerCallback() override
     {
-        const int n = processor.drainScope (scratchLeft.data(), scratchRight.data(), (int) scratchLeft.size());
+        const int n = synthProcessor.drainScope (scratchLeft.data(), scratchRight.data(), (int) scratchLeft.size());
 
         // Scope and spectrum show the mid signal (L + R) / 2.
         for (int i = 0; i < n; ++i)
@@ -1317,7 +1317,7 @@ private:
 
         meter.update (scratchLeft.data(), scratchRight.data(), n, timerHz);
 
-        const auto& voices = processor.getVoiceViews();
+        const auto& voices = synthProcessor.getVoiceViews();
         float lowestHz = 0.0f;
         for (const auto& v : voices)
         {
@@ -1326,7 +1326,7 @@ private:
                 lowestHz = hz;
         }
 
-        const double sampleRate = processor.getSampleRate();
+        const double sampleRate = synthProcessor.getSampleRate();
         if (oscilloscope.isVisible())
             oscilloscope.update (history, sampleRate, lowestHz);
         else
@@ -1339,7 +1339,7 @@ private:
         voiceLeds.update (voices);
         voiceLeds.setLimit (voiceCount());
 
-        const auto& modulation = processor.getModulation();
+        const auto& modulation = synthProcessor.getModulation();
         const bool lfoActive = lfoPitchValue->load() != 0.0f || lfoCutoffValue->load() != 0.0f || lfoAmpValue->load() != 0.0f;
         lfoView.update ((Lfo::Shape) juce::jlimit (0, 4, juce::roundToInt (lfoShapeValue->load())),
                         modulation.getLfoPhase(), modulation.getLfoValue(), lfoActive);
@@ -1354,7 +1354,7 @@ private:
         sampleView.refresh(); // sample, markers, playheads
         shapeView.refresh();  // the sculpted cycle, CHOP's steps
         updateReadouts();
-        processor.freeReplacedSamples();   // a sample replaced while notes played it, once they have ended
+        synthProcessor.freeReplacedSamples();   // a sample replaced while notes played it, once they have ended
     }
 
     /** Everything the editor shows lives here, at the design size; resized() scales it to the window. */
@@ -1364,7 +1364,7 @@ private:
         void paint (juce::Graphics& g) override { if (onPaint) onPaint (g); }
     };
 
-    NeonSynthProcessor&           processor;
+    NeonSynthProcessor&           synthProcessor;
     juce::AudioProcessorValueTreeState& apvts;
     CrtLookAndFeel crtLook;   // declared before content, so it outlives everything that uses it
     Content content;   // declared before every control, so it outlives them
@@ -1488,7 +1488,7 @@ private:
     std::unique_ptr<SliderAttachment>   seqTempoAttachment, seqSwingAttachment, seqGateAttachment;
     std::unique_ptr<ComboBoxAttachment> seqRateAttachment, seqModeAttachment;
     // v1.11.0: the pattern row (after stepGrid, which it hooks into)
-    PatternRow         patternRow { processor, stepGrid };
+    PatternRow         patternRow { synthProcessor, stepGrid };
 
     // Modulation (v1.9.0)
     LfoView          lfoView;
@@ -1508,7 +1508,7 @@ private:
     std::unique_ptr<SliderAttachment> glideAttachment;
     std::unique_ptr<ButtonAttachment> legatoAttachment;
     // v1.11.0: the header's preset bar (PresetBar.h) and HOLD
-    PresetBar        presetBar { processor.getPresetManager() };
+    PresetBar        presetBar { synthProcessor.getPresetManager() };
     juce::TextButton holdButton { "HOLD" };
     std::unique_ptr<ButtonAttachment> holdAttachment;
     CutoffBand cutoffBand;   // as last drawn under the cutoff slider

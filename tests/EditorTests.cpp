@@ -662,6 +662,75 @@ int main()
         mouse.drag (*grid, cell (7).translated (0.0f, 10.0f), juce::ModifierKeys::leftButtonModifier | juce::ModifierKeys::shiftModifier);
         mouse.up (*grid, cell (7).translated (0.0f, 10.0f), true);
         check (processor.getSequencerStep (7).velocity == juce::jlimit (1, 127, velocity - 10), "shift-dragging down 10 px lowers the velocity by 10");
+
+        // v1.11.0: the pattern row and the grid's new gestures.
+        const float w = (float) grid->getWidth() / (float) StepSequencer::numSteps;
+        const float h = (float) grid->getHeight();
+        const auto at = [w] (int step, float x, float y) { return juce::Point<float> (w * (float) step + x * w, y); };
+
+        const int vel9 = processor.getSequencerStep (9).velocity;
+        mouse.down (*grid, at (9, 0.5f, h - 20.0f));
+        mouse.drag (*grid, at (9, 0.5f, h - 32.0f));
+        mouse.up (*grid, at (9, 0.5f, h - 32.0f), true);
+        check (processor.getSequencerStep (9).velocity == juce::jlimit (1, 127, vel9 + 12), "dragging the velocity bar up 12 px raises the velocity by 12 (no shift)");
+
+        const auto step10 = processor.getSequencerStep (10);
+        mouse.click (*grid, at (10, 0.3f, h - 5.0f));
+        check (processor.getSequencerStep (10).tie && processor.getSequencerStep (10).on == step10.on, "TIE marker toggles the tie only");
+        mouse.click (*grid, at (10, 0.7f, h - 5.0f));
+        check (processor.getSequencerStep (10).slide, "SLD marker toggles the slide");
+
+        auto* undo = dynamic_cast<juce::Button*> (find (ed, "seqUndo"));
+        if (undo != nullptr) undo->triggerClick();
+        pump();
+        check (processor.getSequencerStep (10).tie && ! processor.getSequencerStep (10).slide, "UNDO takes the slide back");
+        ed.keyPressed (juce::KeyPress ('z', juce::ModifierKeys::commandModifier, 0));
+        check (! processor.getSequencerStep (10).tie, "Ctrl+Z takes the tie back");
+
+        set (processor, "seqLength", 4.0f);
+        pump (100);
+        check (dynamic_cast<StepGrid*> (grid)->getLength() == 4, "the grid follows LENGTH");
+        set (processor, "seqLength", 16.0f);
+
+        set (processor, "seqScale", 1.0f);   // C major
+        processor.setSequencerStep (11, { true, 60, 100 });
+        pump (100);
+        mouse.down (*grid, at (11, 0.5f, h * 0.5f));
+        mouse.drag (*grid, at (11, 0.5f, h * 0.5f - 12.0f));
+        mouse.up (*grid, at (11, 0.5f, h * 0.5f - 12.0f), true);
+        check (processor.getSequencerStep (11).note == 64, "with C major locked, dragging up 12 px moves two scale notes (C to E)");
+
+        if (auto* tools = find (ed, "seqTools"))
+            if (auto* row = dynamic_cast<PatternRow*> (tools->getParentComponent()))
+            {
+                const auto before = processor.getSequencerStep (0);
+                row->applyTool (PatternRow::Tool::shiftRight);
+                check (processor.getSequencerStep (1) == before, "TOOLS shift right moves step 1 to step 2");
+                row->undo();
+                check (processor.getSequencerStep (0) == before, "and undo moves it back");
+            }
+
+        auto* enter = dynamic_cast<juce::Button*> (find (ed, "seqEnter"));
+        if (enter != nullptr)
+        {
+            enter->triggerClick();
+            pump();
+            const auto step2 = processor.getSequencerStep (2);
+            mouse.click (*grid, at (2, 0.5f, h * 0.5f));
+            check (processor.getSequencerStep (2).on == step2.on, "while ENTER is armed a click picks the step instead of toggling it");
+            juce::AudioBuffer<float> buffer (2, 512);
+            juce::MidiBuffer midi;
+            midi.addEvent (juce::MidiMessage::noteOn (1, 61, (juce::uint8) 77), 0);   // C#, snapped to C
+            midi.addEvent (juce::MidiMessage::noteOn (1, 67, (juce::uint8) 99), 10);
+            processor.processBlock (buffer, midi);
+            pump (150);
+            check (processor.getSequencerStep (2).note == 60 && processor.getSequencerStep (2).velocity == 77 && processor.getSequencerStep (2).on
+                   && processor.getSequencerStep (3).note == 67, "ENTER writes each played note (snapped) and moves on");
+            enter->triggerClick();
+            pump();
+            check (! enter->getToggleState(), "ENTER off");
+        }
+        set (processor, "seqScale", 0.0f);
     }
     else check (false, "step grid found");
 

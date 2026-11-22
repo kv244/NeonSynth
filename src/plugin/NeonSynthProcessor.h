@@ -302,7 +302,16 @@ private:
 
     StepSequencer    sequencer;
     juce::MidiBuffer playMidi;                 // keyboard + sequencer events for the synth; capacity reserved in prepareToPlay
-    double internalBeat   = 0.0;               // internal clock position in beats
+    // The internal clock (v1.11.0): the beat at the last tempo change or restart, the samples
+    // since then and the tempo in force, so the position is one multiplication, not a running sum.
+    double       internalBeatOrigin = 0.0;
+    juce::int64  internalSamples    = 0;
+    double       internalTempo      = 0.0;
+    double internalBeatAt (juce::int64 samples) const noexcept
+    {
+        return internalBeatOrigin + (double) samples * internalTempo / (60.0 * getSampleRate());
+    }
+    void restartInternalClock() noexcept   { internalBeatOrigin = 0.0; internalSamples = 0; internalTempo = 0.0; }
     bool   wasSequencerOn = false;
     std::array<int, 16> heldKeys {};           // Transpose mode: keys currently down, most recent last
     int    numHeldKeys = 0;

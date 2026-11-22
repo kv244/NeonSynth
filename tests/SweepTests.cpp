@@ -18,10 +18,8 @@
         (ceil (step beat x samples per beat)), on the internal clock and following a host
         transport at a tempo whose steps fall between samples.
 
-    Hooks for the v1.11.0 integration (one function each, marked HOOK below): glide, tie, slide
-    and pattern length are written by other agents in parallel, so their sweeps are added by
-    the lead once the branches are merged. Each hook says what it should check; until then it
-    prints HOOK and counts as neither a pass nor a failure.
+      - the v1.11.0 playing and pattern features: glide reaches its pitch, a tie or slide
+        starts no new note, and LENGTH wraps, identically for every block plan.
 
     Build with CMake:  cmake -B build -DJUCE_DIR=... -DNEONSYNTH_BUILD_TESTS=ON
                        cmake --build build --target SweepTests
@@ -44,11 +42,6 @@ namespace
         std::printf ("  %s  %s\n", condition ? "PASS" : "FAIL", what.toRawUTF8());
         if (! condition)
             ++failures;
-    }
-
-    void hook (const char* what)
-    {
-        std::printf ("  HOOK  %s: added by the lead after the v1.11.0 integration\n", what);
     }
 
     const double sampleRates[] = { 44100.0, 48000.0, 88200.0, 96000.0, 192000.0 };
@@ -434,7 +427,7 @@ namespace
         promises the same samples for any block size. Fix: count the internal clock in samples
         since the last tempo change and derive the beat by one multiplication. Until then the
         one-sample plan is left out on the internal clock; set this to true with the fix. */
-    constexpr bool internalClockDriftFixed = false;
+    constexpr bool internalClockDriftFixed = true;
 
     void testSequencer()
     {
@@ -587,24 +580,124 @@ namespace
     }
 
     //==========================================================================
-    // HOOKs for the lead, after integration. Each runs the same sweep (sampleRates x
-    // blockPlans(), render() and the helpers above) for one v1.11.0 feature.
+    // The v1.11.0 features. Each runs the same sweep (sampleRates x blockPlans(), render() and
+    // the helpers above).
 
-    /** GLIDE (agent B): a note gliding to another at GLIDE 200 ms reaches the target pitch in
-        200 ms at every rate, and the glide is identical for every block plan. */
-    void sweepGlide()   { hook ("glide reaches its pitch in GLIDE ms, identical across block sizes"); }
+    /** Runs a sequencer scenario at every rate and block plan and checks its onsets against
+        the step starts that `sounds` says begin a new note (k = the step number since the start,
+        before any LENGTH wrap; the scenario's own pattern decides the rest). */
+    void sweepPattern (const juce::String& name, const std::function<void (NeonSynthProcessor&)>& pattern,
+                       const std::function<bool (int)>& sounds)
+    {
+        auto scenario = sequencerScenario (0.0, 120.0f, 1);   // internal clock, 1/16 at 120 bpm
+        const auto base = scenario.setup;
+        scenario.setup = [base, pattern] (NeonSynthProcessor& p) { base (p); pattern (p); };
 
-    /** TIE (agent A): a tied step sends no note-on (one onset where two steps are tied) and the
-        note ends at the last tied step's gate, on its sample, at every rate and block plan. */
-    void sweepTie()     { hook ("tie: no retrigger, the note-off on its sample"); }
+        bool onTime = true, identical = true, finite = true;
+        juce::String detail;
+        for (auto fs : sampleRates)
+        {
+            std::vector<juce::int64> expected;
+            const auto starts = expectedOnsets (fs, 120.0, 0.25, scenario.seconds);
+            for (size_t k = 0; k < starts.size(); ++k)
+                if (sounds ((int) k))
+                    expected.push_back (starts[k]);
 
-    /** SLIDE (agents A and B): the next step's note-on comes before the sliding note's note-off,
-        and the voice glides instead of restarting (one onset), at every rate and block plan. */
-    void sweepSlide()   { hook ("slide: overlap in the contract's order, one onset, the glide"); }
+            std::vector<float> reference;
+            for (const auto& plan : blockPlans())
+            {
+                const auto out = render (scenario, fs, plan);
+                finite = finite && allFiniteAndClipped (out);
+                if (onsets (out, (int) (0.002 * fs)) != expected && onTime)
+                {
+                    onTime = false;
+                    detail << " (first wrong at " << juce::String (fs / 1000.0, 1) << " kHz, blocks of " << plan.name << ")";
+                }
+                if (reference.empty())
+                    reference = out;
+                else
+                    identical = identical && sameBits (reference, out);
+            }
+        }
+        check (finite, name + ": finite and under the clipper's ceiling");
+        check (onTime, name + ": a new note exactly where expected, at every rate and block plan" + detail);
+        check (identical, name + ": identical audio for every block plan");
+    }
 
-    /** LENGTH (agent A): with LENGTH 5 and 7 the steps wrap after 5 or 7 and still start on
-        their samples (expectedOnsets() with the wrapped pattern) at every rate and block plan. */
-    void sweepLength()  { hook ("pattern length: wraps at LENGTH, steps on their samples"); }
+    /** GLIDE (agent B): with one voice, C4 is released and G4 played on the same voice at
+        GLIDE 200 ms; after the glide the strongest line is G4, and the glide is identical for
+        every block plan. */
+    void sweepGlide()
+    {
+        std::printf ("Glide\n");
+        auto scenario = sourceScenario ("glide", 0, 0, 60);   // sine oscillator
+        const auto base = scenario.setup;
+        scenario.setup = [base] (NeonSynthProcessor& p)
+        {
+            base (p);
+            setParameter (p, "voiceCount", 1.0f);
+            setParameter (p, "glide", 200.0f);
+        };
+        scenario.notes = { { 0.0503, 60, true }, { 0.3001, 60, false }, { 0.3001, 67, true }, { 1.0007, 67, false } };
+
+        bool onPitch = true, identical = true, finite = true;
+        for (auto fs : sampleRates)
+        {
+            std::vector<float> reference;
+            for (const auto& plan : blockPlans())
+            {
+                const auto out = render (scenario, fs, plan);
+                finite = finite && allFiniteAndClipped (out);
+                onPitch = onPitch && std::abs (strongestLineCents (out, fs, 392.0, 0.55, 1.0)) <= 10;
+                if (reference.empty())
+                    reference = out;
+                else
+                    identical = identical && sameBits (reference, out);
+            }
+        }
+        check (finite, "glide: finite and under the clipper's ceiling");
+        check (onPitch, "glide: G4 once GLIDE's 200 ms have passed, at every rate and block plan");
+        check (identical, "glide: identical audio for every block plan");
+    }
+
+    /** TIE (agent A): steps 1 and 4 tied, so steps 2 and 5 start no note of their own. */
+    void sweepTie()
+    {
+        std::printf ("Tie\n");
+        sweepPattern ("tie", [] (NeonSynthProcessor& p)
+        {
+            for (int k : { 1, 4 })
+                p.setSequencerStep (k, { true, 48 + (k % 7), 100, true, false });
+        }, [] (int k) { return k % 16 != 2 && k % 16 != 5; });
+    }
+
+    /** SLIDE (agents A and B): steps 1 and 4 slide (GLIDE 0, a legato step), so steps 2 and 5
+        change pitch without a new onset. */
+    void sweepSlide()
+    {
+        std::printf ("Slide\n");
+        sweepPattern ("slide", [] (NeonSynthProcessor& p)
+        {
+            for (int k : { 1, 4 })
+                p.setSequencerStep (k, { true, 48 + (k % 7), 100, false, true });
+        }, [] (int k) { return k % 16 != 2 && k % 16 != 5; });
+    }
+
+    /** LENGTH (agent A): only the first LENGTH steps are on; with LENGTH 5 and 7 the pattern
+        wraps before the silent steps, so every step start is a note. */
+    void sweepLength()
+    {
+        std::printf ("Pattern length\n");
+        for (int length : { 5, 7 })
+        {
+            sweepPattern ("LENGTH " + juce::String (length), [length] (NeonSynthProcessor& p)
+            {
+                for (int k = length; k < StepSequencer::numSteps; ++k)
+                    p.setSequencerStep (k, { false, 60, 100 });
+                setParameter (p, "seqLength", (float) length);
+            }, [] (int) { return true; });
+        }
+    }
 }
 
 int main()
@@ -615,7 +708,6 @@ int main()
     testSequencer();
     testLfoBars();
 
-    std::printf ("v1.11.0 features (after integration)\n");
     sweepGlide();
     sweepTie();
     sweepSlide();
