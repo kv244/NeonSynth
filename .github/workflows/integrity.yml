@@ -48,13 +48,16 @@ jobs:
           sudo apt-get $APT update -q
           sudo apt-get $APT install -y cppcheck
 
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
+        with:
+          python-version: '3.14'
+
+      # tests/integrity.py --cppcheck runs it and leaves out what JUCE calls (overrides of
+      # JUCE's virtual functions) and the listed false positives, each with its reason.
       - name: cppcheck --enable=unusedFunction,style on src/ and tests/
         run: |
           cppcheck --version
-          cppcheck --enable=unusedFunction,style --std=c++17 --language=c++ \
-            -I src --inline-suppr --suppressions-list=tests/cppcheck-suppressions.txt \
-            --error-exitcode=1 --quiet --template='{file}:{line}: {severity} ({id}): {message}' \
-            src tests
+          python tests/integrity.py --cppcheck
 
   # Clang with -Wunreachable-code -Wunused-member-function -Wunused-private-field
   # -Wunused-template -Wshadow-all as errors (NEONSYNTH_INTEGRITY), the plugin and every test;

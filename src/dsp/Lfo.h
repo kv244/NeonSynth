@@ -179,9 +179,6 @@ public:
     /** Current phase 0..1, for the LFO view. Audio thread writes it; read it via Modulation's atomic. */
     double getPhase() const noexcept   { return phase; }
 
-    /** The last value render() wrote (0 before the first render). */
-    float getLastValue() const noexcept   { return lastValue; }
-
     /** The raw shape at phase p (0..1) with the given held Random value, before slew and crossfade. */
     static float shapeValue (Shape shape, double p, float heldRandom) noexcept
     {
