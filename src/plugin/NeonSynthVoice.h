@@ -11,6 +11,7 @@
 #include "dsp/GrainCloud.h"
 #include "dsp/CytomicSvf.h"
 #include "dsp/Modulation.h"
+#include "sequencer/StepSequencer.h"
 
 class NeonSynthSound : public juce::SynthesiserSound
 {
@@ -226,7 +227,11 @@ public:
         // v1.11.0, GLIDE: where the pitch was (the note playing, or the one this voice last played),
         // as an offset in octaves from the new note; the glide starts there. With GLIDE at 0, or on
         // a voice's first note, it is 0 and the note starts exactly at its pitch, as in v1.10.1.
-        const float glideFrom = glideSeconds > 0.0f && hasGlidePitch
+        // The sequencer's notes never glide here: like a 303, a step glides only when the step
+        // before it is marked SLIDE (the legato step above), so the other steps keep their attack
+        // whatever GLIDE is set to (Julian, 22 Nov 2026). Keyboard notes glide whenever GLIDE > 0.
+        const bool sequencerNote = isPlayingChannel (StepSequencer::midiChannel);
+        const float glideFrom = glideSeconds > 0.0f && hasGlidePitch && ! sequencerNote
                                   ? (currentPitchNote() - (float) midiNote) / 12.0f : 0.0f;
         glideBaseNote = midiNote;
         hasGlidePitch = true;

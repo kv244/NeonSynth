@@ -511,6 +511,23 @@ namespace
             std::snprintf (what, sizeof (what), "a slide after its old note was released starts the next note normally (it attacks to %.3f)", peak (out, 0.3, 0.35));
             check (on.back() == 1 && peak (out, 0.3, 0.35) > 2.0 * peak (out, 0.25, 0.29), what);
         }
+
+        // An unmarked sequencer step never glides, whatever GLIDE is (like a 303: only SLIDE
+        // steps glide; Julian, 22 Nov 2026), even on a voice that played an earlier step: six
+        // steps on four voices, so voices are reused.
+        {
+            std::vector<std::pair<juce::int64, juce::MidiMessage>> steps;
+            const int notes[] = { 48, 55, 51, 58, 46, 53 };
+            for (int k = 0; k < 6; ++k)
+            {
+                const auto at = (juce::int64) (0.12 * k * rate);
+                steps.push_back ({ at, juce::MidiMessage::noteOn (16, notes[k], (juce::uint8) 100) });
+                steps.push_back ({ at + (juce::int64) (0.06 * rate), juce::MidiMessage::noteOff (16, notes[k]) });
+            }
+            SlideRig gliding (0.08f), still (0.0f);
+            check (identical (gliding.run (steps, 0.9), still.run (steps, 0.9)),
+                   "an unmarked sequencer step starts on its own pitch with GLIDE on (bit for bit as GLIDE 0)");
+        }
     }
 
     //==========================================================================
