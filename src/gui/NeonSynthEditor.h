@@ -19,6 +19,7 @@
 #include "gui/SampleView.h"
 #include "gui/ShapeView.h"
 #include "gui/LfoView.h"
+#include "gui/PresetBar.h"   // v1.11.0
 
 /**
     Neon Synth editor.
@@ -627,7 +628,7 @@ public:
         scanlinesButton.onClick = [this] { setScanlines (scanlinesButton.getToggleState()); };
         content.addAndMakeVisible (scanlinesButton);
 
-        // v1.11.0: the preset bar (agent C fills it) and HOLD.
+        // v1.11.0: the preset bar (PresetBar.h) and HOLD.
         content.addAndMakeVisible (presetBar);
         holdButton.setClickingTogglesState (true);
         holdButton.setColour (juce::TextButton::buttonColourId,   juce::Colours::transparentBlack);
@@ -1545,8 +1546,8 @@ private:
     juce::TextButton legatoButton { "LEGATO" };
     std::unique_ptr<SliderAttachment> glideAttachment;
     std::unique_ptr<ButtonAttachment> legatoAttachment;
-    // v1.11.0: the header's preset bar (a placeholder until agent C's PresetBar) and HOLD
-    juce::Component  presetBar;
+    // v1.11.0: the header's preset bar (PresetBar.h) and HOLD
+    PresetBar        presetBar { processor.getPresetManager() };
     juce::TextButton holdButton { "HOLD" };
     std::unique_ptr<ButtonAttachment> holdAttachment;
     CutoffBand cutoffBand;   // as last drawn under the cutoff slider

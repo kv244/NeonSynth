@@ -26,11 +26,16 @@
 
     Build with CMake:  cmake -B build -DJUCE_DIR=... -DNEONSYNTH_BUILD_TESTS=ON
                        cmake --build build --target StateFuzzTests
+    v1.11.0: preset files (PresetManager::loadFile) get the same treatment: truncated, flipped,
+    not XML, nested deep, over the size cap, a folder, hostile category / name / program
+    attributes; and stepping through a folder of damaged presets.
+
     Run the resulting StateFuzzTests executable; it exits non-zero on failure.
 */
 #include "plugin/NeonSynthProcessor.h"
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <functional>
 
 namespace
@@ -630,6 +635,145 @@ int main (int argc, char* argv[])
                                            }));
     }
     h.checkGroup ("nonsense parameter values and versions leave a usable processor");
+
+    //==========================================================================
+    // v1.11.0: preset files. A .neonpreset is a session's XML in a file someone may have sent, so
+    // loading one goes through the same checks; these cases come in through PresetManager::loadFile.
+    std::printf ("Preset files\n");
+    {
+        auto& presets = h.processor.getPresetManager();
+        const auto presetDir = dir.getChildFile ("presets");
+        presetDir.createDirectory();
+        presets.setUserFolder (presetDir);
+        int fileCount = 0;
+        const auto feedFile = [&] (const juce::String& name, const std::function<void (const juce::File&)>& write, int numBlocks = 3)
+        {
+            ++h.cases;
+            if (h.verbose)
+                std::printf ("        case: preset %s\n", name.substring (0, 200).toRawUTF8());
+            std::fflush (stdout);
+            const auto file = presetDir.getChildFile ("case" + juce::String (fileCount++) + ".neonpreset");
+            write (file);
+            juce::String error;
+            const bool loaded = presets.loadFile (file, error);
+            const auto category = presets.getCurrentCategory();
+            const bool metaSane = (category.isEmpty() || PresetManager::categories().contains (category))
+                               && presets.getCurrentName().length() <= 128
+                               && presets.getCurrentProgramIndex() >= -1 && presets.getCurrentProgramIndex() < PresetManager::numFactoryPresets
+                               && (loaded || error.isNotEmpty());
+            file.deleteFile();
+            if (! metaSane || ! h.rendersFinite (numBlocks))
+            {
+                if (h.unusable++ == 0)
+                    h.firstUnusable = name;
+                std::printf ("        unusable after: preset %s\n", name.toRawUTF8());
+            }
+        };
+        const auto writeText = [] (const juce::String& text) { return [text] (const juce::File& f) { f.replaceWithText (text); }; };
+        const auto writeBlock = [] (const juce::MemoryBlock& block)
+        {
+            return [block] (const juce::File& f) { f.replaceWithData (block.getData(), block.getSize()); };
+        };
+
+        // The seeds as preset files (the XML text, without JUCE's binary header), and a factory preset.
+        const auto padText = toXml (padState)->toString();
+        const auto embeddedText = toXml (embeddedState)->toString();
+        const auto factoryText = presets.createFactoryXml (11)->toString();
+        for (const auto* text : { &padText, &embeddedText, &factoryText })
+            feedFile ("seed", writeText (*text), 6);
+
+        // Truncated anywhere, and random bytes flipped.
+        for (const auto* text : { &padText, &factoryText })
+            for (int i = 0; i < 60; ++i)
+                feedFile ("cut", writeText (text->substring (0, text->length() * i / 60)), 2);
+        {
+            juce::Random random (1122);
+            for (int i = 0; i < 120; ++i)
+            {
+                juce::MemoryBlock block (factoryText.toRawUTF8(), factoryText.getNumBytesAsUTF8());
+                auto* bytes = static_cast<juce::uint8*> (block.getData());
+                for (int f = 0, flips = 1 + random.nextInt (4); f < flips; ++f)
+                    bytes[random.nextInt ((int) block.getSize())] ^= (juce::uint8) (1 + random.nextInt (255));
+                feedFile ("flip " + juce::String (i), writeBlock (block), 2);
+            }
+        }
+
+        // Not presets at all.
+        feedFile ("empty file", writeText ({}));
+        feedFile ("binary noise", [] (const juce::File& f)
+        {
+            juce::MemoryBlock noise (5000);
+            juce::Random (8).fillBitsRandomly (noise.getData(), noise.getSize());
+            f.replaceWithData (noise.getData(), noise.getSize());
+        });
+        feedFile ("a session with JUCE's binary header", writeBlock (padState));
+        feedFile ("other root", writeText ("<NotNeonSynth><PARAM id=\"cutoff\" value=\"100\"/></NotNeonSynth>"));
+        feedFile ("byte order mark", writeText (juce::String::fromUTF8 ("\xef\xbb\xbf") + padText));
+        {
+            juce::String deep;
+            deep << "<Parameters>" << juce::String::repeatedString ("<a>", 300000) << juce::String::repeatedString ("</a>", 300000) << "</Parameters>";
+            feedFile ("nested 300 000 deep", writeText (deep));
+        }
+        feedFile ("over the size cap", [] (const juce::File& f)
+        {
+            juce::FileOutputStream out (f);
+            out.writeText ("<Parameters stateVersion=\"4\" preset=\"", false, false, nullptr);
+            juce::HeapBlock<char> chunk (1 << 20);
+            std::memset (chunk.get(), 'z', 1 << 20);
+            for (juce::int64 written = 0; written <= PresetManager::maxFileBytes; written += 1 << 20)
+                out.write (chunk.get(), 1 << 20);
+            out.writeText ("\"/>", false, false, nullptr);
+        });
+        feedFile ("a folder named like a preset", [] (const juce::File& f) { f.createDirectory(); });
+
+        // Hostile preset attributes on an otherwise good file.
+        const auto withRoot = [&] (const std::function<void (juce::XmlElement&)>& edit)
+        {
+            return [edit, factoryText] (const juce::File& f)
+            {
+                auto xml = juce::XmlDocument::parse (factoryText);
+                edit (*xml);
+                xml->writeTo (f);
+            };
+        };
+        for (const char* program : { "-5", "16", "99999", "nan", "1e30", "abc", "" })
+            feedFile (juce::String ("program ") + program, withRoot ([program] (juce::XmlElement& x) { x.setAttribute ("program", program); }));
+        for (const char* category : { "Banana", "", "bass ", "FX\nLead", "\xc3\xa9" })
+            feedFile (juce::String ("category ") + category,
+                      withRoot ([category] (juce::XmlElement& x) { x.setAttribute ("category", juce::String::fromUTF8 (category)); }));
+        feedFile ("long category and name", withRoot ([] (juce::XmlElement& x)
+        {
+            x.setAttribute ("category", juce::String::repeatedString ("c", 100000));
+            x.setAttribute ("preset", juce::String::repeatedString ("n", 100000));
+        }));
+        feedFile ("factory pattern of 10 000 steps", withRoot ([] (juce::XmlElement& x)
+        {
+            auto* pattern = x.getChildByName ("Pattern");
+            for (int i = 0; i < 10000; ++i)
+                pattern->createNewChildElement ("Step")->setAttribute ("slide", i % 2);
+        }));
+        feedFile ("every step tied and sliding", withRoot ([] (juce::XmlElement& x)
+        {
+            for (auto* step : x.getChildByName ("Pattern")->getChildIterator())
+            {
+                step->setAttribute ("tie", "1");
+                step->setAttribute ("slide", "1");
+            }
+        }), 8);
+
+        // Previous and next over a folder of damaged files must not hang or crash either.
+        for (int i = 0; i < 5; ++i)
+            presetDir.getChildFile ("bad" + juce::String (i) + ".neonpreset").replaceWithText (padText.substring (0, 40 * i));
+        for (int i = 0; i < 40; ++i)
+        {
+            ++h.cases;
+            presets.step (i % 3 == 0 ? -1 : 1);
+            if (! h.rendersFinite (2) && h.unusable++ == 0)
+                h.firstUnusable = "stepping over damaged files";
+        }
+        presetDir.deleteRecursively();
+    }
+    h.checkGroup ("damaged and hostile preset files are refused or survived, and the preset name and category stay sane");
 
     //==========================================================================
     bugCases (h, padState, embeddedState);
