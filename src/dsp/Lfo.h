@@ -21,6 +21,11 @@
         playing host, the phase comes from the song position: frac (ppq / beats),
         so it lands on the beat after a jump or a loop. Otherwise (host stopped,
         no host, the Standalone) it free-runs at the given tempo.
+      - Bars follow the host's time signature (v1.11.0): a bar is numerator x 4 /
+        denominator beats (3 in 3/4, 3.5 in 7/8), 4 in 4/4 or with no host. Note
+        lengths (1/2 .. 1/16T) stay in beats whatever the signature. When the
+        signature changed earlier in the song, the bars no longer line up with beat
+        0, so the bar divisions count from the host's last bar line instead.
       - reset() puts the phase back to 0 and reseeds Random, so a render repeats.
       - render() is real-time safe: no allocation, no locks.
 
@@ -47,12 +52,16 @@ public:
     /** The LFO Division parameter's order. */
     enum class Division { bars4 = 0, bars2, bar1, half, quarter, eighth, sixteenth, eighthTriplet, sixteenthTriplet };
 
-    /** Length of a division in beats (quarter notes). */
-    static constexpr double divisionBeats (Division d) noexcept
+    /** Length of a division in beats (quarter notes), with bars of `beatsPerBar` beats (v1.11.0;
+        4 in 4/4, where the bar divisions are 16, 8 and 4 beats exactly as before). */
+    static constexpr double divisionBeats (Division d, double beatsPerBar = 4.0) noexcept
     {
-        constexpr double beats[] = { 16.0, 8.0, 4.0, 2.0, 1.0, 0.5, 0.25, 1.0 / 3.0, 1.0 / 6.0 };
-        return beats[(int) d];
+        constexpr double beats[] = { 4.0, 2.0, 1.0, 2.0, 1.0, 0.5, 0.25, 1.0 / 3.0, 1.0 / 6.0 };   // bars, then beats
+        return isBarDivision (d) ? beats[(int) d] * beatsPerBar : beats[(int) d];
     }
+
+    /** 4 bars, 2 bars and 1 bar: lengths that follow the time signature (v1.11.0). */
+    static constexpr bool isBarDivision (Division d) noexcept   { return d == Division::bars4 || d == Division::bars2 || d == Division::bar1; }
 
     struct Settings
     {
@@ -68,6 +77,9 @@ public:
         bool   hostPlaying = false;   // a host transport is running: take the phase from ppq
         double ppq = 0.0;             // song position at the block's first sample, in beats
         double bpm = 120.0;           // tempo (host or internal)
+        double beatsPerBar = 4.0;     // v1.11.0: the host's time signature, numerator x 4 / denominator
+        bool   hasBarStart = false;   // v1.11.0: the host reported where the current bar began
+        double barStartPpq = 0.0;     //          ... at this song position, in beats
     };
 
     static constexpr float  minRateHz     = 0.02f;
@@ -126,13 +138,16 @@ public:
     /** Fills out[0..numSamples) with values from -1 to +1. Audio thread. */
     void render (float* out, int numSamples, const Transport& transport) noexcept
     {
-        const double beats = divisionBeats (settings.division);
+        // A bar is between 1/16 and 64 beats long; anything else (a host bug) counts as 4/4.
+        const bool   sensibleBar = transport.beatsPerBar >= 0.0625 && transport.beatsPerBar <= 64.0;
+        const double beatsPerBar = sensibleBar ? transport.beatsPerBar : 4.0;
+        const double beats = divisionBeats (settings.division, beatsPerBar);
         const double rate = settings.sync ? transport.bpm / 60.0 / beats
                                           : (double) juce::jlimit (minRateHz, maxRateHz, settings.rateHz);
         const double increment = rate / sampleRate;
 
         if (settings.sync && transport.hostPlaying)
-            followHost (transport.ppq / beats);
+            followHost (songPositionInCycles (transport, beats, beatsPerBar, isBarDivision (settings.division)));
 
         for (int i = 0; i < numSamples; ++i)
         {
@@ -215,6 +230,26 @@ private:
             v.value += difference > 0.0f ? maxStep : -maxStep;
 
         return v.value;
+    }
+
+    /** Where a playing host's song position is, in cycles of the division (`beats` long).
+        Normally ppq / beats, as before v1.11.0: beat 0 is the first bar line. If the host's
+        last bar line is not on that grid, the time signature changed earlier in the song, and
+        a bar division counts from that bar line instead, so its cycles start on the bar. */
+    static double songPositionInCycles (const Transport& transport, double beats, double beatsPerBar, bool barDivision) noexcept
+    {
+        if (! barDivision || ! transport.hasBarStart || ! std::isfinite (transport.barStartPpq))
+            return transport.ppq / beats;
+
+        const double barsBefore = transport.barStartPpq / beatsPerBar;
+        const double wholeBars  = std::round (barsBefore);
+        if (std::abs (barsBefore - wholeBars) < 1.0e-6)
+            return transport.ppq / beats;   // the bars line up with beat 0
+
+        // The host does not say how many bars came before (VST3 has no bar count), so the bars
+        // are counted as if this signature had held from the start; within a stretch of one
+        // signature that count is steady, so 2- and 4-bar cycles keep their place.
+        return (wholeBars + (transport.ppq - transport.barStartPpq) / beatsPerBar) / (beats / beatsPerBar);
     }
 
     /** Synced to a playing host: take the phase from the song position (in cycles). */

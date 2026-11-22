@@ -1,0 +1,123 @@
+name: Integrity
+
+# The integrity check (v1.11.0): what the GCC and MSVC builds do not look for. Unused functions
+# and fields, unreachable code and every kind of shadowing (a Clang build with those warnings as
+# errors); cppcheck's unused-function and style checks; clang-tidy on the files a pull request
+# changes; and tests/integrity.py, for the consistency no compiler can see (versions, the manual
+# and help page against the parameters, links after the folder move, constants defined once).
+# docs/DEVELOPMENT.md ("Integrity check") says how to run each part locally.
+
+on:
+  push:
+    branches: [master, main, 'v[0-9]+']   # v17, not v17-p3: a PR's own branch is tested by pull_request alone
+  pull_request:
+    branches: [master, main, 'v[0-9]*']
+
+permissions:
+  contents: read
+
+jobs:
+  # Consistency: no build needed, so it reports in seconds.
+  consistency:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # v4.4.0
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
+        with:
+          python-version: '3.14'
+
+      - name: Versions, parameters in the manual and help page, links, constants
+        run: python tests/integrity.py --list
+
+  # cppcheck over the project's own files: functions nothing calls, redundant conditions,
+  # variables assigned and never read. JUCE is not given to it (it would take far longer and
+  # report JUCE's own code); unknown JUCE names are therefore not errors.
+  cppcheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # v4.4.0
+
+      - name: Install cppcheck
+        run: |
+          APT='-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20'
+          sudo apt-get $APT update -q
+          sudo apt-get $APT install -y cppcheck
+
+      - name: cppcheck --enable=unusedFunction,style on src/ and tests/
+        run: |
+          cppcheck --version
+          cppcheck --enable=unusedFunction,style --std=c++17 --language=c++ \
+            -I src --inline-suppr --suppressions-list=tests/cppcheck-suppressions.txt \
+            --error-exitcode=1 --quiet --template='{file}:{line}: {severity} ({id}): {message}' \
+            src tests
+
+  # Clang with -Wunreachable-code -Wunused-member-function -Wunused-private-field
+  # -Wunused-template -Wshadow-all as errors (NEONSYNTH_INTEGRITY), the plugin and every test;
+  # then clang-tidy on the C++ files this pull request changes, from the same build's
+  # compile_commands.json.
+  clang:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # v4.4.0
+        with:
+          fetch-depth: 0   # clang-tidy compares with the base branch
+
+      - name: Install required system dependencies
+        run: |
+          APT='-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20'
+          sudo apt-get $APT update -q
+          sudo apt-get $APT install -y \
+            cmake ninja-build clang clang-tidy \
+            libasound2-dev \
+            libx11-dev libxcomposite-dev libxcursor-dev \
+            libxext-dev libxinerama-dev libxrandr-dev libxrender-dev \
+            libfreetype6-dev libglib2.0-dev libgl1-mesa-dev libgtk-3-dev
+
+      - name: Cache JUCE
+        id: cache-juce
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830        # v4.3.0
+        with:
+          path: /tmp/JUCE
+          key: juce-${{ runner.os }}-9.0.0
+
+      - name: Clone JUCE
+        if: steps.cache-juce.outputs.cache-hit != 'true'
+        run: git clone --depth=1 --branch 9.0.0 https://github.com/juce-framework/JUCE.git /tmp/JUCE
+
+      - name: Configure (Clang, integrity warnings as errors)
+        run: |
+          cmake -S . -B build \
+            -G Ninja \
+            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+            -DJUCE_DIR=/tmp/JUCE \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DNEONSYNTH_BUILD_TESTS=ON \
+            -DNEONSYNTH_WARNINGS_AS_ERRORS=ON \
+            -DNEONSYNTH_INTEGRITY=ON
+
+      - name: Build the plugin and every test (Clang)
+        run: cmake --build build --target NeonSynth_VST3 NeonSynth_Standalone unit_tests RenderBenchmark
+
+      - name: clang-tidy on the files this pull request changes
+        if: github.event_name == 'pull_request'
+        run: |
+          clang-tidy --version
+          git diff --name-only --diff-filter=AM "origin/${{ github.base_ref }}...HEAD" -- 'src/*.h' 'src/*.cpp' 'tests/*.cpp' > changed.txt
+          cat changed.txt
+          if [ ! -s changed.txt ]; then echo "No C++ files changed"; exit 0; fi
+          status=0
+          while read -r file; do
+            echo "::group::$file"
+            clang-tidy -p build --quiet --config-file=tests/clang-tidy.yaml "$file" \
+              --extra-arg=-Wno-unknown-warning-option --extra-arg=-Wno-pragma-once-outside-header || status=1
+            echo "::endgroup::"
+          done < changed.txt
+          exit $status

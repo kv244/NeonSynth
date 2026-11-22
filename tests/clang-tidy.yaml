@@ -1,0 +1,17 @@
+# clang-tidy for the integrity job (.github/workflows/integrity.yml), on the files a pull request
+# changes. A short, fixed list (v1.11.0): likely bugs, performance, unused code, duplicate
+# includes; magic numbers are reported but do not fail the job (a synth is full of meaningful
+# numbers, and the review decides which deserve a name). Easily swappable parameters is left out:
+# DSP code passes runs of floats by design, and it would flag nearly every function.
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  performance-*,
+  misc-unused-*,
+  readability-duplicate-include,
+  cppcoreguidelines-avoid-magic-numbers
+WarningsAsErrors: >
+  *,
+  -cppcoreguidelines-avoid-magic-numbers
+HeaderFilterRegex: ''

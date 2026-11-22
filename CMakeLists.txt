@@ -40,6 +40,25 @@ if(NEONSYNTH_WARNINGS_AS_ERRORS)
     endif()
 endif()
 
+# The integrity job (v1.11.0, .github/workflows/integrity.yml): Clang's warnings for code that is
+# never used or never reached, and for every kind of shadowing (the name clash MSVC found in
+# v1.10.0 included), which GCC and MSVC do not give. Only NeonSynth's own files get them (the
+# processor and the tests, and through them every header in src/): JUCE's module sources are
+# compiled into the same targets and are not written for these warnings, and JUCE's headers
+# count as system headers here, so they stay quiet too. With NEONSYNTH_WARNINGS_AS_ERRORS they
+# are errors. The source-file properties are set at the end of this file.
+option(NEONSYNTH_INTEGRITY "Clang only: extra warnings for unused and unreachable code and shadowing (the integrity job)" OFF)
+if(NEONSYNTH_INTEGRITY AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    message(FATAL_ERROR "NEONSYNTH_INTEGRITY needs Clang (configure with -DCMAKE_CXX_COMPILER=clang++)")
+endif()
+set(neonsynth_integrity_flags
+    -Wunreachable-code
+    -Wunused-member-function
+    -Wunused-private-field
+    -Wunused-template
+    -Wshadow-all
+    --system-header-prefix=juce_)
+
 # Sanitizer build (off by default): AddressSanitizer and UndefinedBehaviorSanitizer for the plugin
 # and every test program, so a memory error or undefined behaviour fails the tests instead of going
 # unnoticed. UB stops the program (-fno-sanitize-recover) rather than printing a warning ctest would
@@ -223,7 +242,7 @@ if(NEONSYNTH_BUILD_TESTS)
     #   StateFuzzTests        damaged and hostile sessions must not crash or break the processor (ctest)
     #   EditorTests           drives the editor offscreen with mouse events and paints it (ctest;
     #                         on Linux it needs an X display, e.g. xvfb-run)
-    foreach(program RenderBenchmark RealtimeSafetyTests ParameterLayoutTests SessionStateTests StateFuzzTests EditorTests PitchTests MidiModulationTests)
+    foreach(program RenderBenchmark RealtimeSafetyTests ParameterLayoutTests SessionStateTests StateFuzzTests EditorTests PitchTests MidiModulationTests VoiceStealingTests SweepTests)
         juce_add_console_app(${program} PRODUCT_NAME "${program}")
         juce_generate_juce_header(${program})
         target_sources(${program} PRIVATE tests/${program}.cpp src/plugin/NeonSynthProcessor.cpp)
@@ -245,7 +264,7 @@ if(NEONSYNTH_BUILD_TESTS)
             neonsynth_sanitize)
     endforeach()
 
-    foreach(program RealtimeSafetyTests ParameterLayoutTests SessionStateTests StateFuzzTests EditorTests PitchTests MidiModulationTests)
+    foreach(program RealtimeSafetyTests ParameterLayoutTests SessionStateTests StateFuzzTests EditorTests PitchTests MidiModulationTests VoiceStealingTests SweepTests)
         add_dependencies(unit_tests ${program})
         add_test(NAME ${program} COMMAND ${program})
     endforeach()
@@ -260,4 +279,10 @@ if(NEONSYNTH_BUILD_TESTS)
         set_tests_properties(${neonsynth_all_tests} PROPERTIES ENVIRONMENT
             "ASAN_OPTIONS=strict_string_checks=1:detect_stack_use_after_return=1:check_initialization_order=1;UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1:suppressions=${CMAKE_CURRENT_LIST_DIR}/tests/sanitizer-suppressions.txt")
     endif()
+endif()
+
+if(NEONSYNTH_INTEGRITY)
+    file(GLOB neonsynth_test_sources CONFIGURE_DEPENDS ${CMAKE_CURRENT_LIST_DIR}/tests/*.cpp)
+    set_source_files_properties(src/plugin/NeonSynthProcessor.cpp ${neonsynth_test_sources}
+        PROPERTIES COMPILE_OPTIONS "${neonsynth_integrity_flags}")
 endif()
