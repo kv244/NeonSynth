@@ -15,6 +15,7 @@
 #include "gui/CrtLookAndFeel.h"
 #include "gui/CrtFrame.h"
 #include "gui/SequencerView.h"
+#include "gui/PatternRow.h"
 #include "gui/HelpOverlay.h"
 #include "gui/SampleView.h"
 #include "gui/ShapeView.h"
@@ -554,41 +555,8 @@ public:
         seqRateAttachment = std::make_unique<ComboBoxAttachment> (apvts, "seqRate", seqRateCombo);
         seqModeAttachment = std::make_unique<ComboBoxAttachment> (apvts, "seqMode", seqModeCombo);
 
-        // v1.11.0: the pattern row. LENGTH, KEY and SCALE are parameters; TOOLS, ENTER and UNDO
-        // act on the pattern (agent A gives them their behaviour).
-        for (auto* combo : { &seqLengthCombo, &seqKeyCombo, &seqScaleCombo })
-        {
-            combo->setColour (juce::ComboBox::outlineColourId, neon::amber);
-            combo->setColour (juce::ComboBox::textColourId,    neon::amber);
-            combo->setColour (juce::ComboBox::arrowColourId,   neon::amber);
-            content.addAndMakeVisible (combo);
-        }
-        for (int n = 1; n <= StepSequencer::numSteps; ++n)
-            seqLengthCombo.addItem (juce::String (n) + (n == 1 ? " step" : " steps"), n);
-        seqKeyCombo.addItemList ({ "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" }, 1);
-        seqScaleCombo.addItemList ({ "Scale off", "Major", "Dorian", "Phrygian", "Lydian", "Mixolydian",
-                                     "Natural minor", "Locrian", "Harmonic minor", "Major pentatonic",
-                                     "Minor pentatonic", "Blues", "Whole tone" }, 1);   // same order as the parameter
-        seqLengthCombo.setTooltip ("Pattern length: the pattern repeats after this many steps (try 5 or 7 against the beat)");
-        seqKeyCombo.setTooltip ("Key of the scale lock");
-        seqScaleCombo.setTooltip ("Scale lock: notes you set on the steps snap to this scale. Notes already there stay");
-        seqLengthAttachment = std::make_unique<ComboBoxAttachment> (apvts, "seqLength", seqLengthCombo);
-        seqKeyAttachment    = std::make_unique<ComboBoxAttachment> (apvts, "seqKey",    seqKeyCombo);
-        seqScaleAttachment  = std::make_unique<ComboBoxAttachment> (apvts, "seqScale",  seqScaleCombo);
-
-        for (auto* button : { &seqToolsButton, &seqEnterButton, &seqUndoButton })
-        {
-            button->setColour (juce::TextButton::buttonColourId,   juce::Colours::transparentBlack);
-            button->setColour (juce::TextButton::buttonOnColourId, neon::amber.withAlpha (0.30f));
-            button->setColour (juce::TextButton::textColourOffId,  neon::amber.withAlpha (0.8f));
-            button->setColour (juce::TextButton::textColourOnId,   neon::amber);
-            button->setColour (juce::ComboBox::outlineColourId,    neon::amber.withAlpha (0.6f));
-            content.addAndMakeVisible (button);
-        }
-        seqEnterButton.setClickingTogglesState (true);
-        seqToolsButton.setTooltip ("Pattern tools: shift, octave up or down, reverse, clear, randomise in the scale");
-        seqEnterButton.setTooltip ("Enter notes from the keyboard: click a step, then play; each key fills a step and moves on");
-        seqUndoButton.setTooltip ("Undo the last change to the pattern (Ctrl+Z)");
+        // v1.11.0: the pattern row (LENGTH, KEY, SCALE, TOOLS, ENTER, UNDO), one component; see PatternRow.h.
+        content.addAndMakeVisible (patternRow);
 
         content.addAndMakeVisible (stepGrid);
 
@@ -674,9 +642,8 @@ public:
             { &loadButton, "loadButton" }, { &padButton, "padButton" },
             { &voiceLeds, "voiceCount" }, { &helpButton, "helpButton" }, { &helpOverlay, "helpOverlay" },
             { &scanlinesButton, "scanlinesButton" }, { &scanlines, "scanlines" },
-            { &presetBar, "presetBar" }, { &holdButton, "hold" }, { &glideKnob, "glide" }, { &legatoButton, "legato" },
-            { &seqLengthCombo, "seqLength" }, { &seqKeyCombo, "seqKey" }, { &seqScaleCombo, "seqScale" },
-            { &seqToolsButton, "seqTools" }, { &seqEnterButton, "seqEnter" }, { &seqUndoButton, "seqUndo" } };
+            { &presetBar, "presetBar" }, { &holdButton, "hold" }, { &glideKnob, "glide" }, { &legatoButton, "legato" } };
+        // (v1.11.0: the pattern row gives its six controls their IDs, seqLength ... seqUndo, itself.)
         for (const auto& [component, id] : ids)
             component->setComponentID (id);
 
@@ -722,6 +689,7 @@ public:
     {
         if (key == juce::KeyPress::escapeKey && helpOverlay.dismiss())
             return true;
+        if (patternRow.handleUndoKey (key)) return true;   // v1.11.0: Ctrl+Z, pattern undo
         return AudioProcessorEditor::keyPressed (key);
     }
 
@@ -925,12 +893,7 @@ private:
         seqGateSlider.setBounds (1100, 652, 92, 28);
         seqGateReadout.setBounds (1196, 656, 52, 20);
         // The pattern row (v1.11.0), then the grid, 30 px shorter than before.
-        seqLengthCombo.setBounds (150, 690, 104, 24);
-        seqKeyCombo.setBounds (262, 690, 60, 24);
-        seqScaleCombo.setBounds (326, 690, 168, 24);
-        seqToolsButton.setBounds (502, 690, 84, 24);
-        seqEnterButton.setBounds (594, 690, 80, 24);
-        seqUndoButton.setBounds (682, 690, 72, 24);
+        patternRow.setBounds (150, 690, 604, 24);   // LENGTH 150, KEY 262, SCALE 326, TOOLS 502, ENTER 594, UNDO 682
         stepGrid.setBounds (32, 722, 1216, 112);
 
         helpOverlay.setBounds (0, 0, baseWidth, baseHeight);
@@ -1523,10 +1486,8 @@ private:
     std::unique_ptr<ButtonAttachment>   seqOnAttachment, seqSyncAttachment;
     std::unique_ptr<SliderAttachment>   seqTempoAttachment, seqSwingAttachment, seqGateAttachment;
     std::unique_ptr<ComboBoxAttachment> seqRateAttachment, seqModeAttachment;
-    // v1.11.0: the pattern row
-    juce::ComboBox     seqLengthCombo, seqKeyCombo, seqScaleCombo;
-    juce::TextButton   seqToolsButton { "TOOLS" }, seqEnterButton { "ENTER" }, seqUndoButton { "UNDO" };
-    std::unique_ptr<ComboBoxAttachment> seqLengthAttachment, seqKeyAttachment, seqScaleAttachment;
+    // v1.11.0: the pattern row (after stepGrid, which it hooks into)
+    PatternRow         patternRow { processor, stepGrid };
 
     // Modulation (v1.9.0)
     LfoView          lfoView;

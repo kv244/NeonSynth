@@ -730,6 +730,7 @@ void NeonSynthProcessor::buildPlayMidi (const juce::MidiBuffer& input, int numSa
     settings.rate  = (StepSequencer::Rate) seqRateParameter->getIndex();
     settings.swing = seqSwingParameter->get();
     settings.gate  = seqGateParameter->get();
+    settings.length = seqLengthParameter->get();   // v1.11.0 (region A); 16, the default, plays as before
 
     if (mode == SequencerMode::transpose)
     {
