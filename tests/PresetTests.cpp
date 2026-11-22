@@ -547,7 +547,7 @@ namespace
             inside = inside && c != nullptr && bar.getLocalBounds().contains (c->getBounds()) && c->getWidth() >= 30;
         for (const auto* a : { prev, name, next, saveButton })
             for (const auto* b : { prev, name, next, saveButton })
-                apart = apart && (a == b || a == nullptr || b == nullptr || ! a->getBounds().intersects (b->getBounds()));
+                apart = apart && (a == b || ! a->getBounds().intersects (b->getBounds()));   // inside: none is null
         check (inside && apart, "they fit in the bar's 308 x 32 without overlapping");
         check (bar.getShownName() == "Glass Bell" && bar.getShownCategory() == "Keys", "the bar shows the preset and its category");
 

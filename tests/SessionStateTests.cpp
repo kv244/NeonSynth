@@ -70,7 +70,7 @@ namespace
         writer->writeFromAudioSampleBuffer (b, 0, b.getNumSamples());
     }
 
-    juce::String currentHash (NeonSynthProcessor& p)
+    juce::String currentHash (const NeonSynthProcessor& p)
     {
         return p.withCurrentSample ([] (const SampleData* s) { return s != nullptr ? s->getHash() : juce::String(); });
     }
@@ -327,7 +327,7 @@ int main (int argc, char* argv[])
         // Windows' 1 MB main-thread stack.
         auto freshProcessor = std::make_unique<NeonSynthProcessor>();   // the defaults: pattern, CHOP, sample
         auto& fresh = *freshProcessor;
-        auto patternIs = [] (NeonSynthProcessor& a, auto&& expected)
+        auto patternIs = [] (const NeonSynthProcessor& a, auto&& expected)
         {
             for (int i = 0; i < StepSequencer::numSteps; ++i)
             {

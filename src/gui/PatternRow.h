@@ -161,7 +161,6 @@ public:
     }
 
     bool canUndo() const noexcept           { return history.canUndo(); }
-    bool isEntryArmed() const noexcept      { return entry.isArmed(); }
 
 private:
     using ComboBoxAttachment = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
@@ -250,9 +249,7 @@ private:
     /** Writes the steps that differ (each one tells the host the state changed). */
     void writePattern (const StepSequencer::Pattern& pattern)
     {
-        for (int i = 0; i < StepSequencer::numSteps; ++i)
-            if (! (processor.getSequencerStep (i) == pattern[(size_t) i]))
-                processor.setSequencerStep (i, pattern[(size_t) i]);
+        processor.setSequencerPattern (pattern);   // one host notification, however many steps change
         grid.refresh();
     }
 

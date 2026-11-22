@@ -170,8 +170,6 @@ namespace neon::crt
 
         void resized() override { cache.invalidate(); }
 
-        const CachedPainter& getCache() const noexcept { return cache; }
-
     private:
         CachedPainter cache;
     };

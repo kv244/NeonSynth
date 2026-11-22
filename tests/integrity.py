@@ -313,6 +313,9 @@ CPPCHECK_SUPPRESSIONS = [
     ("badBitmaskCheck", "src/plugin/NeonSynthProcessor.cpp", "keyboardChannel - 1 is 0 on purpose: the channel bits are replaced"),
     ("knownConditionTrueFalse", "tests/EditorTests.cpp", "the page cache's count changes inside paint calls cppcheck does not follow"),
     ("knownConditionTrueFalse", "tests/SampleDataTests.cpp", "where no hash was recorded for the platform, the pad is compared with itself"),
+    ("knownConditionTrueFalse", "tests/PresetTests.cpp", "the host's counters change inside pumpMessages(), on the message thread, which cppcheck does not follow"),
+    ("knownArgument", "tests/PresetTests.cpp", "the same: the counter is read again after pumpMessages()"),
+    ("unusedFunction", "src/state/PresetManager.h", "compareElements is the comparator juce::Array::sort calls by name"),
 ]
 JUCE_ENTRY_POINTS = {"createPluginFilter", "createEditor"}   # called by JUCE's plugin wrappers
 

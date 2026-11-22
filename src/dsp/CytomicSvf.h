@@ -221,7 +221,6 @@ public:
         return std::abs (num / den);
     }
 
-    float getG() const noexcept   { return g; }
     float getK() const noexcept   { return R2; }
 
 private:

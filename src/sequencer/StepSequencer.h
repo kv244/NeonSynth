@@ -195,16 +195,8 @@ public:
                  : Step {};
     }
 
-    /** v1.11.0: all 16 steps at once, for the editor's tools and undo. Message thread. */
+    /** v1.11.0: all 16 steps at once, as the pattern tools and undo work on them. */
     using Pattern = std::array<Step, numSteps>;
-
-    Pattern getPattern() const noexcept
-    {
-        Pattern p;
-        for (int i = 0; i < numSteps; ++i)
-            p[(size_t) i] = getStep (i);
-        return p;
-    }
 
     /** Index of the step that most recently started, or -1 while stopped. For the GUI playhead. */
     int getCurrentStep() const noexcept   { return currentStep.load (std::memory_order_relaxed); }
@@ -513,13 +505,13 @@ private:
         {
             // The held note becomes this step's note: no note-on. It carries on if this step
             // ties or slides too, otherwise it ends `gate` after this step's start.
-            auto& p = pending[(size_t) held];
             if (step.tie || step.slide)
             {
                 carry = step.tie ? Carry::tie : Carry::slide;
             }
             else
             {
+                auto& p = pending[(size_t) held];
                 p.held = false;
                 p.samplesLeft = offset + gateSamples;
             }

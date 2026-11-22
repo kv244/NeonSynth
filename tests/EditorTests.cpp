@@ -79,7 +79,7 @@ namespace
     }
 
     /** True if the component and all its parents up to the editor are visible. */
-    bool showing (juce::Component& c, juce::Component& editor)
+    bool showing (juce::Component& c, const juce::Component& editor)
     {
         for (auto* p = &c; p != nullptr && p != &editor; p = p->getParentComponent())
             if (! p->isVisible())

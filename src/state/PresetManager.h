@@ -140,14 +140,14 @@ public:
         if (preset.pattern != nullptr)
         {
             auto* pattern = xml->createNewChildElement ("Pattern");
-            for (const auto& step : parsePattern (preset.pattern))
+            for (const auto& parsed : parsePattern (preset.pattern))
             {
                 auto* s = pattern->createNewChildElement ("Step");
-                s->setAttribute ("on", step.on ? 1 : 0);
-                s->setAttribute ("note", step.note);
-                s->setAttribute ("velocity", step.velocity);
-                if (step.tie)   s->setAttribute ("tie", 1);
-                if (step.slide) s->setAttribute ("slide", 1);
+                s->setAttribute ("on", parsed.on ? 1 : 0);
+                s->setAttribute ("note", parsed.note);
+                s->setAttribute ("velocity", parsed.velocity);
+                if (parsed.tie)   s->setAttribute ("tie", 1);
+                if (parsed.slide) s->setAttribute ("slide", 1);
             }
         }
         if (preset.chop != nullptr)
@@ -168,27 +168,27 @@ public:
     /** Parses one step: "-D#3:90~". C4 = 60. */
     static PatternStep parseStep (juce::String token)
     {
-        PatternStep step;
-        step.on = ! token.startsWithChar ('-');
+        PatternStep parsed;
+        parsed.on = ! token.startsWithChar ('-');
         token = token.trimCharactersAtStart ("-");
-        step.tie   = token.endsWithChar ('~');
-        step.slide = token.endsWithChar ('/');
+        parsed.tie   = token.endsWithChar ('~');
+        parsed.slide = token.endsWithChar ('/');
         token = token.trimCharactersAtEnd ("~/");
 
         const auto name = token.upToFirstOccurrenceOf (":", false, false);
         if (token.containsChar (':'))
-            step.velocity = token.fromFirstOccurrenceOf (":", false, false).getIntValue();
+            parsed.velocity = token.fromFirstOccurrenceOf (":", false, false).getIntValue();
 
         const int pitchClass = juce::String ("C D EF G A B").indexOfChar (name[0]);
         if (pitchClass < 0 || name.length() < 2)
-            return step;
+            return parsed;
         const bool sharp = name[1] == '#';
         const auto octave = name.substring (sharp ? 2 : 1);
         if (octave.isEmpty() || ! octave.trimCharactersAtStart ("-").containsOnly ("0123456789"))
-            return step;
-        step.note = 12 * (octave.getIntValue() + 1) + pitchClass + (sharp ? 1 : 0);
-        step.valid = juce::isPositiveAndBelow (step.note, 128) && step.velocity >= 1 && step.velocity <= 127;
-        return step;
+            return parsed;
+        parsed.note = 12 * (octave.getIntValue() + 1) + pitchClass + (sharp ? 1 : 0);
+        parsed.valid = juce::isPositiveAndBelow (parsed.note, 128) && parsed.velocity >= 1 && parsed.velocity <= 127;
+        return parsed;
     }
 
     static std::vector<PatternStep> parsePattern (const char* text)

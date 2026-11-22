@@ -36,7 +36,7 @@ public:
     bool isMidiEffect() const override { return false; }
 
     /** Release time plus the 5 ms hard-stop fade (the envelope's release is linear and exact). */
-    double getTailLengthSeconds() const override { return (double) releaseParameter->get() + 0.005; }
+    double getTailLengthSeconds() const override { return (double) releaseParameter->get() + NeonSynthVoice::hardStopFadeSeconds; }
 
     // v1.11.0, region C (presets): the 16 factory presets are the host's program list. The current
     // program is the factory preset loaded last, remembered with the session (PresetManager.h); 0
@@ -127,6 +127,10 @@ public:
         marked as modified.
     */
     void setSequencerStep (int index, const StepSequencer::Step& step);
+
+    /** v1.11.0: writes every step that differs from `pattern`, then tells the host once (the
+        pattern tools, undo and ENTER). Message thread. */
+    void setSequencerPattern (const StepSequencer::Pattern& pattern);
 
     /**
         v1.11.0, ENTER: while armed, every keyboard note-on is also queued for the editor, which

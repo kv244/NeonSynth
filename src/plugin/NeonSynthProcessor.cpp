@@ -570,6 +570,23 @@ void NeonSynthProcessor::setSequencerStep (int index, const StepSequencer::Step&
     updateHostDisplay (ChangeDetails().withNonParameterStateChanged (true));
 }
 
+void NeonSynthProcessor::setSequencerPattern (const StepSequencer::Pattern& pattern)
+{
+    // v1.11.0: the pattern tools, undo and ENTER change several steps at once; the host is told
+    // once, not once per step. Message thread, like setSequencerStep().
+    bool changed = false;
+    for (int i = 0; i < StepSequencer::numSteps; ++i)
+    {
+        if (! (sequencer.getStep (i) == pattern[(size_t) i]))
+        {
+            sequencer.setStep (i, pattern[(size_t) i]);
+            changed = true;
+        }
+    }
+    if (changed)
+        updateHostDisplay (ChangeDetails().withNonParameterStateChanged (true));
+}
+
 void NeonSynthProcessor::trackHeldKey (int note, bool isDown) noexcept
 {
     // Remove the key if present, then (for a key-down) append it as the most recent.

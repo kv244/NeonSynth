@@ -394,7 +394,7 @@ namespace
                 if (voicesOn != nullptr)
                 {
                     int on = 0;
-                    for (auto* v : voices)
+                    for (const auto* v : voices)
                         on += v->getTelemetry().active ? 1 : 0;
                     voicesOn->push_back (on);
                 }

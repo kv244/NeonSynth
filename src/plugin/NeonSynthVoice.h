@@ -43,6 +43,14 @@ public:
 class NeonSynthVoice : public juce::SynthesiserVoice
 {
 public:
+    /** The hard stop's fade (a stolen or cut voice): the envelope's linear release, and the tail
+        the processor reports to the host on top of RELEASE. */
+    static constexpr double hardStopFadeSeconds = 0.005;
+
+    /** The crossfade between two read positions of the sample (a retrigger, or a move to
+        another copy of the sample), short enough not to smear an attack. */
+    static constexpr double sampleCrossfadeSeconds = 0.002;
+
     /** Where a note's sound comes from (the Source parameter's order). */
     enum class Source { oscillator = 0, sample = 1, granular = 2, random = 3 };
 
@@ -312,7 +320,7 @@ public:
         // a click, a stolen voice's next note retriggers it from where it is, and when the fade
         // ends the voice resets it.
         hardStopping = true;
-        adsr.setParameters ({ 0.001f, 0.001f, 1.0f, 0.005f });
+        adsr.setParameters ({ 0.001f, 0.001f, 1.0f, (float) hardStopFadeSeconds });
         adsr.noteOff();
         clearCurrentNote();
     }
@@ -667,7 +675,7 @@ private:
         if (source == Source::sample && reader.isActive() && ! reader.hasFinished() && adsr.isActive())
         {
             reader.swapWith (fadingReader);   // fadingReader now holds the old note and its sample reference
-            fadingSamplesLeft = fadingSamplesTotal = juce::jmax (1, (int) (0.002 * sampleRate));
+            fadingSamplesLeft = fadingSamplesTotal = juce::jmax (1, (int) (sampleCrossfadeSeconds * sampleRate));
         }
         fadingCopy = false;   // the new note starts at full level, whatever was fading
 
@@ -902,7 +910,7 @@ private:
 
         reader.copyNoteTo (fadingReader);   // the old copy, fading out from where the note is now
         reader.moveToLevel (wanted);
-        fadingSamplesLeft = fadingSamplesTotal = juce::jmax (1, (int) (0.002 * sampleRate));
+        fadingSamplesLeft = fadingSamplesTotal = juce::jmax (1, (int) (sampleCrossfadeSeconds * sampleRate));
         fadingCopy = true;
     }
 
