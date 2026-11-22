@@ -7,7 +7,8 @@
     rate accuracy from 0.02 to 20 Hz, output range, the synced phase from a song
     position and after a loop, free-running continuity across block sizes,
     Random repeating after reset() and changing only at wraps, the 2 ms slew and
-    the 10 ms shape crossfade, at 44.1, 48 and 96 kHz.
+    the 10 ms shape crossfade, at 44.1, 48 and 96 kHz; bars that follow the host's
+    time signature (v1.11.0), with 4/4 unchanged bit for bit.
 
     Build with CMake:  cmake -B build -DJUCE_DIR=... -DNEONSYNTH_BUILD_TESTS=ON
                        cmake --build build --target LfoTests
@@ -279,7 +280,7 @@ namespace
         for (int c = 0; c < 10; ++c)
         {
             const int start = c * period;
-            const float level = out[(size_t) (start + slew)];
+            const float level = out[(size_t) start + (size_t) slew];
             levels.push_back (level);
             for (int i = start + slew; i < start + period; ++i)
                 holds = holds && out[(size_t) i] == level;
@@ -345,6 +346,132 @@ namespace
         check (exact, "sine and triangle at 20 Hz are not slewed");
     }
 
+    /** A playing host's transport in a time signature (v1.11.0). */
+    Lfo::Transport hostAt (double ppq, double bpm, int numerator, int denominator, double barStart = -1.0)
+    {
+        Lfo::Transport t;
+        t.hostPlaying = true;
+        t.ppq = ppq;
+        t.bpm = bpm;
+        t.beatsPerBar = 4.0 * numerator / denominator;
+        t.hasBarStart = barStart >= 0.0;
+        t.barStartPpq = barStart >= 0.0 ? barStart : 0.0;
+        return t;
+    }
+
+    void testTimeSignature()
+    {
+        std::printf ("Bars follow the time signature (v1.11.0)\n");
+
+        check (Lfo::divisionBeats (Division::bars4) == 16.0 && Lfo::divisionBeats (Division::bars2) == 8.0
+               && Lfo::divisionBeats (Division::bar1) == 4.0 && Lfo::divisionBeats (Division::bar1, 4.0) == 4.0,
+               "4/4 (and no host): 4, 2 and 1 bars are 16, 8 and 4 beats, as before");
+        check (Lfo::divisionBeats (Division::bar1, 3.0) == 3.0 && Lfo::divisionBeats (Division::bars4, 3.0) == 12.0
+               && Lfo::divisionBeats (Division::bar1, 3.5) == 3.5 && Lfo::divisionBeats (Division::bars2, 3.5) == 7.0
+               && Lfo::divisionBeats (Division::bar1, 2.5) == 2.5,
+               "3/4, 7/8 and 5/8: a bar is 3, 3.5 and 2.5 beats");
+
+        bool noteLengths = true;
+        for (auto d : { Division::half, Division::quarter, Division::eighth, Division::sixteenth,
+                        Division::eighthTriplet, Division::sixteenthTriplet })
+            for (auto beatsPerBar : { 3.0, 3.5, 1.5, 6.0 })
+                noteLengths = noteLengths && Lfo::divisionBeats (d, beatsPerBar) == Lfo::divisionBeats (d);
+        check (noteLengths, "note lengths (1/2 .. 1/16T) stay in beats in every signature");
+
+        Lfo::Settings s;
+        s.shape = Shape::saw;
+        s.sync = true;
+        s.division = Division::bar1;
+        float x = 0.0f;
+        const double inc3 = 120.0 / 60.0 / 3.0 / 48000.0;
+
+        // Song position 4.5 in 3/4: halfway through the second bar (4/4 would say 0.125).
+        auto waltz = makeLfo (48000.0, s);
+        waltz.render (&x, 1, hostAt (4.5, 120.0, 3, 4, 3.0));
+        check (x == 0.0f && near (waltz.getPhase(), 0.5 + inc3, 1.0e-12), "3/4, ppq 4.5, 1 bar: phase 0.5 (saw = 0)");
+
+        // 7/8, 2 bars = 7 beats: ppq 10.5 is halfway through the cycle.
+        s.division = Division::bars2;
+        auto sevenEight = makeLfo (48000.0, s);
+        sevenEight.render (&x, 1, hostAt (10.5, 120.0, 7, 8, 7.0));
+        check (near (sevenEight.getPhase(), 0.5 + 120.0 / 60.0 / 7.0 / 48000.0, 1.0e-12), "7/8, ppq 10.5, 2 bars: phase 0.5");
+
+        // Free-running in 3/4 (host stopped, or synced with no song position): bpm / 60 / 3 beats.
+        s.division = Division::bar1;
+        auto stopped = makeLfo (48000.0, s);
+        Lfo::Transport idle;
+        idle.bpm = 90.0;
+        idle.beatsPerBar = 3.0;
+        std::vector<float> out (4800);
+        stopped.render (out.data(), 4800, idle);
+        check (near (stopped.getPhase(), 4800.0 * 90.0 / 60.0 / 3.0 / 48000.0, 1.0e-12), "3/4 with the host stopped: one cycle per 3 beats");
+
+        // The signature changed earlier: one bar of 3/4, then 4/4 from beat 3. Bars start at
+        // 3, 7, 11 ...; a 1-bar cycle must start on them (ppq / 4 would put beat 3 at 0.75).
+        auto changed = makeLfo (48000.0, s);
+        changed.render (&x, 1, hostAt (3.0, 120.0, 4, 4, 3.0));
+        const double inc4 = 120.0 / 60.0 / 4.0 / 48000.0;
+        const double atBarLine = changed.getPhase();
+        changed.render (&x, 1, hostAt (9.0, 120.0, 4, 4, 7.0));
+        check (near (atBarLine, inc4, 1.0e-12) && near (changed.getPhase(), 0.5 + inc4, 1.0e-12),
+               "after a 3/4 bar, 4/4 bars count from the host's bar line (beat 3: phase 0, beat 9: 0.5)");
+
+        // Counted from the bar line, 4-bar cycles keep their place along a stretch of one
+        // signature: the bars are counted as if 4/4 had held from the start (bar b + 1 here).
+        s.division = Division::bars4;
+        auto fourBars = makeLfo (48000.0, s);
+        bool steady = true;
+        for (int bar = 0; bar < 12; ++bar)
+        {
+            const double barStart = 3.0 + 4.0 * bar;
+            fourBars.render (&x, 1, hostAt (barStart + 2.0, 120.0, 4, 4, barStart));
+            steady = steady && near (fourBars.getPhase() - inc4 / 4.0, std::fmod ((bar + 1.5) / 4.0, 1.0), 1.0e-9);
+        }
+        check (steady, "4 bars after a signature change: a quarter cycle per bar, steady across 12 bars");
+
+        // 4/4 bit for bit: the new transport fields (bar line on the grid, or none) change nothing.
+        for (auto division : { Division::bars4, Division::bars2, Division::bar1, Division::quarter, Division::sixteenthTriplet })
+        {
+            s.division = division;
+            s.shape = Shape::sine;
+            auto before = makeLfo (44100.0, s);
+            auto after  = makeLfo (44100.0, s);
+            std::vector<float> a, b;
+            double ppq = 17.25;
+            for (int block = 0; block < 50; ++block)
+            {
+                Lfo::Transport old;
+                old.hostPlaying = true;
+                old.ppq = ppq;
+                old.bpm = 128.0;
+                const auto withBar = hostAt (ppq, 128.0, 4, 4, std::floor (ppq / 4.0) * 4.0);
+                std::vector<float> x1 (441), x2 (441);
+                before.render (x1.data(), 441, old);
+                after.render (x2.data(), 441, withBar);
+                a.insert (a.end(), x1.begin(), x1.end());
+                b.insert (b.end(), x2.begin(), x2.end());
+                ppq += 441.0 * 128.0 / 60.0 / 44100.0;
+            }
+            char what[120];
+            std::snprintf (what, sizeof (what), "4/4 with the host's bar lines renders as without them (division %d)", (int) division);
+            check (sameBits (a, b), what);
+        }
+
+        // A signature that makes no sense (a host bug) is taken as 4/4.
+        s.division = Division::bar1;
+        s.shape = Shape::saw;
+        bool fallback = true;
+        for (auto beatsPerBar : { 0.0, -3.0, 1000.0, std::nan ("") })
+        {
+            auto odd = makeLfo (48000.0, s);
+            auto t = hostAt (6.0, 120.0, 4, 4);
+            t.beatsPerBar = beatsPerBar;
+            odd.render (&x, 1, t);
+            fallback = fallback && near (odd.getPhase(), 0.5 + inc4, 1.0e-12);
+        }
+        check (fallback, "a bar of 0, negative, 1000 or NaN beats is taken as 4/4");
+    }
+
     void testCrossfade()
     {
         std::printf ("Shape crossfade\n");
@@ -394,6 +521,7 @@ int main()
     testRandom();
     testSlew();
     testCrossfade();
+    testTimeSignature();
 
     if (failures == 0)
         std::printf ("LfoTests: all passed\n");

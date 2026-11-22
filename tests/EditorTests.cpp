@@ -985,6 +985,36 @@ int main()
             check (taken && ! showing (*help, ed) && ! helpButton->getToggleState(),
                    "Esc on a knob closes the help page and releases ?");
             check (knob != nullptr && ! sendKey (knob, escape), "Esc with the help page closed is left for the host");
+
+            // v1.11.0: a host that keeps the key from every component. The overlay reads the
+            // key's state instead; here a stand-in for the system's key state.
+            if (auto* overlay = dynamic_cast<HelpOverlay*> (help))
+            {
+                bool escapeDown = true;   // held as the page opens: that press doesn't count
+                overlay->isEscapeHeldInFront = [&escapeDown] { return escapeDown; };
+                helpButton->triggerClick();
+                pump();
+                overlay->pollEscapeKey();
+                const bool stayedOpen = showing (*help, ed);
+                escapeDown = false;
+                overlay->pollEscapeKey();
+                escapeDown = true;   // a fresh press, which no component was sent
+                overlay->pollEscapeKey();
+                pump();
+                check (stayedOpen && ! showing (*help, ed) && ! helpButton->getToggleState(),
+                       "Esc the host keeps to itself still closes the help page (a fresh press only) and releases ?");
+
+                // Through the timer, as in a host: open, press, wait a few ticks.
+                escapeDown = false;
+                helpButton->triggerClick();
+                pump();
+                escapeDown = true;
+                for (int i = 0; i < 20 && showing (*help, ed); ++i)
+                    juce::MessageManager::getInstance()->runDispatchLoopUntil (10);
+                check (! showing (*help, ed) && ! helpButton->getToggleState(), "the key's state is read on a timer while the page is open");
+                overlay->isEscapeHeldInFront = [] { return false; };
+            }
+            else check (false, "the help page is a HelpOverlay");
         }
         else check (false, "view buttons, views and help page found");
     }

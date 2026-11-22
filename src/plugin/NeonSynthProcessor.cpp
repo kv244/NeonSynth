@@ -607,7 +607,8 @@ Lfo::Transport NeonSynthProcessor::lfoTransport() const
 {
     // A playing host sets the LFO's phase from its song position (when SYNC is on); otherwise the
     // LFO free-runs, at the host's tempo when there is one, else at the Sequencer Tempo parameter.
-    Lfo::Transport transport { false, 0.0, (double) seqTempoParameter->get() };
+    Lfo::Transport transport;
+    transport.bpm = (double) seqTempoParameter->get();
 
     if (auto* hostPlayHead = getPlayHead())
     {
@@ -616,10 +617,21 @@ Lfo::Transport NeonSynthProcessor::lfoTransport() const
             if (const auto bpm = position->getBpm(); bpm.hasValue())
                 transport.bpm = *bpm;
 
+            // v1.11.0: the bar divisions follow the host's time signature (4/4 gives 4 beats,
+            // exactly as before); Lfo::render() falls back to 4/4 for a signature that makes no sense.
+            if (const auto signature = position->getTimeSignature(); signature.hasValue() && signature->numerator > 0 && signature->denominator > 0)
+                transport.beatsPerBar = 4.0 * (double) signature->numerator / (double) signature->denominator;
+
             if (const auto ppq = position->getPpqPosition(); ppq.hasValue() && position->getIsPlaying())
             {
                 transport.hostPlaying = true;
                 transport.ppq = *ppq;
+
+                if (const auto barStart = position->getPpqPositionOfLastBarStart(); barStart.hasValue())
+                {
+                    transport.hasBarStart = true;
+                    transport.barStartPpq = *barStart;
+                }
             }
         }
     }

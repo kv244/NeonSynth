@@ -250,8 +250,12 @@ private:
             if (! stealIfNoneAvailable)
                 return nullptr;
 
-            // Steal within the first N: the same note if it is already sounding, else the oldest
-            // voice whose key is up (in its release), else the oldest of all.
+            // Steal within the first N: the oldest voice already playing this note, else the oldest
+            // released voice, else the oldest of all. Released means in its release: key up and
+            // not held by the sustain pedal (v1.11.0 fix: a pedal-held note counted as released,
+            // and of two voices on the same note the lower one was taken, not the older;
+            // VoiceStealingTests).
+            juce::SynthesiserVoice* oldestSameNote = nullptr;
             juce::SynthesiserVoice* oldestReleased = nullptr;
             juce::SynthesiserVoice* oldest = nullptr;
             for (int i = 0; i < limit; ++i)
@@ -259,14 +263,14 @@ private:
                 auto* v = getVoice (i);
                 if (! v->canPlaySound (sound))
                     continue;
-                if (v->getCurrentlyPlayingNote() == midiNoteNumber)
-                    return v;
-                if (! v->isKeyDown() && (oldestReleased == nullptr || v->wasStartedBefore (*oldestReleased)))
+                if (v->getCurrentlyPlayingNote() == midiNoteNumber && (oldestSameNote == nullptr || v->wasStartedBefore (*oldestSameNote)))
+                    oldestSameNote = v;
+                if (v->isPlayingButReleased() && (oldestReleased == nullptr || v->wasStartedBefore (*oldestReleased)))
                     oldestReleased = v;
                 if (oldest == nullptr || v->wasStartedBefore (*oldest))
                     oldest = v;
             }
-            return oldestReleased != nullptr ? oldestReleased : oldest;
+            return oldestSameNote != nullptr ? oldestSameNote : oldestReleased != nullptr ? oldestReleased : oldest;
         }
 
     private:
