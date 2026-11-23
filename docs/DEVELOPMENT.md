@@ -237,13 +237,14 @@ python tests/compare_versions.py old/NeonSynth.vst3 build/NeonSynth_artefacts/Re
 
 `docs/demo/make_demo.py` renders the demo piece linked from the README: six instances of the
 VST3, one per part, summed and saved as a WAV file. It is also the fullest example of driving
-the plugin from Python (parameters by name, MIDI at exact samples, automation every 25 ms).
+the plugin from Python (parameters by name, MIDI at exact samples including the mod wheel and pitch
+bend, automation every 25 ms, and a sequencer pattern with ties and slides written into the saved state).
 
 ```bash
 python docs/demo/make_demo.py build/NeonSynth_artefacts/Release/VST3/NeonSynth.vst3 demo.wav
 ```
 
-The Random and Granular parts are random, so two renders differ slightly. For that reason the WAV is not kept in git, where every re-render would add another 6 MB of history. The README links to the single copy on the `demo` release; after a re-render, replace it with `gh release upload demo docs/demo/neonsynth-demo.wav --clobber`.
+The Random and Granular parts are random, so two renders differ slightly. For that reason the WAV is not kept in git, where every re-render would add another 8 MB of history. The README links to the single copy on the `demo` release; after a re-render, replace it with `gh release upload demo docs/demo/neonsynth-demo.wav --clobber`.
 
 ### MIDI Logging
 
