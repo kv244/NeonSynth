@@ -340,7 +340,7 @@ def run_cppcheck():
     if exe is None:
         print("cppcheck is not installed (apt install cppcheck)")
         return 2
-    command = [exe, "--enable=unusedFunction,style", "--std=c++17", "--language=c++", "-I", "src",
+    command = [exe, "--enable=unusedFunction,style", "--std=c++20", "--language=c++", "-I", "src",
                "--inline-suppr", "--quiet", "--template={file}|{line}|{severity}|{id}|{message}"]
     command += [f"--suppress={check}:{file}" for check, file, _ in CPPCHECK_SUPPRESSIONS]
     command += ["src", "tests"]

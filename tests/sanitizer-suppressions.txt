@@ -9,5 +9,6 @@
 nonnull-attribute:juce_MemoryBlock.cpp
 
 # FlacReader shifts negative samples left (src[j] << bitsToShift) to left-justify them. Undefined
-# in C++17 (defined in C++20 as the multiplication every compiler already does).
+# in C++17; defined in C++20 (which NeonSynth uses since the C++20 step) as the multiplication every
+# compiler already does. Kept because a compiler's UBSan may still report it.
 shift-base:juce_FlacAudioFormat.cpp

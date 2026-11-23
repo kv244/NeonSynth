@@ -6,7 +6,7 @@
 [![Release](https://github.com/kv244/NeonSynth/actions/workflows/release.yml/badge.svg)](https://github.com/kv244/NeonSynth/actions/workflows/release.yml)
 [![Latest release](https://img.shields.io/github/v/release/kv244/NeonSynth)](https://github.com/kv244/NeonSynth/releases/latest)
 
-A virtual analog synthesizer with the look of an old phosphor monitor, built with JUCE and C++17,
+A virtual analog synthesizer with the look of an old phosphor monitor, built with JUCE and C++20,
 by **Razvan Julian Petrescu** / **AudioDSP**.
 
 NeonSynth is a learning synthesizer for musicians and coders: every control shows what it does to the sound,
@@ -79,7 +79,7 @@ may ask you to confirm. The manual's first chapters cover setup in detail.
 
 ## Building
 
-You need CMake 3.22 or newer, a C++17 compiler (MSVC 2022, Clang or GCC) and git.
+You need CMake 3.22 or newer, a C++20 compiler (MSVC 2022, Clang 10 or GCC 10 or newer) and git.
 [JUCE 9.0.0](https://github.com/juce-framework/JUCE/releases/tag/9.0.0) comes by itself: the first
 configure downloads it (CMake's FetchContent, pinned to the 9.0.0 commit) into the build folder.
 

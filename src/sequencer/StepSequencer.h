@@ -147,7 +147,7 @@ public:
     static constexpr float defaultGate = 0.5f;
 
     /** The rate assumed until prepare() gives the real one (or when it gives none). */
-    static constexpr double defaultSampleRate = 44100.0;
+    static constexpr double placeholderSampleRate = 44100.0;
 
     //==========================================================================
     /** One step of the pattern. */
@@ -212,7 +212,7 @@ public:
     /** Call from prepareToPlay(). Clears any pending notes without emitting them. */
     void prepare (double newSampleRate) noexcept
     {
-        sampleRate = newSampleRate > 0.0 ? newSampleRate : defaultSampleRate;
+        sampleRate = newSampleRate > 0.0 ? newSampleRate : placeholderSampleRate;
         numPending = 0;
         carry = Carry::none;
         wasPlaying = false;
@@ -666,7 +666,7 @@ private:
     int    numPending   = 0;
     Carry  carry        = Carry::none;   ///< v1.11.0: a tie or slide from the last step that fired
     int    carryNote    = 0;             ///< ...and the note it holds
-    double sampleRate   = defaultSampleRate;
+    double sampleRate   = placeholderSampleRate;
     double expectedBeat = 0.0;
     bool   wasPlaying   = false;
 
