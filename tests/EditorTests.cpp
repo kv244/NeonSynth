@@ -45,6 +45,8 @@
 #include "gui/LevelMeter.h"
 #include "gui/AdsrView.h"
 #include "gui/NeonSynthEditor.h"
+#include "gui/HarmonicsView.h"
+#include "gui/SpectrumView.h"
 #include <array>
 #include <cmath>
 #include <cstdio>
@@ -328,6 +330,231 @@ namespace
         return count;
     }
 }
+
+//==============================================================================
+// v1.12.0: the HARMONICS view and the SPECTRUM's aliasing marks (agent B).
+namespace { namespace harmonicsTests
+{
+    bool near (float a, float b, float tolerance = 1.0e-4f)   { return std::abs (a - b) <= tolerance; }
+
+    bool sameSpectrum (const HarmonicSpectrum& a, const HarmonicSpectrum& b)
+    {
+        for (size_t i = 0; i < (size_t) HarmonicSpectrum::numHarmonics; ++i)
+            if (! near (a.levels[i], b.levels[i]) || ! near (a.phases[i], b.phases[i]))
+                return false;
+        return true;
+    }
+
+    /** Holds one note (or lets it go), rendering a few blocks so the voices report it. */
+    void playNote (NeonSynthProcessor& p, int note, bool on)
+    {
+        juce::AudioBuffer<float> buffer (2, 512);
+        for (int block = 0; block < 8; ++block)
+        {
+            juce::MidiBuffer midi;
+            if (block == 0)
+                midi.addEvent (on ? juce::MidiMessage::noteOn (1, note, (juce::uint8) 100) : juce::MidiMessage::noteOff (1, note), 0);
+            buffer.clear();
+            p.processBlock (buffer, midi);
+        }
+    }
+
+    void run (juce::AudioProcessorEditor& ed, NeonSynthProcessor& processor, GestureLog& gestures, Mouse& mouse)
+    {
+        std::printf ("\nHARMONICS view (v1.12.0): bars, presets, ZERO PHASE, BUILD\n");
+        ed.setSize (baseWidth, baseHeight);   // the checks below are at 100%
+        auto* viewButton = dynamic_cast<juce::Button*> (find (ed, "harmonicsButton"));
+        auto* scopeButton = dynamic_cast<juce::Button*> (find (ed, "scopeButton"));
+        auto* view = dynamic_cast<HarmonicsView*> (find (ed, "harmonicsView"));
+        if (viewButton == nullptr || scopeButton == nullptr || view == nullptr)
+        {
+            check (false, "the HARMONICS button and view found");
+            return;
+        }
+        const char* ids[] = { "harmonicsSine", "harmonicsSaw", "harmonicsSquare", "harmonicsTriangle", "zeroPhase", "build",
+                              "harmonics", "harmonicsReadout" };
+        scopeButton->triggerClick();
+        pump();
+        check (allShowing (ed, ids, std::size (ids), false), "its controls are hidden while SCOPE is shown");
+        viewButton->triggerClick();
+        pump();
+        check (allShowing (ed, ids, std::size (ids), true), "view 2 shows the presets, ZERO PHASE, BUILD, HARMONICS and the readout");
+
+        juce::StringArray noTip, outside, overlaps;
+        for (const auto* id : ids)
+            if (auto* c = find (ed, id))
+            {
+                if (auto* tip = dynamic_cast<juce::SettableTooltipClient*> (c); tip != nullptr && tip->getTooltip().isEmpty() && juce::String (id) != "harmonicsReadout")
+                    noTip.add (id);
+                if (! view->getLocalBounds().contains (view->getLocalArea (c, c->getLocalBounds())))
+                    outside.add (id);
+                for (const auto* other : ids)
+                    if (auto* o = find (ed, other); o != nullptr && o != c && juce::String (id) < juce::String (other)
+                                                    && boundsIn (ed, *c).intersects (boundsIn (ed, *o)))
+                        overlaps.add (juce::String (id) + "/" + other);
+            }
+        check (noTip.isEmpty(), "every control has a tooltip" + (noTip.isEmpty() ? juce::String() : " (none: " + noTip.joinIntoString (", ") + ")"));
+        check (outside.isEmpty() && overlaps.isEmpty(), "they lie inside the view and do not overlap"
+                                                            + (outside.isEmpty() && overlaps.isEmpty() ? juce::String() : " (" + outside.joinIntoString (", ") + overlaps.joinIntoString (", ") + ")"));
+
+        juce::StringArray small;
+        std::function<void (juce::Component&)> scan = [&] (juce::Component& c)
+        {
+            if (auto* label = dynamic_cast<juce::Label*> (&c); label != nullptr && label->getFont().getHeight() < 12.0f)
+                small.add (juce::String (label->getFont().getHeight(), 1) + " px");
+            for (auto* child : c.getChildren())
+                scan (*child);
+        };
+        scan (*view);
+        check (small.isEmpty(), "its labels are at least 12 px at 100%");
+
+        const auto click = [&] (const char* id) { if (auto* b = dynamic_cast<juce::Button*> (find (ed, id))) b->triggerClick(); pump(); };
+
+        // SQUARE (over a drawn cycle, which it drops), then the bars.
+        processor.setCycleDrawing (FourierState::Drawing {}, HarmonicSpectrum::sine());
+        click ("harmonicsSquare");
+        check (sameSpectrum (processor.getHarmonicSpectrum(), HarmonicSpectrum::square()), "SQUARE sets the square series (levels and phases)");
+        check (! processor.getCycleDrawing().has_value(), "and drops the drawn cycle, which no longer matches what plays");
+        click ("harmonicsTriangle");
+        check (sameSpectrum (processor.getHarmonicSpectrum(), HarmonicSpectrum::triangle()), "TRIANGLE sets the triangle series");
+
+        const auto bar5 = view->barBounds (5);
+        mouse.down (*view, { bar5.getCentreX(), bar5.getBottom() - 0.8f * bar5.getHeight() });
+        mouse.up (*view, { bar5.getCentreX(), bar5.getBottom() - 0.8f * bar5.getHeight() }, false);
+        check (near (processor.getHarmonicSpectrum().levels[4], 0.8f, 0.02f), "clicking bar 5 at 80% height sets harmonic 5 to 80% ("
+                                                                                + juce::String (processor.getHarmonicSpectrum().levels[4], 3) + ")");
+        check (near (processor.getHarmonicSpectrum().phases[4], HarmonicSpectrum::triangle().phases[4]), "and keeps its phase");
+
+        // A quick stroke across bars 10..16 at half height: every bar on the way is set, none skipped.
+        const auto b10 = view->barBounds (10), b16 = view->barBounds (16);
+        const float half = b10.getBottom() - 0.5f * b10.getHeight();
+        mouse.down (*view, { b10.getCentreX(), half });
+        mouse.drag (*view, { b16.getCentreX(), half });
+        mouse.up (*view, { b16.getCentreX(), half }, true);
+        bool allHalf = true;
+        for (int k = 10; k <= 16; ++k)
+            allHalf = allHalf && near (processor.getHarmonicSpectrum().levels[(size_t) (k - 1)], 0.5f, 0.02f);
+        check (allHalf, "a drag across bars 10 to 16 sets every one of them");
+
+        view->mouseDoubleClick (mouse.event (*view, { bar5.getCentreX(), half }, {}, false));
+        check (processor.getHarmonicSpectrum().levels[4] == 0.0f, "a double-click sets a bar to 0");
+
+        const auto before = processor.getHarmonicSpectrum();
+        click ("zeroPhase");
+        const auto after = processor.getHarmonicSpectrum();
+        bool zero = true, kept = true;
+        for (size_t i = 0; i < (size_t) HarmonicSpectrum::numHarmonics; ++i)
+        {
+            zero = zero && after.phases[i] == 0.0f;
+            kept = kept && after.levels[i] == before.levels[i];
+        }
+        check (zero && kept, "ZERO PHASE sets every phase to 0 and keeps the levels");
+
+        // BUILD: HARMONICS steps up over time, as one gesture; a second click stops it.
+        click ("harmonicsSaw");
+        auto* readout = dynamic_cast<juce::Label*> (find (ed, "harmonicsReadout"));
+        set (processor, "harmonics", 32.0f);
+        check (readout != nullptr && readout->getText() == "Gibbs: 9% overshoot at the jump", "SAW with all 32: the readout tells of Gibbs's 9% overshoot");
+        gestures.clear();
+        click ("build");
+        check (view->isBuilding() && juce::roundToInt (valueOf (processor, "harmonics")) == 1, "BUILD starts at 1 harmonic");
+        pump (2700);   // about 3 a second
+        const int midway = juce::roundToInt (valueOf (processor, "harmonics"));
+        check (midway >= 4 && midway < 32, "and adds them over time (" + juce::String (midway) + " after 2.7 s)");
+        check (readout != nullptr && readout->getText() == juce::String (midway) + " of 32", "the readout counts them (" + (readout != nullptr ? readout->getText() : juce::String()) + ")");
+        saveSnapshot (ed.createComponentSnapshot (ed.getLocalBounds(), true, 1.0f), "100-harmonics-build");
+        click ("build");
+        pump (500);
+        check (! view->isBuilding() && juce::roundToInt (valueOf (processor, "harmonics")) == midway, "a second click stops it where it is");
+        check (gestures.oneGesture (indexOf (processor, "harmonics")), "BUILD is one host gesture, begun and ended");
+        set (processor, "harmonics", 32.0f);
+
+        //======================================================================
+        std::printf ("\nSPECTRUM (v1.12.0): red marks where NAIVE's harmonics fold back\n");
+        check (SpectrumView::foldedFrequency (25000.0, 48000.0) == 23000.0 && SpectrumView::foldedFrequency (50000.0, 48000.0) == 2000.0
+                   && SpectrumView::foldedFrequency (10000.0, 48000.0) == 10000.0,
+               "folding at 48 kHz: 25 kHz lands at 23 kHz, 50 kHz at 2 kHz, 10 kHz stays");
+
+        SpectrumView::AliasSource saw;
+        saw.shown = true;
+        saw.waveform = PolyBlepOscillator::sawtooth;
+        saw.fundamentalHz = 5000.0f;
+        const auto sawMarks = SpectrumView::aliasMarks (saw, 48000.0);
+        check (sawMarks.size() == (size_t) SpectrumView::maxAliasMarks && sawMarks[0].harmonic == 5 && sawMarks[0].hz == 23000.0
+                   && near (sawMarks[0].relativeLevel, 0.2f) && sawMarks[1].harmonic == 6 && sawMarks[1].hz == 18000.0,
+               "saw at 5 kHz: harmonic 5 (25 kHz) lands at 23 kHz at 1/5 the level, 6 at 18 kHz; 48 marks");
+        auto square = saw;
+        square.waveform = PolyBlepOscillator::square;
+        const auto squareMarks = SpectrumView::aliasMarks (square, 48000.0);
+        bool odd = squareMarks.size() == (size_t) SpectrumView::maxAliasMarks;
+        for (const auto& m : squareMarks)
+            odd = odd && (m.harmonic % 2) == 1;
+        check (odd && squareMarks[0].harmonic == 5 && squareMarks[1].harmonic == 7, "square: odd harmonics only");
+        auto triangle = square;
+        triangle.waveform = PolyBlepOscillator::triangle;
+        const auto triangleMarks = SpectrumView::aliasMarks (triangle, 48000.0);
+        check (! triangleMarks.empty() && near (triangleMarks[0].relativeLevel, 1.0f / 25.0f), "triangle: 1/k squared");
+        auto sine = saw;
+        sine.waveform = PolyBlepOscillator::sine;
+        auto hidden = saw;
+        hidden.shown = false;
+        check (SpectrumView::aliasMarks (sine, 48000.0).empty() && SpectrumView::aliasMarks (hidden, 48000.0).empty(),
+               "a sine has none, and nothing is marked unless shown");
+        auto custom = saw;
+        custom.custom = true;
+        custom.harmonics = 8;
+        custom.levels.fill (0.5f);
+        custom.levels[5] = 0.0f;   // harmonic 6 silent
+        const auto customMarks = SpectrumView::aliasMarks (custom, 48000.0);
+        check (customMarks.size() == 3 && customMarks[0].harmonic == 5 && customMarks[1].harmonic == 7 && customMarks[2].harmonic == 8
+                   && near (customMarks[0].relativeLevel, 1.0f),
+               "CUSTOM: harmonics up to HARMONICS with a level, at their level");
+
+        // In the editor: NAIVE on, a high saw note.
+        auto* spectrumButton = dynamic_cast<juce::Button*> (find (ed, "spectrumButton"));
+        auto* spectrum = dynamic_cast<SpectrumView*> (find (ed, "spectrumView"));
+        if (spectrumButton == nullptr || spectrum == nullptr)
+        {
+            check (false, "the SPECTRUM button and view found");
+            return;
+        }
+        set (processor, "source", 0.0f);
+        set (processor, "waveform", (float) PolyBlepOscillator::sawtooth);
+        set (processor, "naive", 1.0f);
+        spectrumButton->triggerClick();
+        {
+            // Earlier checks leave notes sounding: stop them and let them finish their release first,
+            // since the marks follow the lowest sounding voice.
+            juce::AudioBuffer<float> buffer (2, 512);
+            juce::MidiBuffer allOff, none;
+            allOff.addEvent (juce::MidiMessage::allNotesOff (1), 0);
+            processor.processBlock (buffer, allOff);
+            const auto anyActive = [&processor]
+            {
+                for (const auto& v : processor.getVoiceViews())
+                    if (v.active.load())
+                        return true;
+                return false;
+            };
+            for (int block = 0; block < 4000 && anyActive(); ++block)
+                processor.processBlock (buffer, none);
+        }
+        playNote (processor, 96, true);
+        pump (70);
+        playNote (processor, 96, true);   // still held: more blocks, so the analyser has the note
+        pump (70);
+        check (! spectrum->getAliasMarks().empty() && spectrum->getAliasMarks()[0].harmonic == 12,
+               "NAIVE on and C7 (2093 Hz) playing: marks from harmonic 12 up (first: " + juce::String (spectrum->getAliasMarks().empty() ? 0 : spectrum->getAliasMarks()[0].harmonic) + ")");
+        saveSnapshot (ed.createComponentSnapshot (ed.getLocalBounds(), true, 1.0f), "100-spectrum-aliasing");
+        set (processor, "naive", 0.0f);
+        pump (70);
+        check (spectrum->getAliasMarks().empty(), "NAIVE off: no marks");
+        playNote (processor, 96, false);
+        set (processor, "waveform", 0.0f);
+        scopeButton->triggerClick();
+        pump();
+    }
+} }
 
 int main()
 {
@@ -1282,6 +1509,9 @@ int main()
                                        + (problems.isEmpty() ? juce::String() : " (failed: " + problems.joinIntoString (", ") + ")"));
         check (blank == 0, "none of them is a blank image");
     }
+
+    //==========================================================================
+    harmonicsTests::run (ed, processor, gestures, mouse);   // v1.12.0: the HARMONICS view and the aliasing marks
 
     //==========================================================================
     std::printf ("\nThe envelope tab and SCANLINES are kept with the plugin's state\n");

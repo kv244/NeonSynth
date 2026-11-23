@@ -79,6 +79,11 @@ NeonSynthEditor::NeonSynthEditor (NeonSynthProcessor& p)
     bendRangeValue = apvts.getRawParameterValue ("bendRange");
     vibratoValue   = apvts.getRawParameterValue ("vibrato");
     glideValue     = apvts.getRawParameterValue ("glide");   // v1.11.0
+    naiveValue     = apvts.getRawParameterValue ("naive");       // v1.12.0: the SPECTRUM's aliasing marks
+    customValue    = apvts.getRawParameterValue ("custom");
+    harmonicsValue = apvts.getRawParameterValue ("harmonics");
+    waveformValue  = apvts.getRawParameterValue ("waveform");
+    sourceValue    = apvts.getRawParameterValue ("source");
 
     // ── Oscillator ───────────────────────────────────────────────────────
     content.addAndMakeVisible (waveformCombo);
@@ -1271,8 +1276,11 @@ void NeonSynthEditor::timerCallback()
     if (oscilloscope.isVisible())
         oscilloscope.update (history, sampleRate, lowestHz);
     else
+    {
         spectrum.update (history, sampleRate, cutoffValue->load(), filterValue->load() >= 0.5f,
                          juce::roundToInt (filterModeValue->load()), filterResValue->load() * 0.01f);
+        spectrum.setAliasSource (aliasSourceNow (lowestHz));   // v1.12.0
+    }
 
     adsrView.update (attackValue->load(), decayValue->load(), sustainValue->load(), releaseValue->load(), &voices);
     filterAdsrView.update (filterAttackValue->load(), filterDecayValue->load(), filterSustainValue->load(),
@@ -1298,6 +1306,22 @@ void NeonSynthEditor::timerCallback()
     updateReadouts();
     synthProcessor.freeReplacedSamples();   // a sample replaced while notes played it, once they have ended
     patternRow.forgetHistoryIfStateLoaded();
+}
+
+SpectrumView::AliasSource NeonSynthEditor::aliasSourceNow (float lowestHz) const
+{
+    SpectrumView::AliasSource a;
+    a.shown = naiveValue->load() >= 0.5f && lowestHz > 0.0f
+           && juce::roundToInt (sourceValue->load()) == (int) NeonSynthVoice::Source::oscillator;
+    if (! a.shown)
+        return a;   // nothing else matters: comparing equal, it costs no recomputation
+    a.fundamentalHz = lowestHz;
+    a.custom    = customValue->load() >= 0.5f;
+    a.waveform  = juce::roundToInt (waveformValue->load());
+    a.harmonics = juce::roundToInt (harmonicsValue->load());
+    if (a.custom)
+        a.levels = synthProcessor.getHarmonicSpectrum().levels;
+    return a;
 }
 
 // The processor's editor is made here (v1.11.1), so NeonSynthProcessor.cpp needs no GUI header.
