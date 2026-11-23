@@ -539,6 +539,7 @@ private:
         // Slide: CC 68 on, the new note-on, the old note-off, CC 68 off, all at this sample.
         const int oldNote = pending[(size_t) held].note;
         removePending (held);
+        releaseSamePitch (midi, note, offset);   // before the mark: nothing may come between its four events
         midi.addEvent (juce::MidiMessage::controllerEvent (midiChannel, slideController, 127), offset);
         startNote (midi, note, step.velocity, offset, gateSamples);
         midi.addEvent (juce::MidiMessage::noteOff (midiChannel, oldNote), offset);
@@ -550,7 +551,9 @@ private:
     }
 
     /** Emits a note-on, first releasing the same note if it is still sounding. */
-    void startNote (juce::MidiBuffer& midi, int note, int velocity, int offset, int gateSamples) noexcept
+    /** Ends a pending note of this pitch, if any (by `offset`, or earlier if it was due earlier),
+        so the new note-on never lands on a note still sounding. */
+    void releaseSamePitch (juce::MidiBuffer& midi, int note, int offset) noexcept
     {
         for (int i = 0; i < numPending; ++i)
         {
@@ -562,14 +565,19 @@ private:
                 break;
             }
         }
+    }
 
-        midi.addEvent (juce::MidiMessage::noteOn (midiChannel, note, (juce::uint8) juce::jlimit (1, 127, velocity)), offset);
+    void startNote (juce::MidiBuffer& midi, int note, int velocity, int offset, int gateSamples) noexcept
+    {
+        releaseSamePitch (midi, note, offset);
 
-        if (numPending == (int) pending.size())   // queue full: release the oldest note now
+        if (numPending == (int) pending.size())   // queue full: release the oldest note, at its own time if that is sooner
         {
-            midi.addEvent (juce::MidiMessage::noteOff (midiChannel, pending[0].note), offset);
+            midi.addEvent (juce::MidiMessage::noteOff (midiChannel, pending[0].note), juce::jmin (offset, pending[0].samplesLeft));
             removePending (0);
         }
+
+        midi.addEvent (juce::MidiMessage::noteOn (midiChannel, note, (juce::uint8) juce::jlimit (1, 127, velocity)), offset);
         pending[(size_t) numPending++] = { note, offset + gateSamples };
     }
 

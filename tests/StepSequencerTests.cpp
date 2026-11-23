@@ -737,7 +737,7 @@ int main()
         bool inBlock = true, inRange = true, paired = true, inTime = true, allReleased = true, slidesMarked = true;
         int noteOns = 0, slides = 0;
 
-        for (int trial = 0; trial < 60; ++trial)
+        for (int trial = 0; trial < 300; ++trial)
         {
             StepSequencer seq;
             seq.prepare (trial % 3 == 0 ? 44100.0 : testSampleRate);
@@ -859,7 +859,7 @@ int main()
                 allReleased = allReleased && ! b;
         }
 
-        std::printf ("        (60 runs of 1000 blocks, %d note-ons, %d slides)\n", noteOns, slides);
+        std::printf ("        (300 runs of 1000 blocks, %d note-ons, %d slides)\n", noteOns, slides);
         check (noteOns > 2000, "the random runs play plenty of notes");
         check (inBlock, "every event lies inside its block");
         check (inRange, "every event is a note-on or note-off on channel 16, note 0..127, velocity 1..127");
