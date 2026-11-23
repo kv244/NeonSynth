@@ -286,11 +286,11 @@ private:
     static constexpr double continuingTolerance = 0.01;
 
     // Until prepare() gives the real rate: 48 kHz, and the crossfade's length at it (10 ms).
-    static constexpr double defaultSampleRate = 48000.0;
+    static constexpr double placeholderSampleRate = 48000.0;
     static constexpr int    defaultCrossfadeLength = 480;
 
-    double   sampleRate = defaultSampleRate;
-    float    maxStep = (float) (2.0 / (slewSeconds * defaultSampleRate));
+    double   sampleRate = placeholderSampleRate;
+    float    maxStep = (float) (2.0 / (slewSeconds * placeholderSampleRate));
     int      crossfadeLength = defaultCrossfadeLength;
     Settings settings;
     double   phase = 0.0;

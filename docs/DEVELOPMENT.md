@@ -14,7 +14,7 @@ Paths in this file are relative to the repository root.
 | CMake | 3.22+ (JUCE 9.0.0 needs it) |
 | JUCE | 9.0.0: fetched by CMake when no `JUCE_DIR` is given (v1.11.1), or a checkout of your own |
 | git | any recent version (CMake uses it to fetch JUCE) |
-| C++ compiler | MSVC 2022 / Clang / GCC with C++17 |
+| C++ compiler | MSVC 2022 / Clang 10+ / GCC 10+ with C++20 |
 
 ### Steps
 

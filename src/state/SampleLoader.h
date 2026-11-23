@@ -126,7 +126,7 @@ namespace SampleLoader
         attack and a 0.5 s fade at the end. The middle is steady, so it loops
         cleanly.
     */
-    constexpr double defaultSampleRate    = 48000.0;
+    constexpr double padSampleRate        = 48000.0;
     constexpr double defaultSampleSeconds = 4.0;
     constexpr int    defaultRootNote      = 60;   // C4
 
@@ -186,7 +186,7 @@ namespace SampleLoader
     /** Renders and prepares the built-in pad from scratch (about 16 ms); see makeDefaultSample(). */
     inline std::unique_ptr<SampleData> renderDefaultSample()
     {
-        const int length = (int) (defaultSampleSeconds * defaultSampleRate);
+        const int length = (int) (defaultSampleSeconds * padSampleRate);
         const auto root = (float) juce::MidiMessage::getMidiNoteInHertz (defaultRootNote);
 
         std::array<PadOscillator, 4> oscillators;
@@ -194,10 +194,10 @@ namespace SampleLoader
         for (size_t i = 0; i < 3; ++i)
         {
             oscillators[i].setWaveform (PadOscillator::sawtooth);
-            oscillators[i].setFrequency (root * std::pow (2.0f, detuneCents[i] / 1200.0f), defaultSampleRate);
+            oscillators[i].setFrequency (root * std::pow (2.0f, detuneCents[i] / 1200.0f), padSampleRate);
         }
         oscillators[3].setWaveform (PadOscillator::sine);
-        oscillators[3].setFrequency (root * 0.5f, defaultSampleRate);
+        oscillators[3].setFrequency (root * 0.5f, padSampleRate);
 
         // Waveform changes wait for a cycle boundary: run each oscillator into its shape,
         // staggered so the three saws don't start in phase.
@@ -206,13 +206,13 @@ namespace SampleLoader
                 oscillators[i].nextSample();
 
         // Two-pole low-pass (state-variable, cutoff 1.8 kHz, Q 0.7).
-        const float g = std::tan (juce::MathConstants<float>::pi * padCutoffHz / (float) defaultSampleRate);
+        const float g = std::tan (juce::MathConstants<float>::pi * padCutoffHz / (float) padSampleRate);
         const float k = 1.0f / padQ;
         const float a1 = 1.0f / (1.0f + g * (g + k)), a2 = g * a1, a3 = g * a2;
         float ic1 = 0.0f, ic2 = 0.0f;
 
-        const int attack = (int) (padAttackSeconds * defaultSampleRate);
-        const int fade   = (int) (padFadeSeconds * defaultSampleRate);
+        const int attack = (int) (padAttackSeconds * padSampleRate);
+        const int fade   = (int) (padFadeSeconds * padSampleRate);
 
         juce::AudioBuffer<float> buffer (1, length);
         auto* out = buffer.getWritePointer (0);
@@ -236,7 +236,7 @@ namespace SampleLoader
         }
 
         juce::String error;
-        auto sample = SampleData::create (buffer, defaultSampleRate, { "Default pad", {}, true }, error);
+        auto sample = SampleData::create (buffer, padSampleRate, { "Default pad", {}, true }, error);
         jassert (sample != nullptr);
         return sample;
     }

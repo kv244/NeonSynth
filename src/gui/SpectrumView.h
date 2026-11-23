@@ -33,7 +33,7 @@ public:
     {
         const bool filterChanged = newCutoffHz != cutoffHz || newFilterOn != filterOn || newSampleRate != sampleRate
                                 || newMode != filterMode || newResonance != resonance;
-        const double rate = newSampleRate > 0.0 ? newSampleRate : defaultSampleRate;
+        const double rate = newSampleRate > 0.0 ? newSampleRate : placeholderSampleRate;
         if (! juce::approximatelyEqual (rate, sampleRate))
             backdrop.invalidate();   // the frequency axis ends at the new Nyquist
         sampleRate = rate;
@@ -243,7 +243,7 @@ private:
     static constexpr float minHz     = 20.0f;
     static constexpr double topHz    = 20000.0;   // the axis ends here, or at Nyquist below 40 kHz
     static constexpr float maxResponseDb = 30.0f; // the filter curve's ceiling (self-oscillation has no finite peak)
-    static constexpr double defaultSampleRate = 44100.0;   // until update() gives a rate (or when it gives none)
+    static constexpr double placeholderSampleRate = 44100.0;   // until update() gives a rate (or when it gives none)
 
     double maxHz() const noexcept { return juce::jmin (topHz, 0.5 * sampleRate); }
 
@@ -270,7 +270,7 @@ private:
     float windowSum = 0.0f;
     std::array<float, numPoints> levels {};
 
-    double sampleRate = defaultSampleRate;
+    double sampleRate = placeholderSampleRate;
     float  cutoffHz = 2000.0f;
     bool   filterOn = true;
     int    filterMode = 0;          // CytomicSvf::Mode

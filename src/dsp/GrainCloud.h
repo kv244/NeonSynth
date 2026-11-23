@@ -149,7 +149,7 @@ public:
         }
 
         hostRate = hostSampleRate;
-        rng = seed != 0 ? seed : fallbackSeed;
+        rng = seed != 0 ? seed : goldenRatioSeed;
 
         const double ratio = std::pow (2.0, (midiNote - rootNote) / 12.0) * sample->getSampleRate() / hostRate;
         level = 0;
@@ -289,7 +289,7 @@ private:
     static constexpr double interpolationMargin = 3.0;
 
     /** The seed used for a seed of 0 (xorshift would stay at 0 for ever): 2^32 / golden ratio. */
-    static constexpr juce::uint32 fallbackSeed = 0x9e3779b9u;
+    static constexpr juce::uint32 goldenRatioSeed = 0x9e3779b9u;
 
     /**
         A grain's read position is 32.32 fixed point (sample index in the top

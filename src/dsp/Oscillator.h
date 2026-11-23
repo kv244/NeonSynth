@@ -168,7 +168,7 @@ public:
     static constexpr int numSteps = 16;
 
     /** The seed used for a seed of 0 (xorshift would stay at 0 for ever): 2^32 / golden ratio. */
-    static constexpr juce::uint32 fallbackSeed = 0x9e3779b9u;
+    static constexpr juce::uint32 goldenRatioSeed = 0x9e3779b9u;
 
     /** Generator steps thrown away after seeding, so nearby seeds give unrelated streams. */
     static constexpr int warmUpSteps = 8;
@@ -176,7 +176,7 @@ public:
     /** Restarts the random stream and the phase (prepare, reset). */
     void reseed (juce::uint32 seed) noexcept
     {
-        state = seed != 0 ? seed : fallbackSeed;
+        state = seed != 0 ? seed : goldenRatioSeed;
         for (int i = 0; i < warmUpSteps; ++i)   // warm up: nearby seeds give unrelated streams
             nextRandom();
         for (auto& l : levels)
@@ -271,7 +271,7 @@ private:
 
     std::array<float, numSteps> levels {};
     Chop chop;
-    juce::uint32 state = fallbackSeed;
+    juce::uint32 state = goldenRatioSeed;
     float phase = 0.0f, phaseInc = 0.0f;
     float baseInc = 0.0f;   // hz / sampleRate before the clamp: what a pitch ratio multiplies
     int   lastStep = 0, stepsSinceReroll = 0;

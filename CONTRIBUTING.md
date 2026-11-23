@@ -28,7 +28,7 @@ are only roughly comparable.
 
 ## Code style
 
-- C++17, in the JUCE style the code already uses: a space before the parentheses of a call, braces on
+- C++20, in the JUCE style the code already uses: a space before the parentheses of a call, braces on
   their own line, 4 spaces, no tabs. Match the file you are in.
 - Modules grouped by job under `src/`: `src/dsp` (signal processing), `src/sequencer`, `src/state`,
   `src/gui` and `src/plugin`. Code that runs for every sample (the oscillators, CHOP, the filter, the

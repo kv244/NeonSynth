@@ -41,13 +41,13 @@ public:
     static constexpr double sustainSlewSeconds = 0.010;
 
     /** The rate assumed until setSampleRate() gives the real one (or when it gives none). */
-    static constexpr double defaultSampleRate = 44100.0;
+    static constexpr double placeholderSampleRate = 44100.0;
 
     VoiceEnvelope() noexcept   { recalculateRates(); }
 
     void setSampleRate (double newSampleRate) noexcept
     {
-        sampleRate     = newSampleRate > 0.0 ? newSampleRate : defaultSampleRate;
+        sampleRate     = newSampleRate > 0.0 ? newSampleRate : placeholderSampleRate;
         maxSustainStep = (float) (1.0 / (sustainSlewSeconds * sampleRate));
         recalculateRates();
     }
@@ -185,8 +185,8 @@ private:
 
     Parameters parameters;
     State  state = State::idle;
-    double sampleRate = defaultSampleRate;
+    double sampleRate = placeholderSampleRate;
     float  level = 0.0f, sustainLevel = 1.0f;
     float  attackRate = 0.0f, decayRate = 0.0f, releaseRate = 0.0f;
-    float  maxSustainStep = (float) (1.0 / (sustainSlewSeconds * defaultSampleRate));
+    float  maxSustainStep = (float) (1.0 / (sustainSlewSeconds * placeholderSampleRate));
 };
