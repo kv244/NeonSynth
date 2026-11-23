@@ -1305,6 +1305,102 @@ int main()
             showEnvTab (*editor, 0);
     }
 
+    //==========================================================================
+    std::printf ("\nDRAW one cycle (v1.12.0)\n");
+    if (auto* drawEditor = editor.get())
+    {
+        drawEditor->setSize (baseWidth, baseHeight);
+        set (processor, "source", 0.0f);
+        set (processor, "chopComb", 1.0f);
+        set (processor, "custom", 1.0f);
+        set (processor, "harmonics", 32.0f);
+        processor.setHarmonicSpectrum (HarmonicSpectrum::saw());
+        processor.setCycleDrawing (std::nullopt, HarmonicSpectrum::saw());
+        pump();
+
+        auto* shape = dynamic_cast<ShapeView*> (find (*drawEditor, "shapeView"));
+        auto* drawButton = dynamic_cast<juce::Button*> (find (*drawEditor, "drawButton"));
+        if (shape != nullptr && drawButton != nullptr && showing (*shape, *drawEditor))
+        {
+            const auto stripArea = boundsIn (*drawEditor, *shape).expanded (8);
+            saveSnapshot (drawEditor->createComponentSnapshot (stripArea), "draw-1-custom-saw");
+
+            // Where drawing point i (0..255) at value v (-1..1) is, as ShapeView maps them.
+            const auto at = [shape] (int i, float v)
+            {
+                const auto inner = shape->getLocalBounds().toFloat().reduced (4.0f, 3.0f);
+                const float halfHeight = inner.getHeight() * 0.5f / 1.2f;
+                return juce::Point<float> (inner.getX() + inner.getWidth() * (float) i / 256.0f, inner.getCentreY() - v * halfHeight);
+            };
+            const auto stepAt = [shape] (int step)
+            {
+                const auto inner = shape->getLocalBounds().toFloat().reduced (4.0f, 3.0f);
+                return juce::Point<float> (inner.getX() + inner.getWidth() * ((float) step + 0.5f) / 16.0f, inner.getCentreY());
+            };
+            const auto bit = [&processor] (int step) { return ((processor.getChopPattern() >> step) & 1u) != 0; };
+
+            if (! drawButton->getToggleState())
+                drawButton->triggerClick();
+            pump();
+            check (shape->isDrawMode() && shape->isDrawing(), "DRAW on with CUSTOM on and the Oscillator: the strip draws");
+
+            // A square-ish cycle in a few fast moves: high for the first half, low for the second.
+            const auto pattern = processor.getChopPattern();
+            const int versionBefore = processor.getFourierVersion();
+            mouse.down (*shape, at (0, 1.1f));
+            for (int i : { 40, 127 })
+                mouse.drag (*shape, at (i, 1.1f));
+            for (int i : { 128, 200, 255 })
+                mouse.drag (*shape, at (i, -1.1f));
+            check (processor.getFourierVersion() == versionBefore, "nothing is handed over during the drag");
+            mouse.up (*shape, at (255, -1.1f), true);
+            pump();
+            saveSnapshot (drawEditor->createComponentSnapshot (stripArea), "draw-2-square-drawn");
+            saveSnapshot (drawEditor->createComponentSnapshot (drawEditor->getLocalBounds()), "draw-3-editor");
+
+            const auto drawn = processor.getCycleDrawing();
+            bool square = drawn.has_value();
+            for (int i = 0; square && i < 256; ++i)
+                square = (*drawn)[(size_t) i] == (i < 128 ? 1.0f : -1.0f);
+            check (processor.getFourierVersion() != versionBefore && drawn.has_value(), "releasing stores the drawing");
+            check (square, "the line follows the pointer over all 256 points: a fast drag fills the points it skipped");
+            const auto spectrum = processor.getHarmonicSpectrum();
+            check (spectrum != HarmonicSpectrum::saw() && std::abs (spectrum.levels[0] - 1.0f) < 0.01f
+                       && std::abs (spectrum.levels[2] - 1.0f / 3.0f) < 0.01f && spectrum.levels[1] < 0.01f,
+                   "and changes the spectrum: the drawn square's (odd harmonics 1/k)");
+            check (processor.getChopPattern() == pattern, "drawing leaves CHOP's steps alone");
+
+            // A double-click clears the drawing back to a sine (as a host sends it: a click, then the double-click).
+            mouse.click (*shape, at (64, 0.0f));
+            shape->mouseDoubleClick (mouse.event (*shape, at (64, 0.0f), {}, false));
+            pump();
+            check (! processor.getCycleDrawing().has_value() && processor.getHarmonicSpectrum() == HarmonicSpectrum::sine(),
+                   "a double-click clears the drawing to a sine");
+
+            // CUSTOM off: DRAW on or not, a click toggles a CHOP step.
+            set (processor, "custom", 0.0f);
+            bool before = bit (5);
+            mouse.click (*shape, stepAt (5));
+            check (! shape->isDrawing() && bit (5) != before, "with CUSTOM off, a click still toggles a CHOP step");
+            mouse.click (*shape, stepAt (5));
+            set (processor, "custom", 1.0f);
+
+            drawButton->triggerClick();   // DRAW off
+            pump();
+            before = bit (5);
+            const int versionNow = processor.getFourierVersion();
+            mouse.click (*shape, stepAt (5));
+            check (! shape->isDrawMode() && bit (5) != before && processor.getFourierVersion() == versionNow,
+                   "with DRAW off, a click toggles a CHOP step and draws nothing");
+            mouse.click (*shape, stepAt (5));
+        }
+        else check (false, "shape view and DRAW button found and showing");
+
+        set (processor, "custom", 0.0f);
+        processor.setCycleDrawing (std::nullopt, HarmonicSpectrum::defaultSpectrum());
+        pump();
+    }
+
     processor.removeListener (&gestures);
     editor.reset();
     processor.releaseResources();
