@@ -219,6 +219,14 @@ public:
     */
     void prepareLegatoStep() noexcept   { legatoStepPending = true; }
 
+    /**
+        v1.11.0, GLIDE with several voices: the keyboard note played before the one about to
+        start (-1 = none yet), set on every voice by PlayingSynthesiser just before a keyboard
+        note-on. A keyboard note glides from there, so the glide starts from the last note you
+        played, whichever voice played it (Julian, 23 Nov 2026).
+    */
+    void setKeyboardGlideFrom (int note) noexcept   { keyboardGlideFrom = note; }
+
     void startNote (int midiNote, float velocity, juce::SynthesiserSound*, int) override
     {
         // v1.11.0: a legato step keeps everything sounding and only moves the pitch.
@@ -238,9 +246,17 @@ public:
         // The sequencer's notes never glide here: like a 303, a step glides only when the step
         // before it is marked SLIDE (the legato step above), so the other steps keep their attack
         // whatever GLIDE is set to (Julian, 22 Nov 2026). Keyboard notes glide whenever GLIDE > 0.
+        // A keyboard note glides from the last keyboard note played: from where this voice's pitch
+        // is now if it played that note (so a glide still moving carries on smoothly), otherwise
+        // from that note. The first keyboard note has nothing to glide from.
         const bool sequencerNote = isPlayingChannel (StepSequencer::midiChannel);
-        const float glideFrom = glideSeconds > 0.0f && hasGlidePitch && ! sequencerNote
-                                  ? (currentPitchNote() - (float) midiNote) / 12.0f : 0.0f;
+        float glideFrom = 0.0f;
+        if (glideSeconds > 0.0f && ! sequencerNote && keyboardGlideFrom >= 0)
+        {
+            const float fromNote = hasGlidePitch && glideBaseNote == keyboardGlideFrom ? currentPitchNote()
+                                                                                     : (float) keyboardGlideFrom;
+            glideFrom = (fromNote - (float) midiNote) / 12.0f;
+        }
         glideBaseNote = midiNote;
         hasGlidePitch = true;
         beginGlide (glideFrom, 0.0f);
@@ -964,6 +980,7 @@ private:
     float glideStepOctaves = 0.0f;                  // per sample
     float glideRatio = 1.0f;                        // exp2 (glideOctaves)
     bool  legatoStepPending = false;                // see prepareLegatoStep()
+    int   keyboardGlideFrom = -1;                   // see setKeyboardGlideFrom()
 
     // Telemetry for the GUI (written here on the audio thread, copied out by the processor).
     float       frequencyHz = 0.0f, lastEnvelope = 0.0f;

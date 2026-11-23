@@ -340,6 +340,28 @@ namespace
         std::snprintf (what, sizeof (what), "Transpose mode: the pattern plays on after the key goes up (level %.3f) and stops when HOLD goes off (%.5f)",
                        peak (transpose.audio, 0.5, 1.4), peak (transpose.audio, 1.8, 2.2));
         check (peak (transpose.audio, 0.5, 1.4) > 0.05 && peak (transpose.audio, 1.8, 2.2) < 1.0e-6, what);
+
+        // HOLD off with LEGATO: the held keys are up, so the sounding note just releases. It must
+        // not step back through the keys HOLD kept, gliding as it goes (fresh review, v1.11.0).
+        const auto legatoHeld = render ([] (NeonSynthProcessor& p)
+                                        {
+                                            setParameter (p, "voiceCount", 1.0f);
+                                            setParameter (p, "legato", 1.0f);
+                                            setParameter (p, "glide", 100.0f);
+                                            setParameter (p, "hold", 1.0f);
+                                            setParameter (p, "release", 0.3f);
+                                        },
+                                        { noteOn (0.0, 67), noteOn (0.1, 64), noteOn (0.2, 60),
+                                          noteOff (0.3, 67), noteOff (0.3, 64), noteOff (0.3, 60), change (0.5, "hold", 0.0f) }, 0.8);
+        // The heard pitch from upward zero crossings, over the release.
+        int crossings = 0;
+        const auto from = (size_t) (0.52 * rate), to = (size_t) (0.72 * rate);
+        for (size_t i = from + 1; i < to; ++i)
+            crossings += legatoHeld.audio[i - 1] < 0.0f && legatoHeld.audio[i] >= 0.0f ? 1 : 0;
+        const double heard = crossings / 0.2, c4 = juce::MidiMessage::getMidiNoteInHertz (60);
+        std::snprintf (what, sizeof (what), "HOLD off with LEGATO: the last note releases on its own pitch, no glide back through the held keys (%.1f Hz, C4 = %.1f)",
+                       heard, c4);
+        check (std::abs (heard - c4) < 0.03 * c4, what);
     }
 
     //==========================================================================

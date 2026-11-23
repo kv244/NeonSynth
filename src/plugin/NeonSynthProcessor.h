@@ -43,9 +43,13 @@ public:
     // when there is none, as JUCE needs an index.
     int getNumPrograms() override                         { return PresetManager::numFactoryPresets; }
     int getCurrentProgram() override                      { return juce::jmax (0, presetManager.getCurrentProgramIndex()); }
-    void setCurrentProgram (int index) override           { presetManager.loadFactory (index); }
+    void setCurrentProgram (int index) override           { presetManager.requestFactory (index); }
     const juce::String getProgramName (int index) override { return PresetManager::getFactoryName (index); }
     void changeProgramName (int, const juce::String&) override {}   // the factory names are fixed
+
+    /** Counts the sessions and presets loaded (v1.11.0): the pattern row clears its undo
+        history when it changes, so UNDO never writes an old sound's pattern onto a new one. */
+    int getStateLoadCount() const noexcept                { return stateLoads.load (std::memory_order_acquire); }
 
     /** Presets: the factory bank, the user folder, loading and saving (message thread). */
     PresetManager& getPresetManager() noexcept            { return presetManager; }
@@ -240,6 +244,8 @@ private:
         void setVoiceLimit (int newLimit) noexcept   { voiceLimit = newLimit; }
 
     protected:
+        int getVoiceLimit() const noexcept override   { return voiceLimit; }
+
         juce::SynthesiserVoice* findFreeVoice (juce::SynthesiserSound* sound, int midiChannel,
                                                int midiNoteNumber, bool stealIfNoneAvailable) const override
         {
@@ -322,6 +328,7 @@ private:
 
     // ENTER's queue of keyboard notes (note in the low byte, velocity in the next).
     std::atomic<bool> noteEntryArmed { false };
+    std::atomic<int>  stateLoads { 0 };   // see getStateLoadCount()
     juce::AbstractFifo enteredNotesFifo { 64 };
     std::array<juce::uint16, 64> enteredNotes {};
     void pushEnteredNote (int note, int velocity) noexcept;

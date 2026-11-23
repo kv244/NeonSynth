@@ -309,6 +309,7 @@ void NeonSynthProcessor::reset()
     // Repeating a render from here gives the same grains (hosts call this before offline renders).
     for (auto* v : voices)
         v->resetSeeds();
+    synth.forgetLastKeyboardNote();   // v1.11.0: nor does the first note glide from before the reset
     modulation.reset();   // LFO phase 0, bend and wheel centred
 }
 
@@ -481,32 +482,10 @@ bool NeonSynthProcessor::isBusesLayoutSupported (const BusesLayout& layouts) con
 
 namespace
 {
-    // State tree layout for the pattern: <Pattern><Step on="1" note="48" velocity="110"/> x16</Pattern>
-    const juce::Identifier patternId  { "Pattern" };
-    const juce::Identifier stepId     { "Step" };
-    const juce::Identifier onId       { "on" };
-    const juce::Identifier noteId     { "note" };
-    const juce::Identifier velocityId { "velocity" };
-    const juce::Identifier tieId      { "tie" };     // v1.11.0; written only when set, absent = off
-    const juce::Identifier slideId    { "slide" };   // v1.11.0; written only when set, absent = off
-
-    /**
-        Saved-state format version, written as an attribute of the state tree.
-          (none) v1.0 - v1.3: parameters, the editor's view and, from v1.3, the pattern
-          2      v1.4: same content; the attribute exists so later format changes
-                 can tell old sessions apart and migrate them
-          3      v1.5: adds the Sample child (the sample, embedded or by path);
-                 older states load with the built-in pad
-          4      v1.6+: adds the Chop child (CHOP's 16-step pattern); older
-                 states load with the default pattern (every second step)
-    */
-    const juce::Identifier stateVersionId { "stateVersion" };
-    constexpr int currentStateVersion = 4;
+    using namespace StateFormat;   // the state's names and version (src/state/StateFormat.h)
 
     // State tree layout for CHOP's pattern (v1.6.0+): <Chop pattern="0101010101010101"/>,
     // one character per step, step 1 first, "1" = chopped.
-    const juce::Identifier chopId        { "Chop" };
-    const juce::Identifier chopPatternId { "pattern" };
 
     juce::String chopPatternToString (juce::uint16 pattern)
     {
@@ -531,12 +510,6 @@ namespace
     //   <Sample default="1"/>                                  the built-in pad
     //   <Sample name="pad.wav" path="C:/..." hash="..." flac="<base64>"/>
     // flac is the sample itself as 24-bit FLAC, left out above 10 MB (the path is used then).
-    const juce::Identifier sampleId        { "Sample" };
-    const juce::Identifier sampleDefaultId { "default" };
-    const juce::Identifier sampleNameId    { "name" };
-    const juce::Identifier samplePathId    { "path" };
-    const juce::Identifier sampleHashId    { "hash" };
-    const juce::Identifier sampleFlacId    { "flac" };
 
     /** Keyboard input is played on this channel; the sequencer has StepSequencer::midiChannel (16). */
     constexpr int keyboardChannel = 1;
@@ -614,6 +587,7 @@ void NeonSynthProcessor::releaseHeldNotes (SequencerMode mode) noexcept
         if (! notesHeldByHold[(size_t) note])
             continue;
         notesHeldByHold[(size_t) note] = false;
+        synth.forgetKey (note);   // its key is up: the note-off below must not step a LEGATO voice back to it
         playMidi.addEvent (juce::MidiMessage::noteOff (keyboardChannel, note), 0);
         if (mode == SequencerMode::transpose)
             trackHeldKey (note, false);
@@ -1058,6 +1032,7 @@ void NeonSynthProcessor::setStateInformation (const void* data, int sizeInBytes)
                                               ChopSettings().pattern));
 
     restoreSample (tree.getChildWithName (sampleId));
+    stateLoads.fetch_add (1, std::memory_order_release);   // v1.11.0: the editor's pattern undo starts afresh
 }
 
 void NeonSynthProcessor::setChopStep (int step, bool chopped) noexcept

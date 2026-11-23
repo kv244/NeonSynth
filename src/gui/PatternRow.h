@@ -263,12 +263,24 @@ private:
 
     void updateUndoButton()   { undoButton.setEnabled (history.canUndo()); }
 
-    int key() const   { return juce::jlimit (0, 11, keyCombo.getSelectedItemIndex()); }
-
-    StepSequencer::Scale scale() const
+public:
+    /** The editor's timer: a session or preset was loaded since the last call, so the undo
+        history belongs to another sound; it starts afresh (v1.11.0). */
+    void forgetHistoryIfStateLoaded()
     {
-        return (StepSequencer::Scale) juce::jlimit (0, StepSequencer::numScales - 1, scaleCombo.getSelectedItemIndex());
+        if (const int loads = processor.getStateLoadCount(); loads != seenStateLoads)
+        {
+            seenStateLoads = loads;
+            history.clear();
+            updateUndoButton();
+        }
     }
+
+private:
+    int seenStateLoads = 0;
+
+    int key() const                  { return grid.key(); }
+    StepSequencer::Scale scale() const { return grid.scale(); }
 
     NeonSynthProcessor& processor;
     juce::AudioProcessorValueTreeState& apvts;

@@ -104,6 +104,7 @@ class StepSequencer
 public:
     static constexpr int numSteps    = 16;
     static constexpr int midiChannel = 16;
+    static constexpr int slideController = 68;   ///< CC 68, the Legato Footswitch: marks a slide (see the contract above)
 
     /** Transport drift up to this much (either way) is not treated as a jump. */
     static constexpr double jumpToleranceSeconds = 0.002;
@@ -154,7 +155,7 @@ public:
     struct Settings
     {
         Rate  rate      = Rate::sixteenth;
-        float swing     = 0.0f;    ///< 0..1: delays odd steps by up to half a step (0.33 is a triplet feel)
+        float swing     = 0.0f;    ///< 0..1: delays odd steps by up to half a step (about 0.67 is a triplet feel)
         float gate      = 0.5f;    ///< 0.05..1: note length as a fraction of one step
         int   transpose = 0;       ///< semitones added to every step's note
         bool  triggersEnabled = true;  ///< false = keep time but start no new notes (Transpose mode, no key held)
@@ -221,7 +222,10 @@ public:
         // Stopped: release whatever is sounding and park the playhead. A tempo or position that is
         // not a finite number (a broken session, a host bug) counts as stopped too: written as
         // !(bpm > 0) so NaN lands here, since the step loop below would never end on it.
-        if (! transport.playing || ! (transport.bpm > 0.0) || ! std::isfinite (transport.bpm) || ! std::isfinite (transport.beat))
+        // So does a tempo so small that a beat lasts longer than a double can count samples.
+        const double samplesPerBeat = sampleRate * 60.0 / transport.bpm;
+        if (! transport.playing || ! (transport.bpm > 0.0) || ! std::isfinite (transport.bpm) || ! std::isfinite (transport.beat)
+            || ! std::isfinite (samplesPerBeat))
         {
             releaseAll (midi, 0);
             wasPlaying = false;
@@ -230,7 +234,6 @@ public:
             return;
         }
 
-        const double samplesPerBeat = sampleRate * 60.0 / transport.bpm;
         const double blockStart     = transport.beat;
         const double blockEnd       = blockStart + (double) numSamples / samplesPerBeat;
 
@@ -254,9 +257,13 @@ public:
         expectedBeat = blockEnd;
 
         const double stepLength  = stepLengthInBeats (settings.rate);
-        const double swingDelay  = (double) juce::jlimit (0.0f, 1.0f, settings.swing) * 0.5 * stepLength;
-        const int    gateSamples = juce::jmax (1, (int) std::lround ((double) juce::jlimit (0.05f, 1.0f, settings.gate)
-                                                                     * stepLength * samplesPerBeat));
+        // Non-finite settings (they come from parameters, so only a bug could send them) fall
+        // back to the defaults rather than turn positions into NaN. The gate is worked out in
+        // doubles and capped, so a very slow host tempo cannot overflow an int (v1.11.0).
+        const float  swing       = std::isfinite (settings.swing) ? juce::jlimit (0.0f, 1.0f, settings.swing) : 0.0f;
+        const float  gate        = std::isfinite (settings.gate)  ? juce::jlimit (0.05f, 1.0f, settings.gate) : 0.5f;
+        const double swingDelay  = (double) swing * 0.5 * stepLength;
+        const int    gateSamples = (int) juce::jlimit (1.0, (double) maxGateSamples, std::round ((double) gate * stepLength * samplesPerBeat));
 
         // Candidate steps: start early enough to catch a swung odd step, or a step
         // skipped by forward drift, from just before the block; stop once a step
@@ -274,7 +281,8 @@ public:
         for (auto k = (juce::int64) std::floor (firstCandidate / stepLength) - 1; ; ++k)
         {
             const bool   odd      = (k & 1) != 0;
-            const double stepBeat = (double) k * stepLength + (odd ? swingDelay : 0.0);
+            const double gridBeat = (double) k * stepLength;   // where the step is without swing
+            const double stepBeat = gridBeat + (odd ? swingDelay : 0.0);
             const double distance = (stepBeat - blockStart) * samplesPerBeat;   // in samples, may be fractional
             auto         offset   = (juce::int64) std::ceil (distance - epsilon);
 
@@ -283,13 +291,18 @@ public:
 
             if (continuous)
             {
-                // Already fired (it can reappear after a small backward drift)?
-                if (stepBeat <= lastFiredBeat + epsilon / samplesPerBeat)
+                // Already fired (it can reappear after a small backward drift)? Compared on the
+                // grid, not the swung position: turning SWING up just after an odd step fired
+                // would otherwise move that step past the mark and fire it again (v1.11.0).
+                if (gridBeat <= lastFiredBeat + epsilon / samplesPerBeat)
                     continue;
-                // Skipped by a small forward drift: fire it now rather than never.
+                // Skipped by a small forward drift: fire it now rather than never. Likewise an
+                // odd step that SWING, turned down, has just moved into the past while the step
+                // before it was the last to fire: it is late, but it must not be lost.
                 if (offset < 0)
                 {
-                    if ((double) -offset > toleranceSamples)
+                    const bool movedBackBySwing = odd && std::abs (lastFiredBeat - (gridBeat - stepLength)) * samplesPerBeat < 0.5;
+                    if ((double) -offset > toleranceSamples && ! movedBackBySwing)
                         continue;
                     offset = 0;
                 }
@@ -299,7 +312,7 @@ public:
                 continue;   // started (or jumped) after this step: don't play it late
             }
 
-            lastFiredBeat = stepBeat;
+            lastFiredBeat = gridBeat;
 
             // v1.11.0: the pattern repeats after `length` steps; at 16 this is the same index as before.
             const int length = juce::jlimit (1, numSteps, settings.length);
@@ -419,7 +432,8 @@ public:
     }
 
     //==========================================================================
-    /** Packs a step into 32 bits: bit 16 = on, bits 8-15 = velocity, bits 0-7 = note. */
+    /** Packs a step into 32 bits: bits 0-7 = note (0-127), bits 8-14 = velocity (1-127, bit 15
+        unused), bit 16 = on, bit 17 = tie, bit 18 = slide (the last two since v1.11.0). */
     static juce::uint32 pack (const Step& s) noexcept
     {
         return (s.on ? 0x10000u : 0u)
@@ -453,8 +467,6 @@ private:
     /** v1.11.0: what the last step that fired hands to the next one. */
     enum class Carry { none, tie, slide };
 
-    /** The CC that marks a slide (the legato footswitch); see the contract above. */
-    static constexpr int slideController = 68;
 
     /** v1.11.0: the note just started is tied or sliding, so it is held until the next step. */
     void holdNewest (const Step& step) noexcept
@@ -602,7 +614,8 @@ private:
     bool   wasPlaying   = false;
 
     static constexpr double noStepFired = -1.0e300;
-    double lastFiredBeat = noStepFired;   ///< beat of the most recent step that fired, while playing continuously
+    double lastFiredBeat = noStepFired;   ///< grid beat (unswung) of the most recent step that fired, while playing continuously
+    static constexpr int maxGateSamples = 1 << 30;   ///< caps a note's length (samples) at extreme tempos
 };
 
 //==============================================================================

@@ -128,6 +128,7 @@ CONSTANTS = [
     {"name": "scopeFifoSize"},
     {"name": "baseWidth"},
     {"name": "baseHeight"},
+    {"name": "slideController"},
     {"what": "the voice's 5 ms hard-stop fade (the envelope's release and the tail the host is told)",
      "literal": r"\b0\.005f?\b",
      "files": ["src/plugin/NeonSynthVoice.h", "src/plugin/NeonSynthProcessor.h", "src/plugin/NeonSynthProcessor.cpp"]},

@@ -45,8 +45,6 @@
 class PlayingSynthesiser : public juce::Synthesiser
 {
 public:
-    /** MIDI CC 68, Legato Footswitch: down (>= 64) around a slide's note-on (see above). */
-    static constexpr int slideController = 68;
 
     /** Audio thread, once per block: LEGATO is on and the voice limit is 1. */
     void setMonoLegato (bool shouldBeOn) noexcept   { monoLegato = shouldBeOn; }
@@ -62,6 +60,8 @@ public:
                 if (auto* voice = findHeldVoice (midiChannel, -1))
                 {
                     // A slide to the pitch already held: the old note-off that follows must not end it.
+                    // (The sequencer turns a same-pitch slide into a tie and sends no note-on, so
+                    // this is for other senders of the slide MIDI; kept as a safeguard.)
                     if (voice->getCurrentlyPlayingNote() == midiNoteNumber)
                         swallowNoteOff = midiNoteNumber;
                     legatoStep (*voice, midiChannel, midiNoteNumber, velocity);
@@ -73,6 +73,11 @@ public:
         {
             const bool otherKeysDown = numKeysDown > 0;
             pushKey (midiNoteNumber);
+
+            // GLIDE: whichever voice takes this note glides from the last keyboard note played.
+            for (auto* voice : voices)
+                static_cast<NeonSynthVoice*> (voice)->setKeyboardGlideFrom (lastKeyboardNote);
+            lastKeyboardNote = midiNoteNumber;
 
             if (monoLegato && otherKeysDown)
             {
@@ -131,7 +136,7 @@ public:
 
     void handleController (int midiChannel, int controllerNumber, int controllerValue) override
     {
-        if (midiChannel == StepSequencer::midiChannel && controllerNumber == slideController)
+        if (midiChannel == StepSequencer::midiChannel && controllerNumber == StepSequencer::slideController)
         {
             const juce::ScopedLock sl (lock);
             slideDown = controllerValue >= 64;
@@ -141,14 +146,39 @@ public:
         juce::Synthesiser::handleController (midiChannel, controllerNumber, controllerValue);
     }
 
+    /**
+        HOLD switched off (audio thread, before the held note-offs are sent): the keys HOLD kept
+        back are no longer down, so they leave the stack first. Otherwise letting go of the
+        sounding note would step the voice back through every key HOLD kept, gliding as it went.
+    */
+    void forgetKey (int note) noexcept
+    {
+        const juce::ScopedLock sl (lock);
+        removeKey (note);
+    }
+
+    /** Processor reset: the next keyboard note has nothing to glide from (audio thread). */
+    void forgetLastKeyboardNote() noexcept
+    {
+        const juce::ScopedLock sl (lock);
+        lastKeyboardNote = -1;
+    }
+
+protected:
+    /** How many voices, from the first, new notes may use (LimitedSynthesiser's VOICES). A
+        legato step stays within them too. */
+    virtual int getVoiceLimit() const noexcept   { return getNumVoices(); }
+
 private:
     /** The most recently started voice holding a note on this channel with its key down
-        (any note if `note` is -1). */
+        (any note if `note` is -1), among the first getVoiceLimit() voices. */
     juce::SynthesiserVoice* findHeldVoice (int midiChannel, int note) const noexcept
     {
         juce::SynthesiserVoice* found = nullptr;
-        for (auto* voice : voices)
+        const int limit = juce::jlimit (1, juce::jmax (1, voices.size()), getVoiceLimit());
+        for (int i = 0; i < juce::jmin (limit, voices.size()); ++i)
         {
+            auto* voice = voices.getUnchecked (i);
             if (voice->getCurrentlyPlayingNote() < 0 || ! voice->isPlayingChannel (midiChannel) || ! voice->isKeyDown())
                 continue;
             if (note >= 0 && voice->getCurrentlyPlayingNote() != note)
@@ -198,6 +228,7 @@ private:
     bool monoLegato = false;
     std::array<int, 16> keysDown {};   // keyboard keys down, most recent last
     int numKeysDown = 0;
+    int lastKeyboardNote = -1;   // the keyboard note played last, for GLIDE (-1 = none yet)
     bool slideDown = false;            // CC 68 is down on channel 16: a note-on now is a slide
     int swallowNoteOff = -1;           // a same-pitch slide's old note-off, to be ignored
 };

@@ -68,6 +68,16 @@ public:
     }
 
     /** v1.11.0: the pattern's length, as the grid shows it (steps beyond it are dim). */
+    /** KEY and SCALE as the parameters hold them (v1.11.0); the pattern row's tools and ENTER
+        read them here too, so the grid and the row always agree. */
+    int key() const noexcept   { return keyValue != nullptr ? juce::jlimit (0, 11, juce::roundToInt (keyValue->load())) : 0; }
+
+    StepSequencer::Scale scale() const noexcept
+    {
+        return scaleValue != nullptr ? (StepSequencer::Scale) juce::jlimit (0, StepSequencer::numScales - 1, juce::roundToInt (scaleValue->load()))
+                                     : StepSequencer::Scale::off;
+    }
+
     int getLength() const noexcept
     {
         return lengthValue != nullptr ? juce::jlimit (1, StepSequencer::numSteps, juce::roundToInt (lengthValue->load()))
@@ -183,13 +193,6 @@ private:
         return Zone::body;
     }
 
-    int key() const noexcept   { return keyValue != nullptr ? juce::jlimit (0, 11, juce::roundToInt (keyValue->load())) : 0; }
-
-    StepSequencer::Scale scale() const noexcept
-    {
-        return scaleValue != nullptr ? (StepSequencer::Scale) juce::jlimit (0, StepSequencer::numScales - 1, juce::roundToInt (scaleValue->load()))
-                                     : StepSequencer::Scale::off;
-    }
 
     void paintStep (juce::Graphics& g, int i) const
     {

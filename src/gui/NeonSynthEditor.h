@@ -1355,6 +1355,7 @@ private:
         shapeView.refresh();  // the sculpted cycle, CHOP's steps
         updateReadouts();
         synthProcessor.freeReplacedSamples();   // a sample replaced while notes played it, once they have ended
+        patternRow.forgetHistoryIfStateLoaded();
     }
 
     /** Everything the editor shows lives here, at the design size; resized() scales it to the window. */

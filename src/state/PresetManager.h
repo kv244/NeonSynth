@@ -5,6 +5,7 @@
 #pragma once
 #include <JuceHeader.h>
 #include "state/FactoryPresets.h"
+#include "state/StateFormat.h"
 
 /**
     Presets (v1.11.0).
@@ -118,7 +119,7 @@ public:
         const auto& preset = FactoryPresets::all()[(size_t) index];
 
         auto xml = std::make_unique<juce::XmlElement> (apvts.state.getType());
-        xml->setAttribute ("stateVersion", 4);
+        xml->setAttribute (StateFormat::stateVersionId, StateFormat::currentStateVersion);
         xml->setAttribute (categoryId, preset.category);
         xml->setAttribute (presetId, preset.name);
         xml->setAttribute (programId, index);
@@ -132,27 +133,28 @@ public:
             for (const auto& [id, v] : preset.values)
                 if (ranged->getParameterID() == id)
                     value = v;
-            auto* param = xml->createNewChildElement ("PARAM");
-            param->setAttribute ("id", ranged->getParameterID());
-            param->setAttribute ("value", (double) value);
+            auto* param = xml->createNewChildElement (StateFormat::paramId);
+            param->setAttribute (StateFormat::paramIdId, ranged->getParameterID());
+            param->setAttribute (StateFormat::valueId, (double) value);
         }
 
         if (preset.pattern != nullptr)
         {
-            auto* pattern = xml->createNewChildElement ("Pattern");
+            auto* pattern = xml->createNewChildElement (StateFormat::patternId);
             for (const auto& parsed : parsePattern (preset.pattern))
             {
-                auto* s = pattern->createNewChildElement ("Step");
-                s->setAttribute ("on", parsed.on ? 1 : 0);
-                s->setAttribute ("note", parsed.note);
-                s->setAttribute ("velocity", parsed.velocity);
-                if (parsed.tie)   s->setAttribute ("tie", 1);
-                if (parsed.slide) s->setAttribute ("slide", 1);
+                jassert (parsed.valid);   // PresetTests checks every factory pattern parses
+                auto* s = pattern->createNewChildElement (StateFormat::stepId);
+                s->setAttribute (StateFormat::onId, parsed.on ? 1 : 0);
+                s->setAttribute (StateFormat::noteId, parsed.note);
+                s->setAttribute (StateFormat::velocityId, parsed.velocity);
+                if (parsed.tie)   s->setAttribute (StateFormat::tieId, 1);
+                if (parsed.slide) s->setAttribute (StateFormat::slideId, 1);
             }
         }
         if (preset.chop != nullptr)
-            xml->createNewChildElement ("Chop")->setAttribute ("pattern", preset.chop);
-        xml->createNewChildElement ("Sample")->setAttribute ("default", 1);
+            xml->createNewChildElement (StateFormat::chopId)->setAttribute (StateFormat::chopPatternId, preset.chop);
+        xml->createNewChildElement (StateFormat::sampleId)->setAttribute (StateFormat::sampleDefaultId, 1);
         return xml;
     }
 
@@ -203,7 +205,26 @@ public:
     //==========================================================================
     // Loading and saving
 
-    /** Message thread (or the host's thread for programs). False if the index is out of range. */
+    /**
+        The host's program change. Hosts are meant to call it on the message thread, but a
+        wrapper or host may not; loading builds XML and replaces the state, which must never run
+        on the audio thread, so from any other thread the load is passed to the message thread.
+    */
+    void requestFactory (int index)
+    {
+        if (juce::MessageManager::existsAndIsCurrentThread())
+        {
+            loadFactory (index);
+            return;
+        }
+        if (juce::isPositiveAndBelow (index, numFactoryPresets))
+        {
+            pendingProgram.store (index, std::memory_order_release);
+            triggerAsyncUpdate();
+        }
+    }
+
+    /** Message thread. False if the index is out of range. */
     bool loadFactory (int index)
     {
         const auto xml = createFactoryXml (index);
@@ -340,6 +361,19 @@ public:
     int getCurrentProgramIndex() const        { const juce::ScopedLock sl (lock); return currentProgram; }
 
 private:
+    /** The 4-byte header copyXmlToBinary() puts before XML, read from JUCE itself once rather
+        than copied as a number, so it cannot drift from the JUCE version in use. */
+    static int xmlBinaryMagic()
+    {
+        static const int magic = []
+        {
+            juce::MemoryBlock block;
+            juce::AudioProcessor::copyXmlToBinary (juce::XmlElement ("x"), block);
+            return juce::MemoryInputStream (block, false).readInt();
+        }();
+        return magic;
+    }
+
     /** The state's text, wrapped the way copyXmlToBinary() wraps XML, through setStateInformation(). */
     bool loadText (const void* text, size_t numBytes, const juce::String& name, int program, const juce::File& file)
     {
@@ -349,7 +383,7 @@ private:
         juce::MemoryBlock block;
         {
             juce::MemoryOutputStream out (block, false);
-            out.writeInt ((int) 0x21324356);   // JUCE's magicXmlNumber
+            out.writeInt (xmlBinaryMagic());   // the header copyXmlToBinary() writes
             out.writeInt ((int) numBytes);
             out.write (text, numBytes);
             out.writeByte (0);
@@ -383,7 +417,9 @@ private:
         A file cut short (a full disk, a copy that stopped) would often still parse: JUCE's XML
         parser accepts an element that never closes, and the state would then load with its
         parameters missing, which keep whatever values they had. A complete preset ends with the
-        root's closing tag (or "/>"), so anything else is refused before it is parsed at all.
+        root's closing tag (a preset always has children, so never with a self-closing root), so
+        anything else is refused before it is parsed at all. Not "/>": every PARAM line ends that
+        way, so a file cut after any of them would pass.
     */
     bool endsLikeAPreset (const juce::MemoryBlock& data) const
     {
@@ -393,7 +429,7 @@ private:
             --end;
         const auto closing = "</" + apvts.state.getType().toString() + ">";
         const auto tail = juce::String::fromUTF8 (text + end - juce::jmin (end, (size_t) 64), (int) juce::jmin (end, (size_t) 64));
-        return tail.endsWith (closing) || tail.endsWith ("/>");
+        return tail.endsWith (closing);
     }
 
     static bool isViewProperty (const juce::Identifier& id)
@@ -443,6 +479,8 @@ private:
     /** Tells the host, on the message thread, that the program and the state changed. */
     void handleAsyncUpdate() override
     {
+        if (const int program = pendingProgram.exchange (-1, std::memory_order_acquire); program >= 0)
+            loadFactory (program);   // a program change from another thread (requestFactory()); it notifies again
         processor.updateHostDisplay (juce::AudioProcessor::ChangeDetails().withProgramChanged (true).withNonParameterStateChanged (true));
     }
 
@@ -455,6 +493,7 @@ private:
     int currentProgram = -1;
     juce::File currentFile;
     std::atomic<bool> stateReplaced { false };
+    std::atomic<int>  pendingProgram { -1 };   // requestFactory() from a thread other than the message thread
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PresetManager)
 };
