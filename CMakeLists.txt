@@ -418,7 +418,7 @@ if(NEONSYNTH_BUILD_TESTS)
     endif()
 
     # Unit tests of single classes: one program per file, linking only JUCE.
-    set(NEONSYNTH_UNIT_TESTS StepSequencerTests VoiceEnvelopeTests OscillatorTests ChopTests SculptTests SampleDataTests SampleReaderTests GranularTests FilterTests LfoTests ModulationTests)
+    set(NEONSYNTH_UNIT_TESTS StepSequencerTests VoiceEnvelopeTests OscillatorTests ChopTests SculptTests SampleDataTests SampleReaderTests GranularTests FilterTests LfoTests ModulationTests CycleAnalysisTests)
 
     # Programs that drive the whole processor directly (no host, no Python), linking the engine:
     #   RenderBenchmark       times processBlock for a few load scenarios (not run by ctest)
