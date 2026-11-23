@@ -62,7 +62,7 @@ endif()
 # The integrity job (v1.11.0, .github/workflows/integrity.yml): Clang's warnings for code that is
 # never used or never reached, and for every kind of shadowing (the name clash MSVC found in
 # v1.10.0 included), which GCC and MSVC do not give. Only NeonSynth's own files get them (the
-# processor and the tests, and through them every header in src/): JUCE's module sources are
+# .cpp files in src/ and the tests, and through them every header in src/): JUCE's module sources are
 # compiled into the same targets and are not written for these warnings, and JUCE's headers
 # count as system headers here, so they stay quiet too. With NEONSYNTH_WARNINGS_AS_ERRORS they
 # are errors. The source-file properties are set at the end of this file.
@@ -239,7 +239,8 @@ target_link_libraries(NeonSynth
 
 # Sources are grouped by job (v1.11.0): src/dsp (signal processing), src/sequencer,
 # src/state (samples and their hand-off), src/gui (the editor and its views) and src/plugin
-# (processor, voice, MIDI log). Includes name the folder: #include "dsp/Oscillator.h".
+# (processor, parameters, MIDI router, voice and its allocator, MIDI log; src/state also holds the
+# session's save and load since v1.11.1). Includes name the folder: #include "dsp/Oscillator.h".
 target_include_directories(NeonSynth
     PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}/src

@@ -2,15 +2,16 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Licensed under the GNU Affero General Public License v3; see LICENSE.
 
-"""Consistency checks the compilers cannot make (the integrity job, v1.11.0).
+"""Consistency checks the compilers cannot make (the integrity job, since v1.11.0).
 
     python tests/integrity.py            # every check; exits 1 if any finds a problem
     python tests/integrity.py --list     # also print what each check looked at
     python tests/integrity.py --cppcheck # cppcheck instead (see run_cppcheck)
 
 1. Version: the same x.y.z in CMakeLists.txt (project and plugin), installer.nsi, the manual's
-   "Applies to" line, the cover (docs/images/cover.json, written by docs/figures/cover.py) and
-   the newest CHANGELOG row.
+   "Applies to" line, the newest entry of its "What's new in this version" section (v1.11.1),
+   the cover (docs/images/cover.json, written by docs/figures/cover.py) and the newest
+   CHANGELOG row.
 2. Parameters: every parameter in tests/parameter-layout.txt is named in the user manual and on
    the help page (HelpOverlay.h's text), by the label it has in the window. PARAMETER_TERMS
    below says which words count for each; a new parameter needs a line there.

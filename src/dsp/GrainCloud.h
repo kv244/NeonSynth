@@ -407,7 +407,7 @@ private:
     /**
         Adds up to `count` samples of the grain to `out`; returns false once it
         has ended. The window is (4x(1-x))^2, a parabola-squared Hann shape
-        (within 0.06 of sin^2(pi x), smooth, zero slope at both ends): four
+        (within about 0.065 of sin^2(pi x), smooth, zero slope at both ends): four
         multiplies, no table.
     */
     bool renderGrain (Grain& g, float* __restrict out, int count, SimdPath path) noexcept
