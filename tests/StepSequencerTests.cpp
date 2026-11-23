@@ -155,6 +155,28 @@ int main()
         for (size_t i = 0; ok && i < ons.size(); ++i)
             ok = ons[i].sample == (juce::int64) i * 6000 + ((i & 1) ? 1500 : 0);
         check (ok, "swing 50% delays only the odd steps, by 1500 samples");
+
+        // Swing moved while the pattern plays (v1.11.0 fix): each step fires exactly once.
+        // Raising swing just after an odd step fired used to move it past the "already fired"
+        // mark and fire it again; lowering it before an odd step fired could drop that step.
+        auto changingSwing = [&] (float before, float after, juce::int64 changeAt)
+        {
+            StepSequencer changing; makeAllOn (changing);
+            juce::MidiBuffer midi;
+            int notesOn = 0;
+            for (juce::int64 position = 0; position < (juce::int64) (4 * testSamplesPerBeat); position += 256)
+            {
+                auto s2 = settings;
+                s2.swing = position < changeAt ? before : after;
+                midi.clear();
+                changing.process (midi, 256, { true, (double) position / testSamplesPerBeat, testBpm }, s2);
+                for (const auto m : midi)
+                    notesOn += m.getMessage().isNoteOn() ? 1 : 0;
+            }
+            return notesOn;
+        };
+        check (changingSwing (0.0f, 0.9f, 6000 + 512) == 16, "swing raised just after an odd step fired: 16 notes in the bar, none twice");
+        check (changingSwing (0.9f, 0.0f, 6000 + 512) == 16, "swing lowered before an odd step fired: 16 notes in the bar, none lost");
     }
 
     std::printf ("Rates\n");
