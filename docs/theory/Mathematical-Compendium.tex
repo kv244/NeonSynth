@@ -5,8 +5,8 @@
 % The version below must match project(NeonSynth VERSION ...) in CMakeLists.txt; the build script checks it.
 \documentclass[11pt,letterpaper]{article}
 
-\newcommand{\NSVersion}{1.10.1}
-\newcommand{\NSDate}{22 November 2026}
+\newcommand{\NSVersion}{1.11.0}
+\newcommand{\NSDate}{23 November 2026}
 
 % ---------------------------------------------------------------- fonts and page
 \usepackage[T1]{fontenc}
@@ -114,23 +114,23 @@
   {\itshape\large\textcolor{white!85!navy}{A Supplement to ``The DSP Behind NeonSynth''}\par}
 \end{tcolorbox}
 
-\vspace{0.22in}
+\vspace{0.14in}
 
 \begin{tcolorbox}[colback=boxbg, colframe=accent, coltitle=accent, colbacktitle=boxbg,
                   boxrule=0pt, leftrule=3.5pt, arc=0pt, outer arc=0pt,
                   left=10pt, right=8pt, top=3pt, bottom=7pt, toptitle=5pt, bottomtitle=2pt,
                   titlerule=0pt, fonttitle=\sffamily\bfseries\small, title={Scope \& Edition Notes}]
-This compendium presents the core mathematical formulations underlying seven digital signal processing
+This compendium presents the core mathematical formulations underlying eight digital signal processing
 subsystems in \textbf{NeonSynth v\NSVersion} (released \NSDate): 4-point cubic B-spline BLEP/BLAMP
 anti-aliasing, trapezoidal topology-preserving state-variable filtering, quadrature van der Pol self-oscillation
 limiting, double-precision antiderivative anti-aliasing (ADAA) drive, polynomial-windowed granular synthesis,
-prefiltered Catmull--Rom sample resampling, and the per-sample LFO, pitch-bend and vibrato modulation new in v1.9.0.\\
+prefiltered Catmull--Rom sample resampling, the per-sample LFO, pitch-bend and vibrato modulation new in v1.9.0,
+and the glide, internal clock and time-signature arithmetic new in v1.11.0.\\
 All equations, boundary conditions, and numerical thresholds are aligned with the NeonSynth v\NSVersion{} implementation
-(\code{Oscillator.h}, \code{CytomicSvf.h}, \code{NeonSynthVoice.h}, \code{GrainCloud.h}, \code{SampleData.h},
-\code{SampleReader.h}, \code{Lfo.h}, and \code{Modulation.h}). This edition adds Section~7 and corrects several v1.8.0 figures against the code and its tests.
+(\code{src/dsp}, \code{src/state}, \code{src/plugin}). This edition adds Section~8.
 \end{tcolorbox}
 
-\vspace{0.12in}
+\vspace{0.08in}
 {\sffamily\bfseries\large\color{navy}Contents\par}
 \vspace{2pt}
 {\color{accent}\hrule height 0.8pt}
@@ -152,6 +152,8 @@ All equations, boundary conditions, and numerical thresholds are aligned with th
   {Playback rate, Horner Catmull--Rom cubics, 95-tap Blackman FIR decimation, and transposition bounds}{sec:smp}
 \contentsrow{7}{Modulation: LFO, Pitch Bend and Vibrato}
   {LFO shapes and phase, slew limiter, pitch ratio, tremolo, per-source pitch, and bit-identity}{sec:mod}
+\contentsrow{8}{Glide, the Internal Clock and Bar Length}
+  {Constant-time exponential glide, rounding error of a running sum versus a product, and beats per bar}{sec:play}
 \end{tabular*}
 
 % ================================================================ 1
@@ -496,7 +498,7 @@ On phase $p \in [0,1)$ (triangle pieces on $[0,\frac14)$, $[\frac14,\frac34)$, $
   \rho = \clamp(\mathrm{rate},\, 0.02,\, 20) \ \text{or}\ \frac{\mathrm{bpm}}{60B}\ \text{(synced)}, \quad
   p[n_0] = \frc(\mathrm{ppq}/B)
 \end{equation}
-with $B \in \{16, 8, 4, 2, 1, \frac12, \frac14, \frac13, \frac16\}$ beats (4 bars \ldots\ 1/16T); $p[n_0]$ at block start applies only when synced to a
+with $B \in \{16, 8, 4, 2, 1, \frac12, \frac14, \frac13, \frac16\}$ beats (4 bars \ldots\ 1/16T; the bar lengths in 4/4, see eq.~\eqref{eq:bar}); $p[n_0]$ at block start applies only when synced to a
 playing host. A rate limiter follows each shape; a shape change crossfades linearly over $K = \operatorname{round}(0.01\Fs)$ samples:
 \begin{equation}\label{eq:slew}
   y[n] = y[n-1] + \clamp\!\left(x[n] - y[n-1],\, \pm\Delta\right), \quad \Delta = \frac{2}{0.002\,\Fs}; \qquad
@@ -538,6 +540,84 @@ Copy changes crossfade linearly over 2\,ms; a grain step shrinks rather than rea
 A buffer reaches the voices as a null pointer when it is neutral for the whole block: pitch $\Leftrightarrow r[n] = 1\ \forall n$;
 cutoff $\Leftrightarrow d_c[n]\,\lfo[n] = 0\ \forall n$; the tremolo is skipped while $A = 0$ and not gliding. With null buffers each voice
 runs v1.8.0's code path operation for operation, so default sessions render bit-identically to v1.8.0.
+\end{callout}
+
+% ================================================================ 8
+\newpage
+\section{Glide, the Internal Clock and Bar Length}\label{sec:play}
+
+Three pieces of arithmetic new in v1.11.0: the path a glide takes (\code{NeonSynthVoice.h}), the position of the
+sequencer's internal clock (\code{NeonSynthProcessor.h}, \code{internalBeatAt}), and the length of a bar under a time signature
+(\code{Lfo.h}, \code{divisionBeats}).
+
+\subsection{Glide: Linear in Octaves, Exponential in Frequency}
+
+Each voice keeps a base note of frequency $f_{\mathrm{base}}$ and an offset $o[n]$ in octaves. A glide of time $T_g$ (GLIDE, 0--2\,s)
+from offset $o_0$ to target $o_\ast$ advances by a fixed step, clamped onto the target:
+\begin{equation}\label{eq:glidestep}
+  \Delta o = \frac{|o_\ast - o_0|}{\max(1,\, T_g\Fs)}, \qquad
+  o[n+1] = o[n] + \operatorname{sgn}(o_\ast - o[n])\,\min\!\bigl(\Delta o,\ |o_\ast - o[n]|\bigr)
+\end{equation}
+For a keyboard note $o_0 = (p - \mathrm{note})/12$, where $p$ is the voice's current pitch as a fractional MIDI note, and $o_\ast = 0$;
+for a legato step $o_\ast = (\mathrm{note} - \mathrm{base})/12$ from the current $o$. The offset scales the shared ratio of eq.~\eqref{eq:ratio},
+which every source reads (eq.~\eqref{eq:oscstep}):
+\begin{equation}\label{eq:glideratio}
+  f[n] = f_{\mathrm{base}}\; r[n]\; 2^{\,o[n]}
+\end{equation}
+
+\textbf{Constant time.} The offset reaches the target after $N = \lceil |o_\ast - o_0| / \Delta o \rceil = \lceil \max(1, T_g\Fs) \rceil$ steps,
+independent of the interval $|o_\ast - o_0|$ (to within float rounding of $\Delta o$, absorbed by the clamp, which also makes the last
+step land on $o_\ast$ exactly). \textbf{Exponential path.} With $t = n/\Fs \in [0, T_g]$ and no other modulation ($r = 1$), the offset
+is $o(t) = o_0 + (o_\ast - o_0)\,t/T_g$, so between the frequencies $f_0 = f_{\mathrm{base}}2^{o_0}$ and $f_1 = f_{\mathrm{base}}2^{o_\ast}$:
+\begin{equation}\label{eq:glidepath}
+  f(t) = f_0 \left(\frac{f_1}{f_0}\right)^{t/T_g}, \qquad
+  \frac{d}{dt}\log_2 f(t) = \frac{\log_2 (f_1/f_0)}{T_g}, \qquad f(T_g/2) = \sqrt{f_0 f_1}
+\end{equation}
+Equal times give equal musical intervals, and the midpoint in time is the geometric mean in frequency (A2 to A4: 220\,Hz at
+$T_g/2$, where a path linear in hertz would be at 275\,Hz). For comparison, an RC lag on a volt-per-octave control voltage
+(the TB-303 slide) gives $o(t) = o_\ast + (o_0 - o_\ast)\,e^{-t/\tau}$: also roughly constant in time, since reaching within a fixed
+fraction of the interval takes a time proportional to $\tau$ alone, but never exactly arriving.
+
+\subsection{The Internal Clock: Error of a Sum versus a Product}
+
+Let $u = 2^{-53}$ be the unit roundoff of IEEE-754 double, so a rounded operation returns $\hat x = x(1+\delta)$ with $|\delta| \le u$,
+and $\tfrac12\operatorname{ulp}(x) \le u|x|$. Up to v1.10.1 the clock summed block durations $\Delta_k = n_k\,\mathrm{bpm}/(60\Fs)$:
+\begin{equation}\label{eq:clocksum}
+  \hat b_N = \operatorname{fl}\!\bigl(\hat b_{N-1} + \Delta_N\bigr) \quad\Longrightarrow\quad
+  |\hat b_N - b_N| \;\le\; \sum_{k=1}^{N} u\,|\hat b_k| \;+\; \sum_{k=1}^{N}|\hat\Delta_k - \Delta_k| \;\lesssim\; N\,u\,b_N
+\end{equation}
+Since v1.11.0 it counts the integer samples $s$ since the last tempo change and evaluates one expression, three rounded operations
+whatever the number of blocks:
+\begin{equation}\label{eq:clockprod}
+  \hat b = \operatorname{fl}\!\left(b_{\mathrm{origin}} + \frac{s \cdot \mathrm{bpm}}{60\Fs}\right) \quad\Longrightarrow\quad
+  |\hat b - b| \;\le\; \gamma_3\, b \;\approx\; 3u\,b \qquad \left(\gamma_k = \frac{ku}{1-ku}\right)
+\end{equation}
+(with $b_{\mathrm{origin}}$ exact; each tempo change folds the position into $b_{\mathrm{origin}}$ and adds one such term). In samples,
+multiplying by $S = 60\Fs/\mathrm{bpm}$ with $b\,S = s$, the bounds are $N u s$ and $3us$. One-sample blocks ($N = s$) at 192\,kHz and
+120\,bpm reach a step at $s = 216\,000$ with $u s^2 \approx 5.2\times10^{-6}$ samples, beyond the sequencer's $10^{-6}$-sample tolerance in
+$\lceil \cdot - 10^{-6}\rceil$ (so the step can fire one sample late); the product gives $3us \approx 7.2\times10^{-11}$, and stays below
+$10^{-6}$ until $s \approx 3\times10^{9}$ (about 4.3 hours at 192\,kHz), the same floor as the sequencer's own subtraction
+$\mathrm{stepBeat} - \mathrm{blockStart}$ under any clock.
+
+\subsection{Bar Length under a Time Signature}
+
+Positions are in quarter-note beats. A signature $n/d$ holds $n$ notes of value $1/d$, each $4/d$ beats long, so for the LFO's
+bar divisions ($m \in \{4, 2, 1\}$ bars) and its period at tempo bpm:
+\begin{equation}\label{eq:bar}
+  \beta = \frac{4n}{d}, \qquad B_m = m\,\beta, \qquad \rho = \frac{\mathrm{bpm}}{60\,B_m}
+\end{equation}
+($\beta = 4$ in 4/4, giving $B = 16, 8, 4$ as before; 3 in 3/4 and 6/8; 3.5 in 7/8). Note lengths keep their beat values.
+A $\beta$ outside $[\tfrac1{16}, 64]$ is replaced by 4. When the host's last bar line $q_{\mathrm{bar}}$ is not a multiple of $\beta$ (the
+signature changed earlier), the position in cycles counts from it, with an estimated whole-bar count:
+\begin{equation}\label{eq:barpos}
+  c = \frac{\operatorname{round}(q_{\mathrm{bar}}/\beta) + (\mathrm{ppq} - q_{\mathrm{bar}})/\beta}{m}, \qquad p = \frc(c)
+\end{equation}
+which reduces to $p = \frc(\mathrm{ppq}/B_m)$ of eq.~\eqref{eq:lfophase} when $q_{\mathrm{bar}}/\beta$ is an integer; for $m = 1$ the phase is 0 at
+every bar line whatever the count.
+
+\begin{callout}{Defaults Leave the Arithmetic Untouched}
+At GLIDE 0, with LEGATO off and no slides in the pattern, the offset is $o \equiv 0$ and the voice never evaluates eq.~\eqref{eq:glideratio}; in 4/4, $\beta = 4$ and eq.~\eqref{eq:bar} gives the
+v1.10.1 lengths exactly. Sessions that do not use the new controls therefore render as they did in v1.10.1.
 \end{callout}
 
 \end{document}

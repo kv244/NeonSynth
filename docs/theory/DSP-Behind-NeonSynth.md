@@ -11,17 +11,19 @@
 
 *A companion mini textbook for musicians and programmers*
 
-Third edition, revised • 22 November 2026 • Target instrument: NeonSynth v1.10.1
+Fourth edition • 23 November 2026 • Target instrument: NeonSynth v1.11.0
 
 </div>
 
 ## Scope and verification
 
-This book connects NeonSynth's controls, sounds, mathematics, implementation, and tests. It covers the four sources, waveform sculpting, envelopes, modulation by the LFO, pitch bend and the mod wheel, resonant multi-mode filtering with drive, stereo placement, output protection, sequencing, visualizers, and the JUCE development workflow.
+This book connects NeonSynth's controls, sounds, mathematics, implementation, and tests. It covers the four sources, waveform sculpting, envelopes, modulation by the LFO, pitch bend and the mod wheel, glide, legato and hold, resonant multi-mode filtering with drive, stereo placement, output protection, voice allocation, sequencing (with pattern length, ties, slides and the scale lock), presets, visualizers, and the JUCE development workflow.
+
+The fourth edition follows v1.11.0, "Playing". The source now lives in five folders (`src/dsp`, `src/sequencer`, `src/state`, `src/gui`, `src/plugin`), and every repository link points there. New material: glide as straight-line motion in octaves (§10.7), legato and the note stack, and HOLD (§10.8); voice stealing as a stated policy (§1.5); the sequencer's LENGTH, TIE, SLIDE, scale lock, pattern tools and its internal clock (§13.2–13.7); LFO bars under a time signature (§10.1); and presets as untrusted input (Chapter 15).
 
 Equations and pseudocode are explanatory reformulations, not copied source listings. Listening settings are experiments rather than factory presets. Product comparisons establish documented feature families, not identical proprietary algorithms.
 
-Primary project material: [repository](https://github.com/kv244/NeonSynth/tree/v1.10.1), [release manual source](https://github.com/kv244/NeonSynth/blob/v1.10.1/docs/NeonSynth-User-Manual.md), [developer notes](https://github.com/kv244/NeonSynth/blob/v1.10.1/docs/DEVELOPMENT.md), and [figure-generation notes](https://github.com/kv244/NeonSynth/blob/v1.10.1/docs/figures/README.md).
+Primary project material: [repository](https://github.com/kv244/NeonSynth/tree/v1.11.0), [release manual source](https://github.com/kv244/NeonSynth/blob/v1.11.0/docs/NeonSynth-User-Manual.md), [developer notes](https://github.com/kv244/NeonSynth/blob/v1.11.0/docs/DEVELOPMENT.md), and [figure-generation notes](https://github.com/kv244/NeonSynth/blob/v1.11.0/docs/figures/README.md).
 
 ## How to use the book
 
@@ -35,11 +37,18 @@ For every topic, distinguish three things: the ideal mathematical model, the pra
 - **Aliasing:** Frequency folding that occurs when continuous or discrete signals contain components above the Nyquist frequency (F<sub>s</sub> / 2), causing those components to appear as lower, unintended frequencies.
 - **BLAMP (Band-Limited Ramp):** A polynomial residual added near waveform slope discontinuities (such as triangle corners) to attenuate high-frequency harmonics before sampling.
 - **BLEP (Band-Limited Step):** A polynomial residual added near instantaneous amplitude jumps (such as sawtooth resets or square transitions) to attenuate aliasing.
+- **Glide (Portamento):** A continuous pitch movement from one note to the next instead of a jump. NeonSynth moves the pitch in a straight line in octaves, so every interval takes the GLIDE time.
+- **HOLD (Latch):** Keyboard note-offs held back until the switch is turned off, as a sustain pedal would; in Transpose mode it latches the pattern.
 - **Homogeneity (Degree-1):** The scaling property f(αx) = αf(x) for α > 0. In NeonSynth's resonant filter limiter, scaling both the audio signal and the limiter ceiling L together scales the output proportionally, allowing the filter to track the preceding amplitude envelope seamlessly.
+- **Legato:** Playing a new note while the previous one still sounds so that it continues instead of restarting: the envelopes run on and only the pitch moves. NeonSynth's LEGATO does this for overlapping keys with one voice, and SLIDE does it for sequencer steps.
 - **LFO (Low-Frequency Oscillator):** A periodic signal too slow to be heard as a pitch (here 0.02 to 20 Hz), used as a control signal that moves another parameter such as pitch, cutoff, or level.
 - **Notch (Band-Reject):** A filter response that attenuates a narrow frequency band around the cutoff while passing lower and higher frequencies; formed in a state-variable filter by summing the low-pass and high-pass outputs (LP + HP).
+- **Note priority / note stack:** The rule a monophonic instrument uses to choose which of several held keys sounds. NeonSynth keeps the held keys in order of pressing and gives priority to the last one (last-note priority with return).
+- **Polymeter:** Two cycles of different lengths running against the same pulse, such as a 7-step pattern over 16-step bars; they realign after the least common multiple of the two lengths.
 - **Sample-and-Hold:** Taking a value at one instant and holding it until the next; NeonSynth's Random LFO shape holds a new random value for each LFO cycle.
+- **Scale lock (Scale quantisation):** Snapping a note to the nearest member of a chosen scale. In NeonSynth it acts when a step's note is set, never on notes already stored.
 - **Self-Oscillation:** Sustained sinusoidal oscillation produced by a resonant filter when feedback damping (k = 1/Q) reaches or drops below zero, stabilized at a bounded amplitude by a nonlinear limiter.
+- **Slide and Tie:** Two timing rules between consecutive sequencer steps. A tie holds a note into the next step without a new attack; a slide holds it into the next step and glides to that step's pitch, as on the Roland TB-303.
 - **TPT / ZDF (Topology-Preserving Transform / Zero-Delay Feedback):** A discretization method using trapezoidal integration that preserves the continuous-time analog state-variable topology and solves implicit feedback loops algebraically without inserting unit sample delays.
 - **Tremolo and Vibrato:** Periodic modulation of level (tremolo) and of pitch (vibrato). In NeonSynth the LFO's AMP depth makes tremolo; the mod wheel and the LFO's PITCH depth make vibrato.
 - **Van der Pol Damping:** Amplitude-dependent nonlinear damping (k<sub>eff</sub>) that increases resistance as oscillation amplitude grows, smoothly bounding self-oscillation into a stable limit cycle without hard clipping.
@@ -59,6 +68,10 @@ For every topic, distinguish three things: the ideal mathematical model, the pra
 | s<sub>1</sub>, s<sub>2</sub> | State-variable filter integrator states | Dimensionless state |
 | m[n] | LFO output at sample n | −1 to +1 |
 | r[n] | Pitch ratio at sample n (2<sup>semitones/12</sup>) | Dimensionless (r > 0) |
+| o[n] | Glide offset from the voice's base note | Octaves |
+| T<sub>g</sub> | Glide time (the GLIDE control) | Seconds (0 to 2) |
+| L<sub>p</sub> | Pattern length (the LENGTH control) | Steps (1 to 16) |
+| u | Unit roundoff of IEEE-754 double (2<sup>−53</sup>) | Dimensionless |
 | ULP | Unit in the last place (floating-point precision spacing) | IEEE-754 float32 / float64 |
 
 ## Contents
@@ -87,7 +100,7 @@ For every topic, distinguish three things: the ideal mathematical model, the pra
 
 - [16. Experimental method](#16-experimental-method)
 - [17. Reading dependencies map](#17-reading-dependencies-map)
-- [18. Sixteen guided laboratories](#18-sixteen-guided-laboratories)
+- [18. Seventeen guided laboratories](#18-seventeen-guided-laboratories)
 - [19. Final sound-design exercise](#19-final-sound-design-exercise)
 
 **Part III — Supporting material**
@@ -114,18 +127,20 @@ Digital signal processing, or DSP, uses numerical operations to generate, analyz
 A voice is an independently evolving sound instance with its own pitch, envelope, playback position, and filter state. Polyphony means several voices evolve simultaneously. NeonSynth has sixteen voices, each selecting Oscillator, Sample, Granular, or Random at note-on. The Voices parameter (1 to 16, default 16) lets new notes use only the first N of them.
 
 ```text
-  Keyboard MIDI ----+
-                    +--> MIDI routing --> voice allocation (first N of 16: Voices)
-  Step sequencer ---+                           |
-                                                v
+  Keyboard MIDI --> HOLD --+
+                           +--> MIDI routing --> voice allocation (first N of 16: Voices)
+  Step sequencer ----------+    (ch. 16, ties,    LEGATO / SLIDE: move a sounding voice
+                                 slides: CC 68)        |
+                                                       v
   Shared, once per block:  pitch bend + mod-wheel vibrato + LFO
     --> pitch ratio r[n] (every source), LFO cutoff (every filter), tremolo g[n] (sum)
+  Per voice:  glide offset o[n] in octaves --> r[n] × 2^o[n]
   One voice:
     Oscillator --> CHOP --> Noise --> Fold --+
     Random ------> CHOP --> Noise --> Fold --+
     Sample player --------------------------+--> velocity × amp ADSR
     Granular cloud -------------------------+           |
-    (each source reads at pitch × r[n])               drive
+    (each source reads at pitch × r[n] × 2^o[n])      drive
                                                         |
                                               filter (LP/HP/BP/Notch)
                                          [cutoff + filter env + vel + LFO]
@@ -141,9 +156,9 @@ A voice is an independently evolving sound instance with its own pitch, envelope
 
 One source per voice is not monophonic operation. A granular voice can itself contain many grains. CHOP, Noise, and Fold apply only to Oscillator and Random; Sample and Granular bypass them. In NeonSynth v1.9.0, the voice signal path routes the amplitude-enveloped signal into the pre-filter ADAA drive stage and multi-mode resonant state-variable filter (modulated by cutoff, filter envelope, velocity, and the LFO) before pitch-dependent stereo panning. The instrument has no live audio-input processing path: recordings enter through loading.
 
-A shared modulation stage (Chapter 10) runs once per block, before any voice renders. It reads pitch bend and the mod wheel from the block's incoming MIDI, renders the LFO, and hands every voice the same per-sample buffers: a pitch ratio that all four sources apply, an LFO cutoff that joins the filter's octave sum, and a tremolo gain that multiplies the sum of the voices. The manual draws the same path as [Figure 10](https://github.com/kv244/NeonSynth/blob/v1.10.1/docs/NeonSynth-User-Manual.md#signal-path).
+A shared modulation stage (Chapter 10) runs once per block, before any voice renders. It reads pitch bend and the mod wheel from the block's incoming MIDI, renders the LFO, and hands every voice the same per-sample buffers: a pitch ratio that all four sources apply, an LFO cutoff that joins the filter's octave sum, and a tremolo gain that multiplies the sum of the voices. The manual draws the same path as [Figure 10](https://github.com/kv244/NeonSynth/blob/v1.11.0/docs/NeonSynth-User-Manual.md#signal-path).
 
-Voice allocation assigns each note-on to a voice. JUCE's `Synthesiser` takes a free voice, or steals a sounding one when all are busy. With Voices at 16, NeonSynth leaves that choice to JUCE, so sessions saved before v1.9.0 allocate and steal exactly as before. Below 16, NeonSynth's own `findFreeVoice` looks only at the first N voices: a free one if there is one, otherwise the voice already playing the same note, otherwise the oldest voice whose key is up (in its release), otherwise the oldest of all. Voices above the limit keep their notes until those end, so lowering the limit never cuts a note off. With one voice the instrument is monophonic with retrigger: the new note takes over the sounding voice, whose envelope attacks from its current level and whose phase continues (Chapter 9), so there is no click, but there is no glide either.
+Voice allocation assigns each note-on to a voice. JUCE's `Synthesiser` takes a free voice, or steals a sounding one when all are busy. With Voices at 16, NeonSynth leaves that choice to JUCE, so sessions saved before v1.9.0 allocate and steal exactly as before. Below 16, NeonSynth's own `findFreeVoice` looks only at the first N voices, in the order set out in §1.5. Voices above the limit keep their notes until those end, so lowering the limit never cuts a note off. With one voice the instrument is monophonic with retrigger: the new note takes over the sounding voice, whose envelope attacks from its current level and whose phase continues (Chapter 9), so there is no click. Since v1.11.0 that note can also glide from the old pitch (GLIDE, §10.7), and with LEGATO an overlapping key moves the voice without restarting its envelopes (§10.8).
 
 ### 1.2 Order is part of the sound
 
@@ -185,7 +200,26 @@ Big-O notation describes growth, not exact CPU time. With B samples, V active vo
 
 The short sine-folder and state-variable filter equations require substantial surrounding code for oversampling, anti-aliasing, and state continuity. Conversely, a large control panel can have little mathematical complexity. Benchmarking must accompany complexity analysis.
 
-**Repository reading:** `NeonSynthVoice.h`, `NeonSynthProcessor.h/.cpp`, `Modulation.h`, `SampleSlot.h`, `CytomicSvf.h` at tag `v1.10.1`.
+The v1.11.0 additions are cheap by this measure. A gliding voice pays one `exp2` per sample while it moves, O(B) per gliding voice and nothing at rest; the note stack and the stealing search are O(16) per note event, not per sample; the scale lock is O(12) per note set, on the message thread.
+
+### 1.5 Voice stealing is a policy
+
+When every allowed voice is busy, a new note must take one that sounds. No choice is free of cost: whichever voice is taken loses its note. The order in which candidates are tried is therefore a policy, a stated preference about which loss matters least, rather than an algorithm with a correct answer. Below the full 16, `LimitedSynthesiser::findFreeVoice` searches the first N voices in this order:
+
+```text
+1. a free voice (not active), the lowest-numbered first
+2. the oldest voice already playing the same note number
+3. the oldest released voice: key up and not held by the sustain or sostenuto pedal
+4. the oldest voice of all
+```
+
+Each rule has a reason. The same note first, because playing a pitch again is the clearest sign that its old instance is finished, and two voices on one pitch would beat against each other. A released voice next, because it is already fading; a note held by the pedal still counts as held, since the player meant it to sound. Age decides within each class ("oldest" by JUCE's start counter, `wasStartedBefore`), because the oldest note has had the longest time to be heard. Up to v1.10.1 a pedal-held note counted as released, and of two voices on one pitch the lower-numbered was taken rather than the older; v1.11.0 corrected both, and `tests/VoiceStealingTests.cpp` checks the order against a reference implementation.
+
+At 16 voices JUCE's own policy applies. It tries the same note, then the oldest released voice, then the oldest voice whose key is up, but it also protects the lowest and the highest held notes, the bass and the melody of a chord, from being stolen unless nothing else is left. NeonSynth's reduced pool does not protect them: with two or three voices, protecting two would leave almost no choice, and the musician who lowers Voices is asking for a small, predictable pool.
+
+The search is O(N) per note-on and runs under the synth's lock on the audio thread, with no allocation. Outside music, the same question is cache replacement: least-recently-used eviction is "oldest first", and preferring entries already marked invalid is "released first".
+
+**Repository reading:** [`src/plugin/NeonSynthVoice.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/plugin/NeonSynthVoice.h), [`src/plugin/NeonSynthProcessor.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/plugin/NeonSynthProcessor.h) (`LimitedSynthesiser::findFreeVoice`), [`src/plugin/NeonSynthProcessor.cpp`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/plugin/NeonSynthProcessor.cpp), [`src/plugin/PlayingSynthesiser.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/plugin/PlayingSynthesiser.h), [`src/dsp/Modulation.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/dsp/Modulation.h), [`src/state/SampleSlot.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/state/SampleSlot.h), [`src/dsp/CytomicSvf.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/dsp/CytomicSvf.h), [`tests/VoiceStealingTests.cpp`](https://github.com/kv244/NeonSynth/blob/v1.11.0/tests/VoiceStealingTests.cpp) at tag `v1.11.0`.
 
 ## 2. Oscillators, harmonics, and edge correction
 
@@ -272,7 +306,7 @@ The sine bypasses compensation. Restoring desired harmonics can also amplify res
 
 Outside music, direct digital synthesis uses phase accumulation for communications and test equipment; see [Analog Devices' DDS tutorial](https://www.analog.com/media/en/training-seminars/tutorials/MT-085.pdf).
 
-**Repository reading:** `Oscillator.h`, especially `Blep4` and `PolyBlepOscillator` at tag `v1.10.1`.
+**Repository reading:** [`src/dsp/Oscillator.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/dsp/Oscillator.h), especially `Blep4` and `PolyBlepOscillator` at tag `v1.11.0`.
 
 ## 3. The evolving Random source
 
@@ -294,7 +328,7 @@ Random's SHAPE follows the lowest sounding Random voice, or a fixed example when
 
 Pigments' Turing/random modulators and MicroFreak's random LFO shapes are conceptual relatives, not exact audio-rate equivalents. The exact evolving-wave algorithm has no established non-musical deployment in the sources reviewed; reproducible random stimulus generation is the broader connection, not an identity claim.
 
-**Repository reading:** `RandomStepOscillator` in `Oscillator.h` at tag `v1.10.1`.
+**Repository reading:** `RandomStepOscillator` in [`src/dsp/Oscillator.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/dsp/Oscillator.h) at tag `v1.11.0`.
 
 ## 4. CHOP and periodic amplitude modulation
 
@@ -328,7 +362,7 @@ The effect is at full depth for L ≥ 4 samples, fades linearly between L = 4 an
 
 [Roland S-1 OSC CHOP](https://static.roland.com/manuals/s-1_manual_v102/eng/87294783.html) is the direct hardware inspiration, although its high-frequency policy differs. NeonSynth itself is the software implementation established here; no second exact counterpart is asserted. Timed amplitude/polarity modulation has communications relatives, but those do not implement the musical control scheme merely because the algebra resembles it.
 
-**Repository reading:** `Chop`, `ChopSettings`, and oscillator edge-value helpers in `Oscillator.h` at tag `v1.10.1`.
+**Repository reading:** `Chop`, `ChopSettings`, and oscillator edge-value helpers in [`src/dsp/Oscillator.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/dsp/Oscillator.h) at tag `v1.11.0`.
 
 ## 5. Noise and equal-power mixing
 
@@ -348,7 +382,7 @@ Noise follows CHOP. Muting a source segment therefore does not mute noise added 
 
 Pigments, amsynth, S-1, and Quantum offer noise-related generation. Outside synthesis, noise is used as an interference model or test stimulus, including [radar pulse-compression experiments](https://www.mathworks.com/help/signal/ug/radar-pulse-compression.html).
 
-**Repository reading:** `Sculpt.h` at tag `v1.10.1`.
+**Repository reading:** [`src/dsp/Sculpt.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/dsp/Sculpt.h) at tag `v1.11.0`.
 
 ## 6. Wavefolding and oversampling
 
@@ -393,7 +427,7 @@ The sine equation is simple; the filters, history buffers, bypass transitions, a
 
 Outside synthesis, [oversampling/interpolation](https://www.analog.com/media/en/training-seminars/tutorials/MT-017.pdf) has broad conversion-system uses. No common non-musical use of this exact musical folder chain is established here.
 
-**Repository reading:** `Sculpt.h` at tag `v1.10.1`.
+**Repository reading:** [`src/dsp/Sculpt.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/dsp/Sculpt.h) at tag `v1.11.0`.
 
 ## 7. Sample playback and resampling
 
@@ -453,7 +487,7 @@ ROOT, Start, loop markers, and crossfade are captured at note-on. Retrigger afte
 
 Pigments and [FluidSynth](https://github.com/FluidSynth/fluidsynth) provide software sampling; Iridium and Quantum provide hardware sampling. Resampling is also a general communications and multirate-processing technique.
 
-**Repository reading:** `SampleData.h`, `SampleLoader.h`, `SampleReader.h`, `SampleSlot.h` at tag `v1.10.1`.
+**Repository reading:** [`src/state/SampleData.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/state/SampleData.h), [`src/state/SampleLoader.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/state/SampleLoader.h), [`src/dsp/SampleReader.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/dsp/SampleReader.h), [`src/state/SampleSlot.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/state/SampleSlot.h) at tag `v1.11.0`.
 
 ## 8. Granular synthesis
 
@@ -491,7 +525,7 @@ Pitch modulation (Chapter 10) reaches the cloud in two ways. A grain that starts
 
 Pigments, Iridium, and Quantum offer granular relatives. Outside synthesis, windowing also supports radar sidelobe suppression, but windowed measurement is not granular synthesis.
 
-**Repository reading:** `GrainCloud.h` and `tests/GranularTests.cpp` at tag `v1.10.1`.
+**Repository reading:** [`src/dsp/GrainCloud.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/dsp/GrainCloud.h) and [`tests/GranularTests.cpp`](https://github.com/kv244/NeonSynth/blob/v1.11.0/tests/GranularTests.cpp) at tag `v1.11.0`.
 
 ## 9. Envelopes, velocity, and continuity
 
@@ -517,7 +551,7 @@ Voice stealing reassigns an already sounding voice, potentially changing phase, 
 
 Envelopes appear in amsynth, Pigments, S-1, and MicroFreak. Outside music, the relatives are state machines, ramps, and controlled trajectories. An envelope detector is different: it measures an existing signal instead of generating a control shape.
 
-**Repository reading:** `VoiceEnvelope.h`, `NeonSynthVoice.h` at tag `v1.10.1`.
+**Repository reading:** [`src/dsp/VoiceEnvelope.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/dsp/VoiceEnvelope.h), [`src/plugin/NeonSynthVoice.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/plugin/NeonSynthVoice.h) at tag `v1.11.0`.
 
 ## 10. Modulation: the LFO, pitch bend and the mod wheel
 
@@ -543,7 +577,23 @@ With SYNC on, a note length of b beats replaces the rate: 4 bars, 2 bars, 1 bar,
 rate = (BPM / 60) / b,    p = fractionalPart(ppq / b)
 ```
 
-so the LFO lands on the beat after a jump or a loop. With the transport stopped, and in the Standalone, it free-runs at the host's tempo, or else at the sequencer's TEMPO. A bar is counted as four quarter notes whatever the host's time signature.
+so the LFO lands on the beat after a jump or a loop. With the transport stopped, and in the Standalone, it free-runs at the host's tempo, or else at the sequencer's TEMPO.
+
+**Bars under a time signature (v1.11.0).** Song position is counted in beats, which here are always quarter notes. A time signature n/d says a bar holds n notes of value 1/d, and a 1/d note lasts 4/d quarter notes, so:
+
+```equation
+beatsPerBar = 4n / d,    b_bars = (number of bars) × 4n / d
+```
+
+In 4/4 a bar is 4 beats and the three bar divisions keep their old lengths of 16, 8, and 4 beats; in 3/4 a bar is 3 beats, in 6/8 also 3, and in 7/8 it is 3.5. The note-length divisions (1/2 to 1/16T) are durations, not fractions of a bar, so they stay in beats whatever the signature. Without a host, or with a signature outside 1/16 to 64 beats per bar (a host bug), the LFO counts 4/4.
+
+The phase formula p = frac(ppq / b) assumes the bar lines sit on multiples of beatsPerBar counted from beat 0. That holds while one signature has been in force since the song began. After a change of signature earlier in the song the bars are offset, and the host's last bar line ppq<sub>bar</sub> is no longer on that grid. The LFO then counts its bar divisions from that bar line:
+
+```equation
+cycles = (round(ppq_bar / beatsPerBar) + (ppq − ppq_bar) / beatsPerBar) / (b / beatsPerBar)
+```
+
+VST3 reports where the current bar began but not how many bars came before, so the whole-bar count is an estimate: it is steady within one stretch of a signature, which keeps 2- and 4-bar cycles in place there, but it cannot know the true bar number across several changes. A 1-bar cycle is always right, since it only needs the bar line.
 
 ### 10.2 Pitch is exponential
 
@@ -657,12 +707,82 @@ renderCloud(block):
                                   // sounding grains: step = step0 × r / r0, one integer
 ```
 
-### 10.7 Verified behavior
+### 10.7 Glide: portamento in octaves
+
+Glide, or portamento, carries the pitch continuously from one note to the next. Two choices define one: the path between the pitches, and what is held fixed when the interval changes, the time or the speed.
+
+**The path.** Pitch is heard logarithmically (§10.2): equal steps in octaves sound like equal steps. A glide that moved in a straight line in hertz would spend most of its time near the upper note: from A2 (110 Hz) to A4 (440 Hz), the linear-Hz path is at 275 Hz halfway through, already 1.32 of its 2 octaves up. NeonSynth instead moves an offset o[n], in octaves, in a straight line, and turns it into a ratio once per sample:
+
+```equation
+o[n + 1] = o[n] + sign(o_target − o[n]) × min(Δo, |o_target − o[n]|)
+Δo = |o_target − o_start| / max(1, T_g × F_s)
+g[n] = 2^{o[n]},    f[n] = f_base × r[n] × g[n]
+```
+
+A straight line in log-frequency is an exponential in frequency: f(t) = f<sub>from</sub> (f<sub>to</sub> / f<sub>from</sub>)<sup>t / T<sub>g</sub></sup>, the same law as the cutoff knob's multiplicative smoothing in §11.5. Halfway through the A2-to-A4 glide the pitch is A3, 220 Hz.
+
+**Constant time.** The step Δo is the whole distance divided by the number of samples in T<sub>g</sub>, so every interval, a semitone or two octaves, takes exactly the GLIDE time (0 to 2000 ms; 0 is a jump). The alternative, a constant speed in octaves per second, makes wide leaps slow and small ones abrupt. Constant time keeps a glide inside the rhythm a player or a pattern sets, which is what a sequenced bass line needs. The clamp in the update makes the last step land exactly on the target, so a glide never overshoots and ends with o = o<sub>target</sub> bit for bit.
+
+**Where it starts.** A keyboard note on a voice that has sounded before starts from where that voice's pitch is now, even in the middle of an earlier glide:
+
+```equation
+o_start = (currentPitchNote − note) / 12,    o_target = 0
+```
+
+The voice's base note becomes the new note (the oscillators and the sample reader are set to its frequency), and the offset glides from the old pitch to 0. A voice's first note has nowhere to start from and begins on its pitch. With several voices each voice glides from the last note it played, so which note a polyphonic glide comes from depends on the voice allocation of §1.5; with Voices at 1 it is always the previous note. A legato step (§10.8) is the other way round: nothing restarts, the base note stays, and the offset glides to (new − base) / 12. The step size is worked out when a glide begins, so moving the GLIDE knob changes the next glide, not the one under way.
+
+**One ratio for every source.** The glide does not touch any source directly. It multiplies the shared pitch ratio of Chapter 10, and every source already reads that ratio:
+
+```equation
+ratio[n] = r[n] × 2^{o[n]}       (r[n] = 1 when nothing modulates)
+```
+
+So the oscillators, Random, the sample reader, and the grain cloud all glide together, through the same code that serves pitch bend: the oscillator's 0.49 cap, the sample's move between prepared versions with its hysteresis (§10.6), and the grain cloud's per-chunk step rescaling, for which the voice computes the offset a few samples ahead (`glideOctavesAhead`). Folding the glide into r[n] costs one multiplication and, while the offset moves, one `exp2` per sample per gliding voice. At rest (o = 0 and no target), the voice takes its unmodulated path operation for operation, so with GLIDE at 0 and LEGATO off (and no slides in the pattern) it renders exactly as v1.10.1 did. A legato step at GLIDE 0 is a jump: the offset moves to its target at once and stays there, so that voice then reads the ratio path until it starts its next note.
+
+**Sequencer notes and the 303 slide.** Keyboard notes glide whenever GLIDE is above 0. The sequencer's notes do not: a step played normally keeps its attack on its own pitch, and a step glides only when the step before it is marked SLIDE. That is how the Roland TB-303 bass line works. On the 303 a slide step keeps its gate open into the next step, so the envelope is not triggered again, and the pitch control voltage passes through a lag circuit (a resistor and capacitor) that bends it towards the new note over a fixed short time; unslid steps jump. The lag is an exponential approach in volts per octave, so its duration is also roughly independent of the interval: constant time again, in a different curve.
+
+NeonSynth realises the slide with a contract between the sequencer (§13.3) and the voices, carried entirely in MIDI on channel 16 at a single sample:
+
+```text
+CC 68 (Legato Footswitch) = 127      the mark: "the next note-on is a slide"
+note-on   (the new step's note)      a voice still holding a channel-16 note takes it as a legato step
+note-off  (the old step's note)      finds no voice on that note any more: nothing happens
+CC 68 = 0                            the mark is lifted
+```
+
+The mark is needed because channel-16 notes can overlap without meaning a slide: a gate of 100% puts the old note-off on the new note-on's sample, after it, and swing with a long gate overlaps by up to half a step. Those overlaps must retrigger, as they always did, and without CC 68 they do. A slide to the pitch already sounding is a tie: the voice swallows the old note-off that follows instead of ending the note. A slide that finds no held note (released or stolen meanwhile) starts an ordinary note. With GLIDE at 0, a slide is a legato step that jumps in pitch without a new attack, which is still distinct from a retrigger. Since the mark travels with the notes as MIDI, it lands on exactly the right sample whatever the block size, and nothing else ever sends CC 68 on channel 16: keyboard input is moved to channel 1 before it reaches the synth.
+
+Pigments, MicroFreak, and the S-1 offer glide and slide relatives with their own curves and timing laws. Outside music, a constant-time ramp in a logarithmic coordinate is the familiar way to sweep a test oscillator in equal steps per octave, as in a logarithmic chirp.
+
+### 10.8 Legato, the note stack, and HOLD
+
+A monophonic instrument must decide which of several held keys sounds; this rule is its note priority. NeonSynth's LEGATO (active only with Voices at 1) uses last-note priority with return, kept in a note stack: an array of up to 16 keyboard keys in the order they were pressed.
+
+```text
+key down:  remove the key if present, push it on top (full: forget the oldest)
+           if other keys were down and a voice holds a keyboard note:
+               legato step to the new key      (envelopes, source, velocity carry on)
+key up:    remove the key
+           if keys remain and the key that sounds went up (no pedal holding it):
+               legato step back to the top of the stack
+           the last key up releases the note as usual
+```
+
+A legato step reuses JUCE's own bookkeeping. `PlayingSynthesiser` marks the sounding voice (`prepareLegatoStep`) and calls `Synthesiser::startVoice` on it; the voice ignores the hard stop that `startVoice` sends first, and its `startNote` glides to the new pitch (§10.7) instead of restarting. Because the synth believes it started the note normally, later note-offs, the sustain pedal, and voice stealing all see the new note on that voice. With LEGATO off, or more than one voice, every event reaches `juce::Synthesiser` unchanged. A polyphonic legato is not offered: with several voices sounding, the synth would have to guess which voice a new key continues.
+
+Each operation on the stack is O(16) and allocation-free, under the synth's lock. Other priorities exist: lowest-note priority favours the bass, highest-note the melody; last-note is the usual choice for lead playing, and the return to a still-held key makes trills between two fingers work.
+
+HOLD is simpler: a sustain pedal for the keyboard, applied before the MIDI reaches the synth. While it is on, `buildPlayMidi` keeps back every keyboard note-off in a 128-entry set; switching it off sends them all at the first sample of the block. The sequencer's notes are made after this point and never pass through it. In Transpose mode the held key stays down for the sequencer too, so HOLD latches the pattern on its transposition. Off, which is the default, none of this code runs and the keyboard path is v1.10.1's.
+
+### 10.9 Verified behavior
 
 - **`tests/LfoTests.cpp`:** each shape matches its formula bit for bit within a cycle; rates are accurate from 0.02 to 20 Hz; a song position of 3.5 beats with 1/4 gives phase 0.5; the phase follows the song position across blocks and after a loop jump; 1/8T at 120 BPM runs at 6 Hz; 1000 samples rendered as one block equal the same samples rendered as 1 + 31 + 512 + 456; two renders from `reset()` are bit-identical; Random is constant between wraps and new at every wrap; steps are slewed to at most 2 per 2 ms, while sine and triangle at 20 Hz are not touched; all at 44.1, 48, and 96 kHz.
 - **`tests/ModulationTests.cpp`:** a full bend gives exactly ±2 and ±24 semitones at those ranges, range 0 leaves the buffer null, the upper half maps over 8191 steps and the lower over 8192, and a bend on channel 16 counts; an event at sample 100 leaves the earlier samples untouched; the bend is halfway at 2.5 ms and arrives after 5 ms; controller 1 alone is 7-bit and with controller 33 is 14-bit; controller 121 restores the null buffer; the wheel at its top swings ±30 cents at 5.5 Hz (11 cycles in 2 s); the tremolo never exceeds 1, reaches 0 at AMP 100% and 0.5 at AMP 50%, and fades in over 20 ms; blocks longer than the buffers are handled.
 - **`tests/PitchTests.cpp`:** at ratios of 0, +12, and −7 semitones, Oscillator, Random, and Sample sound within 3 cents of the note times the ratio, and Granular peaks within 25 cents; an all-1 pitch buffer renders exactly as no buffer does; a 0 to +24 semitone sweep on a sample crosses the version boundaries at +3 and +15 semitones with no step larger than an ideal sweep's (within 1%), a level that holds above 97% of its peak, and an end pitch within 3 cents of two octaves up; the version switch has its hysteresis.
 - **`tests/MidiModulationTests.cpp`:** through the whole processor, a full bend raises A4 by 2 semitones; in Layer mode a keyboard note and the sequencer's notes (channel 16) are bent together; the wheel at its top swings about 30 cents; LFO CUTOFF of 3 octaves at 2 Hz makes the brightness rise and fall.
+- **`tests/LfoTests.cpp` (v1.11.0, time signatures):** the bar divisions are 16, 8, and 4 beats in 4/4 and 12, 6, and 3 in 3/4; note lengths stay in beats in every signature; at ppq 4.5 in 3/4 a 1-bar LFO is at phase 0.5, and at ppq 10.5 in 7/8 a 2-bar one is; with the host stopped in 3/4 the LFO runs one cycle per 3 beats; after a signature change a 4-bar LFO advances a quarter cycle per bar, steadily across 12 bars; a bar of 0, negative, 1000, or NaN beats counts as 4/4. **`tests/SweepTests.cpp`** checks the 1-bar LFO in 3/4 and 7/8 at 44.1 to 192 kHz under every block plan.
+- **`tests/PlayingTests.cpp` (v1.11.0):** GLIDE reaches the new pitch in the set time, halfway in pitch halfway in time (a straight line in octaves), for intervals up and down, and every source sounds it; a voice's first note starts on its pitch whatever GLIDE is (bit for bit); LEGATO with one voice keeps the envelope through an overlapping key, plays the new key within 2 cents, and returns to the key still held, and with more voices does nothing; HOLD keeps keyboard notes after their keys go up, releases them all when switched off, lets the sequencer's notes through, and latches Transpose; the slide MIDI glides the holding voice, also to the same pitch, while an unmarked channel-16 overlap plays exactly as before; at their defaults GLIDE, LEGATO, and HOLD change nothing, bit for bit; switching them while notes sound, a legato step, and a slide never make a step in the output larger than the steady tone's own. **`tests/SweepTests.cpp`** renders a glide identically under every block plan and lands on G4 once its 200 ms have passed.
+- **`tests/VoiceStealingTests.cpp` (v1.11.0):** free voices are used first; stealing follows the order of §1.5 (same note, oldest released with pedal-held notes counted as held, oldest), checked against a reference implementation.
 - **`tests/RealtimeSafetyTests.cpp`:** no allocation or free in `processBlock` with the LFO on all three depths in every shape, synced and free, the Voices limit changing, and bend and wheel moving mid-block. **`tests/compare_versions.py`:** sessions that never touch the new controls render bit-identically to the v1.8.0 build.
 
 `RenderBenchmark` (48 kHz, 512-sample blocks, 16 notes held at full velocity, share of one CPU core):
@@ -678,7 +798,7 @@ The LFO on the cutoff costs about 0.4% of a core for 16 voices, the price of the
 
 Pigments, MicroFreak, and the S-1 offer LFO, vibrato, and tempo-synced relatives, not necessarily these shapes or smoothing rules. Outside music, vibrato is frequency modulation and tremolo is amplitude modulation, as in radio; sample-and-hold is the first stage of every analog-to-digital converter; and taking the LFO's phase from the song position is the timestamped scheduling of Chapter 13.
 
-**Repository reading:** `Lfo.h`, `Modulation.h`, `NeonSynthVoice.h` (`setModulation`, `sourceSample`, `settleSampleCopy`, `renderCloud`, `modulatedCutoffHz`), `SampleReader.h` (`levelFor`, `moveToLevel`), `GrainCloud.h` (`setPitchRatio`, `stepNow`), `tests/LfoTests.cpp`, `tests/ModulationTests.cpp`, `tests/PitchTests.cpp`, `tests/MidiModulationTests.cpp` at tag `v1.10.1`.
+**Repository reading:** [`src/dsp/Lfo.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/dsp/Lfo.h), [`src/dsp/Modulation.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/dsp/Modulation.h), [`src/plugin/NeonSynthVoice.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/plugin/NeonSynthVoice.h) (`setModulation`, `sourceSample`, `settleSampleCopy`, `renderCloud`, `modulatedCutoffHz`), [`src/dsp/SampleReader.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/dsp/SampleReader.h) (`levelFor`, `moveToLevel`), [`src/dsp/GrainCloud.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/dsp/GrainCloud.h) (`setPitchRatio`, `stepNow`), [`tests/LfoTests.cpp`](https://github.com/kv244/NeonSynth/blob/v1.11.0/tests/LfoTests.cpp), [`tests/ModulationTests.cpp`](https://github.com/kv244/NeonSynth/blob/v1.11.0/tests/ModulationTests.cpp), [`tests/PitchTests.cpp`](https://github.com/kv244/NeonSynth/blob/v1.11.0/tests/PitchTests.cpp), [`tests/MidiModulationTests.cpp`](https://github.com/kv244/NeonSynth/blob/v1.11.0/tests/MidiModulationTests.cpp); for glide, legato, and HOLD, [`src/plugin/NeonSynthVoice.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/plugin/NeonSynthVoice.h) (`startNote`, `beginGlide`, `glideToNote`, `advanceGlide`, `pitchRatioAt`), [`src/plugin/PlayingSynthesiser.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/plugin/PlayingSynthesiser.h), [`src/plugin/NeonSynthProcessor.cpp`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/plugin/NeonSynthProcessor.cpp) (`buildPlayMidi`, `releaseHeldNotes`, `lfoTransport`), [`tests/PlayingTests.cpp`](https://github.com/kv244/NeonSynth/blob/v1.11.0/tests/PlayingTests.cpp), [`tests/SweepTests.cpp`](https://github.com/kv244/NeonSynth/blob/v1.11.0/tests/SweepTests.cpp) at tag `v1.11.0`.
 
 ## 11. Multi-mode resonant filtering and drive
 
@@ -796,7 +916,7 @@ To minimize trigonometric (`tan`) overhead during sweeps, filter coefficients (g
 
 - **Sweep benchmark (v1.8.0):** Rendering 16 voices sweeping cutoff over 60 seconds of audio takes 887 ms with 16-sample coefficient decimation, compared to 1498 ms when updating every sample.
 - **Load benchmark (v1.8.0):** Running 16 active voices at Resonance 90% and Drive 50% consumes 2.6% of a single CPU core, compared to 1.1% at default settings.
-- **LFO benchmark (v1.9.0):** 16 voices with LFO CUTOFF at +2 octaves and 4 Hz consume 1.73% of a core, against 1.35% for the same 16 voices unmodulated (§10.7).
+- **LFO benchmark (v1.9.0):** 16 voices with LFO CUTOFF at +2 octaves and 4 Hz consume 1.73% of a core, against 1.35% for the same 16 voices unmodulated (§10.9).
 
 ### 11.6 Spectrum display normalization
 
@@ -804,7 +924,7 @@ The Spectrum visualizer draws the filter frequency response with the same coeffi
 
 amsynth, Pigments, S-1, and MicroFreak provide multi-mode resonant filter relatives, not necessarily identical TPT/van der Pol topologies. Outside synthesis, state-variable and zero-delay feedback filters appear in control systems and digital audio equalizers.
 
-**Repository reading:** `CytomicSvf.h` (header comment and core step), `NeonSynthVoice.h` (`modulatedCutoffHz`, `filterStep`, `advanceFilterControls`, `filterEnvelopeMovesCutoff`), `tests/FilterTests.cpp`, `tests/compare_versions.py` at tag `v1.10.1`.
+**Repository reading:** [`src/dsp/CytomicSvf.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/dsp/CytomicSvf.h) (header comment and core step), [`src/plugin/NeonSynthVoice.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/plugin/NeonSynthVoice.h) (`modulatedCutoffHz`, `filterStep`, `advanceFilterControls`, `filterEnvelopeMovesCutoff`), [`tests/FilterTests.cpp`](https://github.com/kv244/NeonSynth/blob/v1.11.0/tests/FilterTests.cpp), [`tests/compare_versions.py`](https://github.com/kv244/NeonSynth/blob/v1.11.0/tests/compare_versions.py) at tag `v1.11.0`.
 
 ## 12. Stereo and output protection
 
@@ -855,9 +975,11 @@ There is no lookahead or time-varying detector, so it avoids compressor-style pu
 
 A sample peak is the largest stored value. True peak concerns reconstructed values between samples; the ceiling is not a true-peak guarantee or hearing-safety guarantee. Other synths offer nonlinear shaping, but no exact proprietary match to this protective curve is asserted. Bounded nonlinear maps have broad mathematical uses; this precise curve's non-musical deployment is not established.
 
-**Repository reading:** voice panning in `NeonSynthVoice.h`, `applyAmplitude` in `Modulation.h`, and `softClip` in `NeonSynthProcessor.h` at tag `v1.10.1`.
+**Repository reading:** voice panning in [`src/plugin/NeonSynthVoice.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/plugin/NeonSynthVoice.h), `applyAmplitude` in [`src/dsp/Modulation.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/dsp/Modulation.h), and `softClip` in [`src/plugin/NeonSynthProcessor.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/plugin/NeonSynthProcessor.h) at tag `v1.11.0`.
 
 ## 13. Sequencing
+
+### 13.1 Steps on samples
 
 Sample-accurate timing places an event at a specified sample rather than a block boundary. It does not require the waveform to become immediately nonzero there.
 
@@ -874,9 +996,115 @@ Pitch bend and the mod wheel are not routed by channel. The modulation stage rea
 
 Small transport discrepancies are tolerated while true jumps release pending notes. A tempo or beat position that is not a finite number, whether from a damaged session or a host, counts as stopped (since v1.10.1): the step loop advances by a step length worked out from the tempo, and would never finish on NaN. Accuracy is limited by transport information supplied for the block; it is not perfect knowledge of arbitrary within-block tempo changes. The LFO's SYNC follows the same transport (§10.1).
 
-Pigments, S-1, and MicroFreak offer sequencer relatives. Outside synthesis, the shared abstraction is timestamped scheduling against a reference clock.
+### 13.2 LENGTH: a polymeter against the bar
 
-**Repository reading:** `StepSequencer.h`, `NeonSynthProcessor.cpp` MIDI routing, `Modulation::handleMidi` in `Modulation.h` at tag `v1.10.1`.
+Since v1.11.0 the pattern repeats after L<sub>p</sub> steps, 1 to 16 (LENGTH; 16, the default, plays as before). Step k of the song plays pattern step
+
+```equation
+index[k] = k mod L_p
+```
+
+while its time, and its swing, still come from k itself. Both facts matter. The index is derived from the song position, not counted, so a pattern stays in place after a loop or a locate and a LENGTH change takes effect at the next step without drift, like the timing of §13.1. Swing follows the beat grid, not the pattern: at an odd length a given pattern step is swung on one pass and straight on the next.
+
+A pattern of L<sub>p</sub> steps over bars of 16 is a polymeter. The two cycles realign after
+
+```equation
+lcm(L_p, 16) steps:    L_p = 12 → 48 steps (3 bars of 1/16),    L_p = 7 → 112 steps (7 bars),    L_p = 5 → 80 steps (5 bars)
+```
+
+which is why short odd lengths make a figure that seems to turn over against the beat for a long time before it comes home. With swing on, the pattern and the swing pair realign after lcm(L<sub>p</sub>, 2) steps. The steps beyond the length keep their contents, so making a pattern longer again brings them back.
+
+### 13.3 TIE and SLIDE: two timing rules
+
+Each step carries two more flags, stored in the same 32-bit atomic word as its on, note, and velocity (bits 17 and 18), so the editor can change them while the audio thread reads them. Absent flags, as in every session saved before v1.11.0, mean off.
+
+A **tie** holds the step's note into the next step, which sends no note-on of its own: its on, note, and velocity are ignored while the tie holds over it. The note-off moves to gate × step length after the start of the last step in the tie. For a run tied from step j to step j + m:
+
+```equation
+noteOff = start[j + m] + gate × stepLength × samplesPerBeat
+```
+
+so a tie over one step at gate 50% sounds for one and a half steps, and over two steps for two and a half. A **slide** also holds the note into the next step, but there the next step's note starts and the held one ends on the same sample, marked with CC 68 so that the voice glides instead of retriggering (the contract of §10.7).
+
+Both are rules about the gap after a step, and a few cases complete them:
+
+- The held note lasts until the next step that fires, however long that is: swing, or a change of tempo or rate meanwhile, does not cut it short or leave it hanging.
+- A slide onto the same pitch is a tie (no note-on). A slide onto a step that is off ends the held note at that step's start, a full-length note. A step with both flags is a tie, and the step the tie ends on may slide.
+- A tie on the last step of the length ties round into the first.
+- With triggers disabled (Transpose with no key held) a held note ends at the next step; stopping, a jump in time, or switching the sequencer off releases everything at once.
+
+Without ties and slides the sequencer's carry state stays empty and every step is played exactly as in v1.10.1.
+
+### 13.4 The scale lock: nearest-member snapping
+
+A scale on a key is a set of pitch classes. NeonSynth stores each of its 13 scales (Off, the seven diatonic modes, harmonic minor, the two pentatonics, blues, and whole tone) as a 12-bit mask, bit i set when the note i semitones above the key belongs:
+
+```equation
+degree(n) = (n − key) mod 12,    n ∈ S  ⇔  bit degree(n) of mask(scale) is set
+```
+
+Snapping a note n is quantisation onto the set S of member notes within 0 to 127:
+
+```equation
+snap(n) = the m ∈ S that minimises |m − n|;  of two at the same distance, the lower
+```
+
+The search tries distances d = 1, 2, …, 11, the note below before the note above, so the tie-break is part of the order and costs nothing. It matters more than it looks: in a seven-note diatonic scale the largest gap between members is two semitones, so every note outside the scale lies exactly halfway between two members and the tie-break decides every time (C♯ snaps to C and F♯ to F in C major). In whole tone every non-member is a tie. Where a scale has a gap of three semitones (harmonic minor, the pentatonics, blues), the two notes inside that gap each have one nearer neighbour, so no tie arises there. In general the snap moves a note by at most ⌊g / 2⌋ semitones, with g the scale's largest gap. Rounding half down is a convention, like rounding half to even in arithmetic; what matters is that it is fixed, so the same input always lands on the same note.
+
+Two variants serve the editor. A snap with a direction looks only at or above (or at or below) the note, and dragging a step or turning the wheel moves it by whole scale degrees with them, so a drag upwards never falls back below where it began. Near 0 or 127, when there is no member that way, the search turns round. The lock acts only when a note is set (dragging, the wheel, ENTER, randomise); notes already stored are never changed, so choosing a scale and then Off again gives the pattern back untouched. Each snap is O(12), on the message thread.
+
+### 13.5 Pattern tools and randomise
+
+The TOOLS menu holds pure functions on the first L<sub>p</sub> steps of a pattern, run on the message thread with a 32-level undo of whole-pattern snapshots (`PatternHistory`). Shifting is rotation in the cyclic group of L<sub>p</sub> steps. Octave up or down transposes every note by 12, or changes nothing if any note would leave 0 to 127, so that up then down always gives the pattern back. Reverse maps step i to step L<sub>p</sub> − 1 − i; because ties and slides belong to the gap after their step, the flag of the gap between steps i and i + 1 moves to the gap between the two mirrored steps, and the wrap-around gap stays where it is. Clear turns steps off but keeps their notes.
+
+Randomise draws a new pattern in the current scale: each step is on with probability 3/4, takes a note uniformly from the scale's members between MIDI 48 + key and 60 + key inclusive (C3 to C4 in C, with middle C as C4), and a velocity uniform in 64 to 127; ties and slides are cleared. Because both ends of that range are the key note, the key's pitch class is twice as likely as any other degree, which gives random lines a tonal centre.
+
+The generator is JUCE's `Random`, a 48-bit linear congruential generator:
+
+```equation
+x_{k+1} = (x_k × 25214903917 + 11) mod 2^{48},    value = ⌊x_{k+1} / 2^{16}⌋  (32 bits)
+nextInt(m) = ⌊value × m / 2^{32}⌋
+```
+
+The low bits of an LCG cycle with short periods, so taking the top 32 bits and reducing the range by a multiply and a shift, rather than a remainder, uses only its good bits; each outcome's probability differs from 1/m by less than 2<sup>−32</sup>. It is not the xorshift generator of the Random source (Chapter 3) and the grain cloud, which run on the audio thread per sample; here a few dozen draws happen per click. Each click seeds a new generator from the system's random source, so every click gives a new pattern, but the function itself is deterministic: the same seed always gives the same pattern, which is what `tests/StepSequencerTests.cpp` checks.
+
+### 13.6 Step entry
+
+ENTER writes played notes into the pattern from a clicked step onwards: each note sets the step on, snaps its note to the scale lock, and stores the played velocity as the step's accent; ties and slides stay. The audio thread only queues the notes (a lock-free FIFO, `pushEnteredNote`); the pattern is written on the message thread. Writing the last step of the length ends the entry.
+
+### 13.7 The internal clock: a product, not a sum
+
+Without a host transport (the Standalone, or SYNC off) the sequencer runs on its own clock at TEMPO. Up to v1.10.1 that clock summed each block's duration in beats:
+
+```equation
+beat_{N} = beat_{N−1} + n_N × BPM / (60 F_s)        (one rounded addition per block)
+```
+
+Since v1.11.0 it counts samples s since the last tempo change (an exact 64-bit integer) and works the beat out in one expression:
+
+```equation
+beat = beat_origin + s × BPM / (60 F_s)
+```
+
+The difference is in how rounding errors accumulate. Each IEEE-754 double operation rounds its result x to the nearest representable value, an error of at most half a unit in the last place, ½ ulp(x) ≤ u |x| with u = 2<sup>−53</sup>. A running sum of N blocks makes N such roundings, each of the size of the growing total, and nothing makes them cancel: the same addend in the same binade tends to round the same way every time. Its error is bounded only by
+
+```equation
+|ε_sum| ≤ ∑_{k=1..N} ½ ulp(beat_k) ≤ N × u × beat_N
+```
+
+which grows with the number of blocks as well as with the position. The product makes a fixed handful of roundings (a multiplication, a division, and the addition of the origin) whatever N is:
+
+```equation
+|ε_product| ≲ 3 u × beat
+```
+
+Measured in samples (multiply by samplesPerBeat, so that beat × samplesPerBeat = s, the samples elapsed), the sum's bound is N u s and the product's 3 u s. With one-sample blocks N = s, and the sum's bound becomes u s<sup>2</sup>: at 192 kHz and 120 BPM, at the step on sample 216,000 (1.125 s in), u s<sup>2</sup> ≈ 5 × 10<sup>−6</sup> of a sample. That exceeds the 10<sup>−6</sup>-sample tolerance in the step offset of §13.1, and `tests/SweepTests.cpp` found exactly that: the step fired one sample late, so the same song rendered differently under different block sizes. With the product the error at the same point is about 7 × 10<sup>−11</sup> of a sample.
+
+The product still grows with position, but only to the floor that the sequencer's own subtraction stepBeat − blockStart already has for any clock, a host's included: 3 u s stays below 10<sup>−6</sup> for about 3 × 10<sup>9</sup> samples, some four hours at 192 kHz. Each tempo change folds the position so far into beat<sub>origin</sub> and adds one more rounding, so the error grows with the number of tempo changes, not with the number of blocks. The same reasoning is why §13.1 derives each step's position from the transport instead of accumulating step lengths, and why the grain engine of Chapter 8 steps in exact 32.32 integers.
+
+Pigments, S-1, and MicroFreak offer sequencer relatives, including pattern lengths, ties, slides, and scale quantisation. Outside synthesis, the shared abstraction is timestamped scheduling against a reference clock, and the sum-versus-product lesson is a classic of numerical analysis: a simulation that advances time by repeatedly adding dt drifts, where one that computes t = n × dt does not.
+
+**Repository reading:** [`src/sequencer/StepSequencer.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/sequencer/StepSequencer.h) (`StepSequencer`, `PatternTools`, `PatternHistory`, `NoteEntry`), [`src/plugin/NeonSynthProcessor.cpp`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/plugin/NeonSynthProcessor.cpp) MIDI routing and internal clock (`buildPlayMidi`), [`src/plugin/NeonSynthProcessor.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/plugin/NeonSynthProcessor.h) (`internalBeatAt`), [`src/gui/PatternRow.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/gui/PatternRow.h), `Modulation::handleMidi` in [`src/dsp/Modulation.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/dsp/Modulation.h), [`tests/StepSequencerTests.cpp`](https://github.com/kv244/NeonSynth/blob/v1.11.0/tests/StepSequencerTests.cpp), [`tests/SweepTests.cpp`](https://github.com/kv244/NeonSynth/blob/v1.11.0/tests/SweepTests.cpp) at tag `v1.11.0`.
 
 ## 14. Displays and measurement
 
@@ -916,7 +1144,7 @@ Neither fully predicts loudness. NeonSynth's clip light indicates proximity to t
 
 FFT/windowing has major non-musical applications, including radar. Label illustrations as measured audio, actual application capture, or explanatory schematic; those are different forms of evidence.
 
-**Repository reading:** `Visualisers.h` (including `Afterglow`), `ShapeView.h`, `SampleView.h`, `LfoView.h` at tag `v1.10.1`.
+**Repository reading:** [`src/gui/NeonStyle.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/gui/NeonStyle.h) (including `Afterglow`), [`src/gui/SignalHistory.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/gui/SignalHistory.h), [`src/gui/ScopeView.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/gui/ScopeView.h), [`src/gui/SpectrumView.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/gui/SpectrumView.h), [`src/gui/LevelMeter.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/gui/LevelMeter.h), [`src/gui/AdsrView.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/gui/AdsrView.h), [`src/gui/VoiceLights.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/gui/VoiceLights.h), [`src/gui/ShapeView.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/gui/ShapeView.h), [`src/gui/SampleView.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/gui/SampleView.h), [`src/gui/LfoView.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/gui/LfoView.h) at tag `v1.11.0` (until v1.10.1 the first seven were one file, `Visualisers.h`).
 
 ## 15. State, real-time engineering, and verification
 
@@ -934,12 +1162,20 @@ FFT/windowing has major non-musical applications, including radar. Label illustr
 | LFO PITCH, CUTOFF, AMP depths and VIBRATO | Linearly smoothed (20 ms) |
 | Pitch bend / mod wheel | From the message's sample; glides of 5 ms / 20 ms |
 | Voices | Next note-on; voices above the limit finish their notes |
+| GLIDE | Read when a glide begins; a glide under way keeps its step |
+| LEGATO | Next key event (with Voices at 1) |
+| HOLD | Off sends every kept note-off at the block's first sample |
+| LENGTH | Next step; the index is k mod L<sub>p</sub> from the song position |
+| TIE / SLIDE | The gap after the step, at the next step that fires |
+| Scale lock (Key, Scale) | Only when a note is set; stored notes never change |
 
-Saved state and automation are not identical. Patterns and sample information are saved, but individual CHOP and sequencer steps are not ordinary host parameters. CHOP edits lack undo in this version.
+Saved state and automation are not identical. Patterns and sample information are saved, but individual CHOP and sequencer steps are not ordinary host parameters. The pattern has a 32-level undo since v1.11.0; CHOP edits still lack undo.
 
 Prepared sample values can be embedded as 24-bit FLAC, preserving the prepared representation rather than the original import. Stable parameter IDs and choice meaning preserve host automation. Neutral new settings help protect old sounds.
 
 Version 1.9.0 appends ten parameters after the existing ones: LFO Shape, Rate, Sync, Division, Pitch, Cutoff, and Amp, Pitch Bend Range, Vibrato Depth, and Voices. `ParameterLayoutTests` checks that parameters are only ever appended. Every new one starts at a neutral value (all depths 0, Voices 16), so a session saved before v1.9.0 loads with the new controls doing nothing. The saved-state format version stays at 4: the new controls are ordinary parameters. The positions of the bend and the wheel are performance state, not saved; `reset()` and controller 121 centre them.
+
+Version 1.11.0 appends six more by the same rule: Hold, Glide, Legato, Sequencer Length, Sequencer Key, and Sequencer Scale, at neutral defaults (off, 0 ms, off, 16, C, Off), so sessions saved before it play exactly as they did; `tests/compare_versions.py` renders them against the v1.10.1 release. A step's tie and slide are written to the session only when set, so a pattern without them is saved exactly as before, and the state format stays at version 4. The new session fixture `v1.11.0.xml` (ties, slides, glide, legato, length, scale) joins the older ones.
 
 Safe sample replacement separates preparation, publication, reader acquisition, retirement, and later destruction. Avoiding allocation is not enough if an old object is freed in the callback.
 
@@ -952,6 +1188,16 @@ Verification should check timing, spectrum, transitions, state round-trips, live
 - **Recursion depth is a resource.** The XML parser recurses for each nested element; 300,000 levels overflowed the stack. Sessions nested deeper than 64 levels are refused (NeonSynth's own nest three deep).
 - **Relative paths** are not tried when a sample is restored.
 
+**Presets are sessions someone sent you (v1.11.0).** A `.neonpreset` file is the session's own XML with two more attributes on the root, a name and a category. The obvious way to load one, parsing it and setting the parameters directly, would open a second door with none of the checks above. `PresetManager` instead wraps the file's text the way JUCE wraps saved XML and passes it to `setStateInformation`, so a preset gets every check a session gets and the fuzz tests cover both. The new door adds its own checks, each for a reason:
+
+- **Size first.** A file larger than 32 MB is refused before it is read. The largest legitimate preset, a session with the largest embedded sample, is about 14 MB, so the limit costs nothing and bounds the memory a hostile file can claim.
+- **A file cut short is refused.** A preset interrupted by a full disk or a copy that stopped often still parses, because JUCE's XML parser accepts an element that never closes; it would then load with parameters missing, which keep whatever values they had, a half-old, half-new sound that looks like success. A complete preset ends with the root's closing tag, so the last 64 bytes are checked before anything is parsed.
+- **Refusal leaves the sound alone.** If `setStateInformation` rejects the text, nothing has changed and the preset bar says why; previous and next skip a damaged user preset instead of stopping on it.
+- **Attributes are data, not commands.** The name is cut to 128 characters, the category must be one of the seven known ones or none, and a program number must be a factory index; anything else is dropped. A file name for SAVE is made legal and shortened to 64 characters.
+- **The window is not the sound.** The editor's view settings, which live in the same state tree, are put back after a preset loads, so a file cannot change what the user is looking at.
+
+The same principle runs through all of these: the file is a description of a sound, and everything in it is checked as if it might not be.
+
 Sessions saved by v1.2, v1.4, v1.5 and v1.10 are kept as fixtures (`tests/fixtures/state`) and must load, keep every newer parameter at its neutral default and play; the whole test suite also runs under AddressSanitizer and UndefinedBehaviorSanitizer in CI.
 
 **Resolved v1.7.1 smoother defect (B6) and floating-point bit-identity:**
@@ -960,7 +1206,7 @@ Sessions saved by v1.2, v1.4, v1.5 and v1.10 are kept as fixtures (`tests/fixtur
 - **Multiplication order and ULP regression testing:** During v1.8.0 development, refactoring amplitude scaling from `(source * level) * envelope` to `source * (level * envelope)` shifted legacy patch outputs by 1–2 ULP (units in the last place) due to IEEE-754 floating-point rounding non-associativity. The regression harness (`tests/compare_versions.py`) caught the discrepancy immediately, leading to the strict operation-order preservation rules used across both the voice gain path and `CytomicSvf.h`. Cross-platform exactness should still be limited to what tests and environments establish, not inferred blindly across all compilers and instruction sets.
 - **Null modulation buffers (v1.9.0):** The modulation stage hands the voices null buffers whenever nothing modulates (§10.5), and every source keeps its unmodulated code path for that case. `tests/compare_versions.py` renders the default sessions through the v1.8.0 and v1.9.0 builds and requires identical samples; `PitchTests` additionally checks that an all-1 pitch buffer renders exactly as no buffer.
 
-**Repository reading:** `NeonSynthVoice.h`, `NeonSynthProcessor.cpp`, `Modulation.h`, `tests/FilterTests.cpp`, `tests/RealtimeSafetyTests.cpp`, `tests/ParameterLayoutTests.cpp`, `tests/StateFuzzTests.cpp`, `tests/SessionStateTests.cpp`, `tests/compare_versions.py` at tag `v1.10.1`.
+**Repository reading:** [`src/plugin/NeonSynthVoice.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/plugin/NeonSynthVoice.h), [`src/plugin/NeonSynthProcessor.cpp`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/plugin/NeonSynthProcessor.cpp), [`src/dsp/Modulation.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/dsp/Modulation.h), [`tests/FilterTests.cpp`](https://github.com/kv244/NeonSynth/blob/v1.11.0/tests/FilterTests.cpp), [`tests/RealtimeSafetyTests.cpp`](https://github.com/kv244/NeonSynth/blob/v1.11.0/tests/RealtimeSafetyTests.cpp), [`tests/ParameterLayoutTests.cpp`](https://github.com/kv244/NeonSynth/blob/v1.11.0/tests/ParameterLayoutTests.cpp), [`tests/StateFuzzTests.cpp`](https://github.com/kv244/NeonSynth/blob/v1.11.0/tests/StateFuzzTests.cpp), [`tests/SessionStateTests.cpp`](https://github.com/kv244/NeonSynth/blob/v1.11.0/tests/SessionStateTests.cpp), [`src/state/PresetManager.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/state/PresetManager.h), [`src/state/FactoryPresets.h`](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/state/FactoryPresets.h), [`tests/PresetTests.cpp`](https://github.com/kv244/NeonSynth/blob/v1.11.0/tests/PresetTests.cpp), [`tests/compare_versions.py`](https://github.com/kv244/NeonSynth/blob/v1.11.0/tests/compare_versions.py) at tag `v1.11.0`.
 
 # Part II — Listening laboratories
 
@@ -977,11 +1223,12 @@ Start with a fresh instance or restore all relevant controls. Source switching a
 | LFO PITCH / CUTOFF / AMP | 0 |
 | Mod wheel / pitch bend | At rest (bottom / centred) |
 | Voices | 16 |
+| GLIDE / LEGATO / HOLD | 0 / off / off |
 | Width | 0% |
 | Gain | 0 dB |
 | Attack / Decay | About 5 ms / 100 ms |
 | Sustain / Release | 100% / about 150 ms |
-| Sequencer | Off |
+| Sequencer | Off (LENGTH 16, no ties or slides, Scale Off) |
 
 Use low hardware volume and repeatable notes/velocity. A MIDI clip removes performance variation. Listen first, describe second, inspect displays third. Change one variable at a time.
 
@@ -1001,26 +1248,27 @@ An honest inability to hear a difference is a valid observation.
 
 Use this map to pair each listening laboratory with its mathematical concepts, chapter sections, and source files before running experiments.
 
-| Lab | Title | Prerequisite Chapters | Key Code / Test Files (v1.10.1) |
+| Lab | Title | Prerequisite Chapters | Key Code / Test Files (v1.11.0) |
 |---|---|---|---|
-| **Lab 1** | Recognize the waveforms | Ch. 1, Ch. 2 (§2.1–2.5) | `Oscillator.h`, `tests/OscillatorTests.cpp` |
-| **Lab 2** | Hear what the filter removes and emphasizes | Ch. 11 (§11.1–11.6), Ch. 14 | `CytomicSvf.h`, `NeonSynthVoice.h`, `tests/FilterTests.cpp` |
-| **Lab 3** | Separate articulation from tone | Ch. 9, Ch. 11 (§11.3, §11.5) | `VoiceEnvelope.h`, `tests/VoiceEnvelopeTests.cpp` |
-| **Lab 4** | CHOP: cut, invert, repeat | Ch. 2, Ch. 4 | `Oscillator.h` (`Chop`), `tests/ChopTests.cpp` |
-| **Lab 5** | Fold a sine | Ch. 1 (§1.2), Ch. 6 | `Sculpt.h`, `tests/SculptTests.cpp` |
-| **Lab 6** | Random versus Noise | Ch. 3, Ch. 5 | `Oscillator.h` (`RandomStepOscillator`), `Sculpt.h` |
-| **Lab 7** | ROOT, pitch, and duration | Ch. 7 (§7.1–7.4) | `SampleReader.h`, `SampleData.h` |
-| **Lab 8** | Loop joins | Ch. 7 (§7.5) | `SampleReader.h`, `tests/SampleReaderTests.cpp` |
-| **Lab 9** | Granular freeze and scan | Ch. 8 | `GrainCloud.h`, `tests/GranularTests.cpp` |
-| **Lab 10** | From fragments to texture | Ch. 8, Ch. 14 | `GrainCloud.h`, `SampleView.h` |
-| **Lab 11** | Stereo between notes | Ch. 12 (§12.1) | `NeonSynthVoice.h` |
-| **Lab 12** | Gate, swing, and release | Ch. 9, Ch. 13 | `StepSequencer.h`, `NeonSynthProcessor.cpp` |
-| **Lab 13** | Headroom and clipping | Ch. 12 (§12.2–12.3) | `NeonSynthProcessor.h` (`softClip`) |
+| **Lab 1** | Recognize the waveforms | Ch. 1, Ch. 2 (§2.1–2.5) | `src/dsp/Oscillator.h`, `tests/OscillatorTests.cpp` |
+| **Lab 2** | Hear what the filter removes and emphasizes | Ch. 11 (§11.1–11.6), Ch. 14 | `src/dsp/CytomicSvf.h`, `src/plugin/NeonSynthVoice.h`, `tests/FilterTests.cpp` |
+| **Lab 3** | Separate articulation from tone | Ch. 9, Ch. 11 (§11.3, §11.5) | `src/dsp/VoiceEnvelope.h`, `tests/VoiceEnvelopeTests.cpp` |
+| **Lab 4** | CHOP: cut, invert, repeat | Ch. 2, Ch. 4 | `src/dsp/Oscillator.h` (`Chop`), `tests/ChopTests.cpp` |
+| **Lab 5** | Fold a sine | Ch. 1 (§1.2), Ch. 6 | `src/dsp/Sculpt.h`, `tests/SculptTests.cpp` |
+| **Lab 6** | Random versus Noise | Ch. 3, Ch. 5 | `src/dsp/Oscillator.h` (`RandomStepOscillator`), `src/dsp/Sculpt.h` |
+| **Lab 7** | ROOT, pitch, and duration | Ch. 7 (§7.1–7.4) | `src/dsp/SampleReader.h`, `src/state/SampleData.h` |
+| **Lab 8** | Loop joins | Ch. 7 (§7.5) | `src/dsp/SampleReader.h`, `tests/SampleReaderTests.cpp` |
+| **Lab 9** | Granular freeze and scan | Ch. 8 | `src/dsp/GrainCloud.h`, `tests/GranularTests.cpp` |
+| **Lab 10** | From fragments to texture | Ch. 8, Ch. 14 | `src/dsp/GrainCloud.h`, `src/gui/SampleView.h` |
+| **Lab 11** | Stereo between notes | Ch. 12 (§12.1) | `src/plugin/NeonSynthVoice.h` |
+| **Lab 12** | Gate, swing, and release | Ch. 9, Ch. 13 | `src/sequencer/StepSequencer.h`, `src/plugin/NeonSynthProcessor.cpp` |
+| **Lab 13** | Headroom and clipping | Ch. 12 (§12.2–12.3) | `src/plugin/NeonSynthProcessor.h` (`softClip`) |
 | **Lab 14** | What listening cannot prove | Ch. 2, Ch. 6, Ch. 11 (§11.4), Ch. 14, App. A | `tests/OscillatorTests.cpp`, `tests/FilterTests.cpp` |
-| **Lab 15** | Three kinds of movement | Ch. 10 (§10.1–10.5), Ch. 11 (§11.5), Ch. 13 | `Lfo.h`, `Modulation.h`, `tests/LfoTests.cpp` |
-| **Lab 16** | Bend, wheel, and the sample's versions | Ch. 7 (§7.3), Ch. 8, Ch. 10 (§10.2, §10.6), Ch. 14 | `Modulation.h`, `SampleReader.h`, `GrainCloud.h`, `tests/PitchTests.cpp` |
+| **Lab 15** | Three kinds of movement | Ch. 10 (§10.1–10.5), Ch. 11 (§11.5), Ch. 13 | `src/dsp/Lfo.h`, `src/dsp/Modulation.h`, `tests/LfoTests.cpp` |
+| **Lab 16** | Bend, wheel, and the sample's versions | Ch. 7 (§7.3), Ch. 8, Ch. 10 (§10.2, §10.6), Ch. 14 | `src/dsp/Modulation.h`, `src/dsp/SampleReader.h`, `src/dsp/GrainCloud.h`, `tests/PitchTests.cpp` |
+| **Lab 17** | Glide, legato, and the slide | Ch. 1 (§1.5), Ch. 10 (§10.7–10.8), Ch. 13 (§13.2–13.4) | `src/plugin/NeonSynthVoice.h`, `src/plugin/PlayingSynthesiser.h`, `src/sequencer/StepSequencer.h`, `tests/PlayingTests.cpp` |
 
-## 18. Sixteen guided laboratories
+## 18. Seventeen guided laboratories
 
 ### Lab 1 — Recognize the waveforms
 
@@ -1205,6 +1453,20 @@ Gate ends → note-off → Release
 
 **Trap:** The Spectrum display's 11.72 Hz bins cannot resolve a 5.5 Hz vibrato's sidebands: a widened peak is the expected picture. If a wheel moves and the bar beside its knob does not, no MIDI is arriving.
 
+### Lab 17 — Glide, legato, and the slide
+
+**Question:** Why does a glide take the same time for every interval, and what does a slide change that a glide alone does not?
+
+**Procedure:** Choose Oscillator and Sawtooth, filter on at about 600 Hz with Resonance 60%, and a sustained envelope. Set Voices to 1 and GLIDE to 300 ms, and play single notes a semitone apart, then two octaves apart. Turn LEGATO on; hold a key, press a second, release it, and release the first. Turn LEGATO off and repeat. Then program a four-step pattern of different notes at 1/16, set SLIDE on the second step, and listen with GLIDE at 120 ms and at 0. Finally set LENGTH to 7 under a host or the internal clock and count how many bars pass before the figure comes back to the bar line.
+
+**Prediction:** The semitone and the two-octave glide both take 300 ms; the wide one simply moves 24 times as fast in octaves per second, and halfway through it is at the middle pitch, not the middle frequency. With LEGATO the envelope never restarts: the second key glides in, and releasing it glides back to the first. Without LEGATO each key attacks again. In the pattern only the step after the SLIDE glides, and it does not attack; at GLIDE 0 it jumps in pitch, still without a new attack. A 7-step pattern comes back to the bar line after 7 bars of 1/16.
+
+**Interpretation:** A constant-time straight line in octaves is an exponential path in frequency (§10.7). Legato and slide both move a sounding voice instead of starting one; the slide is the sequencer's form of it, marked in MIDI with CC 68 so that ordinary overlaps keep retriggering. LENGTH runs a cycle of 7 against one of 16 (§13.2).
+
+**Code connection:** `beginGlide`, `glideToNote`, and `pitchRatioAt` in `NeonSynthVoice.h`; `PlayingSynthesiser::noteOn` and `noteOff`; `StepSequencer::continueCarry`.
+
+**Trap:** With Voices above 1, a polyphonic glide comes from whatever the chosen voice played last, which may not be the previous note. A slide onto the same pitch is a tie, and a slide into a rest simply ends the note there.
+
 ## 19. Final sound-design exercise
 
 Choose a hollow pluck, evolving digital tone, frozen atmosphere, looped instrument, or rhythmic noise patch.
@@ -1335,7 +1597,7 @@ A zero at z = 1 rejects DC; a nearby pole controls the low-frequency transition.
 
 ### B.1 Restore a diagnostic patch
 
-Use Oscillator/Sawtooth, neutral sculpting, filter off (or LP, Cutoff max, Res 0%, Drive 0%), LFO depths at 0, mod wheel down and bend centred, Voices 16, Width zero, Gain 0 dB, fast Attack, full Sustain, moderate Release. Retrigger after selecting Source. Keep hardware volume low.
+Use Oscillator/Sawtooth, neutral sculpting, filter off (or LP, Cutoff max, Res 0%, Drive 0%), LFO depths at 0, mod wheel down and bend centred, GLIDE 0, LEGATO and HOLD off, Voices 16, Width zero, Gain 0 dB, fast Attack, full Sustain, moderate Release. Retrigger after selecting Source. Keep hardware volume low.
 
 ### B.2 No sound
 
@@ -1383,10 +1645,15 @@ Restore PAD, select the source, and retrigger. Inspect loading errors, then test
 | Bend or wheel does nothing | BEND or VIBRATO at 0; a still bar beside the knob means no MIDI arrives |
 | Pitch stays bent or wobbling | A bend left off-centre, the wheel up, or LFO PITCH not 0; controller 121 resets bend and wheel |
 | Chord loses notes | Voices below 16 |
+| GLIDE does nothing on the sequencer | Only a step after a SLIDE glides; plain steps attack on their pitch |
+| GLIDE does nothing on the first note | A voice's first note has no earlier pitch to glide from |
+| LEGATO does nothing | Voices above 1; LEGATO is mono only |
+| Scale lock leaves wrong notes | It acts only when a note is set; re-set or randomise the steps |
+| Pattern drifts against the bar | LENGTH below 16 (a polymeter, §13.2) |
 
 ### B.7 Unexpected duration
 
-Short notes: inspect note-off, Gate, Sustain/Release, sample ending, and voice stealing, which happens sooner with Voices below 16. Long notes: inspect Release, overlapping events, sustain pedal, and looping. One-shot still uses ADSR; Loop until release may fade before the remaining file is audible. A bend changes a sample's duration together with its pitch. Note that the filter envelope never ends a voice; only the amplitude envelope governs voice lifetime.
+Short notes: inspect note-off, Gate, Sustain/Release, sample ending, and voice stealing, which happens sooner with Voices below 16. Long notes: inspect Release, overlapping events, sustain pedal, HOLD, ties, and looping. One-shot still uses ADSR; Loop until release may fade before the remaining file is audible. A bend changes a sample's duration together with its pitch. Note that the filter envelope never ends a voice; only the amplitude envelope governs voice lifetime.
 
 ### B.8 Clicks and crackles
 
@@ -1418,54 +1685,65 @@ Include the smallest render/test that reproduces the problem. Preserve an unproc
 
 ### C.1 Scope
 
-This index targets release tag `v1.9.0` ([kv244/Synth at v1.9.0](https://github.com/kv244/NeonSynth/tree/v1.10.1)). Paths are relative to the repository root; class names are more durable than line numbers.
+This index targets release tag `v1.11.0` ([kv244/NeonSynth at v1.11.0](https://github.com/kv244/NeonSynth/tree/v1.11.0)). Paths are relative to the repository root; class names are more durable than line numbers. Since v1.11.0 the source is in five folders: `src/dsp` (sources, filter, envelopes, LFO and modulation), `src/sequencer`, `src/state` (samples, presets), `src/gui`, and `src/plugin` (the processor, the voice, and the synthesiser classes). The former `Visualisers.h` is split into `NeonStyle.h`, `SignalHistory.h`, `ScopeView.h`, `SpectrumView.h`, `LevelMeter.h`, `AdsrView.h`, and `VoiceLights.h`.
 
 ### C.2 DSP and sources
 
-| Feature | Source / entry point (v1.10.1) | Verification |
+| Feature | Source / entry point (v1.11.0) | Verification |
 |---|---|---|
-| Shared voice | `NeonSynthVoice.h`, `NeonSynthVoice` | Processor & voice tests |
-| Periodic waves | `Oscillator.h`, `PolyBlepOscillator` | `tests/OscillatorTests.cpp` |
-| BLEP/BLAMP | `Oscillator.h`, `Blep4` | Oscillator spectral tests |
+| Shared voice | `src/plugin/NeonSynthVoice.h`, `NeonSynthVoice` | Processor & voice tests |
+| Periodic waves | `src/dsp/Oscillator.h`, `PolyBlepOscillator` | `tests/OscillatorTests.cpp` |
+| BLEP/BLAMP | `src/dsp/Oscillator.h`, `Blep4` | Oscillator spectral tests |
 | Compensation | `Blep4::TrebleCompensation` | Harmonic tests |
-| Random | `RandomStepOscillator` in `Oscillator.h` | Repeatability/pitch tests |
-| CHOP | `Chop`, `ChopSettings` in `Oscillator.h` | `tests/ChopTests.cpp` |
-| Noise/Fold | `Sculpt.h`, `Sculpt` | `tests/SculptTests.cpp` |
-| ADSR (Amp & Filter) | `VoiceEnvelope.h` | `tests/VoiceEnvelopeTests.cpp` |
-| LFO | `Lfo.h`, `Lfo` | `tests/LfoTests.cpp` |
-| Pitch bend, mod wheel, modulation buffers, tremolo | `Modulation.h`, `Modulation`, `ModulationBlock` | `tests/ModulationTests.cpp`, `tests/MidiModulationTests.cpp` |
-| Pitch in the sources | `NeonSynthVoice.h` (`sourceSample`, `settleSampleCopy`, `renderCloud`), `Oscillator.h` (`nextSample (pitchRatio)`), `SampleReader.h` (`levelFor`, `moveToLevel`), `GrainCloud.h` (`setPitchRatio`, `stepNow`) | `tests/PitchTests.cpp` |
-| Multi-mode Filter & ADAA Drive | `CytomicSvf.h`, `NeonSynthVoice.h` (`modulatedCutoffHz`, `filterStep`, `advanceFilterControls`) | `tests/FilterTests.cpp`, `tests/compare_versions.py` |
-| Pitch-based Pan | `NeonSynthVoice.h` | Processor/render checks |
-| Gain | `NeonSynthProcessor.cpp` | Processor checks |
-| Clipper | `NeonSynthProcessor.h`, `softClip` | Headroom checks |
-| Voices limit | `NeonSynthProcessor.h`, `LimitedSynthesiser::findFreeVoice` | `EditorTests` (lights), `RealtimeSafetyTests` (no allocation); stealing order by inspection |
-| Preparation | `SampleData.h`, `create` | `tests/SampleDataTests.cpp` |
-| Loading/PAD | `SampleLoader.h` | Loader/preparation tests |
-| Publication | `SampleSlot.h` | Replacement/real-time tests |
-| Playback/loops | `SampleReader.h` | `tests/SampleReaderTests.cpp` |
-| Granular/SIMD | `GrainCloud.h` | `tests/GranularTests.cpp` |
+| Random | `RandomStepOscillator` in `src/dsp/Oscillator.h` | Repeatability/pitch tests |
+| CHOP | `Chop`, `ChopSettings` in `src/dsp/Oscillator.h` | `tests/ChopTests.cpp` |
+| Noise/Fold | `src/dsp/Sculpt.h`, `Sculpt` | `tests/SculptTests.cpp` |
+| ADSR (Amp & Filter) | `src/dsp/VoiceEnvelope.h` | `tests/VoiceEnvelopeTests.cpp` |
+| LFO | `src/dsp/Lfo.h`, `Lfo` | `tests/LfoTests.cpp` |
+| Pitch bend, mod wheel, modulation buffers, tremolo | `src/dsp/Modulation.h`, `Modulation`, `ModulationBlock` | `tests/ModulationTests.cpp`, `tests/MidiModulationTests.cpp` |
+| Pitch in the sources | `src/plugin/NeonSynthVoice.h` (`sourceSample`, `settleSampleCopy`, `renderCloud`), `src/dsp/Oscillator.h` (`nextSample (pitchRatio)`), `src/dsp/SampleReader.h` (`levelFor`, `moveToLevel`), `src/dsp/GrainCloud.h` (`setPitchRatio`, `stepNow`) | `tests/PitchTests.cpp` |
+| Multi-mode Filter & ADAA Drive | `src/dsp/CytomicSvf.h`, `src/plugin/NeonSynthVoice.h` (`modulatedCutoffHz`, `filterStep`, `advanceFilterControls`) | `tests/FilterTests.cpp`, `tests/compare_versions.py` |
+| Pitch-based Pan | `src/plugin/NeonSynthVoice.h` | Processor/render checks |
+| Gain | `src/plugin/NeonSynthProcessor.cpp` | Processor checks |
+| Clipper | `src/plugin/NeonSynthProcessor.h`, `softClip` | Headroom checks |
+| Voices limit and stealing order | `src/plugin/NeonSynthProcessor.h`, `LimitedSynthesiser::findFreeVoice` | `EditorTests` (lights), `RealtimeSafetyTests` (no allocation), `tests/VoiceStealingTests.cpp` (order) |
+| Glide | `src/plugin/NeonSynthVoice.h` (`beginGlide`, `glideToNote`, `advanceGlide`, `pitchRatioAt`) | `tests/PlayingTests.cpp`, `tests/SweepTests.cpp` |
+| Legato, slide contract | `src/plugin/PlayingSynthesiser.h`, `PlayingSynthesiser`; `NeonSynthVoice::prepareLegatoStep` | `tests/PlayingTests.cpp` |
+| HOLD | `src/plugin/NeonSynthProcessor.cpp` (`buildPlayMidi`, `releaseHeldNotes`) | `tests/PlayingTests.cpp` |
+| Preparation | `src/state/SampleData.h`, `create` | `tests/SampleDataTests.cpp` |
+| Loading/PAD | `src/state/SampleLoader.h` | Loader/preparation tests |
+| Publication | `src/state/SampleSlot.h` | Replacement/real-time tests |
+| Playback/loops | `src/dsp/SampleReader.h` | `tests/SampleReaderTests.cpp` |
+| Granular/SIMD | `src/dsp/GrainCloud.h` | `tests/GranularTests.cpp` |
 
 Test filenames above are under `tests/`. A processor-level check does not imply a dedicated test file for every row.
 
 ### C.3 Events and interface
 
-| Feature | Source (v1.10.1) |
+| Feature | Source (v1.11.0) |
 |---|---|
-| Sequencer | `StepSequencer.h` |
-| Event routing, parameters, state | `NeonSynthProcessor.cpp` |
-| Bend and wheel input | `Modulation.h` (`handleMidi`) |
-| MIDI logging | `MidiLogger.h` |
-| Editor, MODULATION panel, voice lights, GAIN fader | `NeonSynthEditor.h` |
-| LFO view | `LfoView.h` |
-| Scope/FFT/meters/envelope/filter view | `Visualisers.h` |
-| Ideal-cycle/CHOP view | `ShapeView.h` |
-| Sample/grain view | `SampleView.h` |
-| Step grid | `SequencerView.h` |
-| Help | `HelpOverlay.h` |
+| Sequencer, LENGTH, TIE, SLIDE, scale lock | `src/sequencer/StepSequencer.h` (`StepSequencer`, `scaleMask`, `snapToScale`, `moveInScale`) |
+| Pattern tools, undo, step entry | `src/sequencer/StepSequencer.h` (`PatternTools`, `PatternHistory`, `NoteEntry`), `src/gui/PatternRow.h` |
+| Internal clock, LFO time signature | `src/plugin/NeonSynthProcessor.cpp` (`buildPlayMidi`, `lfoTransport`), `src/plugin/NeonSynthProcessor.h` (`internalBeatAt`), `src/dsp/Lfo.h` (`divisionBeats`, `songPositionInCycles`) |
+| Presets | `src/state/PresetManager.h`, `src/state/FactoryPresets.h`, `src/gui/PresetBar.h` |
+| Event routing, parameters, state | `src/plugin/NeonSynthProcessor.cpp` |
+| Bend and wheel input | `src/dsp/Modulation.h` (`handleMidi`) |
+| MIDI logging | `src/plugin/MidiLogger.h` |
+| Editor, MODULATION panel, GLIDE and LEGATO, GAIN fader | `src/gui/NeonSynthEditor.h` |
+| LFO view | `src/gui/LfoView.h` |
+| Shared drawing, afterglow | `src/gui/NeonStyle.h`, `src/gui/SignalHistory.h` |
+| Scope | `src/gui/ScopeView.h` |
+| FFT and filter view | `src/gui/SpectrumView.h` |
+| Meters | `src/gui/LevelMeter.h` |
+| Envelope view | `src/gui/AdsrView.h` |
+| Voice lights | `src/gui/VoiceLights.h` |
+| Ideal-cycle/CHOP view | `src/gui/ShapeView.h` |
+| Sample/grain view | `src/gui/SampleView.h` |
+| Step grid | `src/gui/SequencerView.h` |
+| Help | `src/gui/HelpOverlay.h` |
 | Build/settings | `CMakeLists.txt` |
 
-Integration checks include `ParameterLayoutTests`, `EditorTests`, `RealtimeSafetyTests`, `MidiModulationTests`, `RenderBenchmark`, `test_midi.py`, and `tests/compare_versions.py`.
+Integration checks include `ParameterLayoutTests`, `EditorTests`, `RealtimeSafetyTests`, `MidiModulationTests`, `PlayingTests`, `PresetTests`, `VoiceStealingTests`, `SweepTests`, `RenderBenchmark`, `test_midi.py`, and `tests/compare_versions.py`.
 
 ### C.4 Maintaining the index
 
@@ -1475,19 +1753,23 @@ An automated checker can verify files/symbols and flag changed dependencies; it 
 
 ## Appendix D. Model → Algorithm → Verified Behavior
 
-This summary table contrasts the ideal continuous-time mathematical model, the discrete-time implementation in NeonSynth v1.10.1, and the verified behavior established by source inspection and automated tests.
+This summary table contrasts the ideal continuous-time mathematical model, the discrete-time implementation in NeonSynth v1.11.0, and the verified behavior established by source inspection and automated tests.
 
-| Subsystem | Ideal Model | Implemented Algorithm (v1.10.1) | Verified Behavior & Bounds |
+| Subsystem | Ideal Model | Implemented Algorithm (v1.11.0) | Verified Behavior & Bounds |
 |---|---|---|---|
 | **Oscillators (§2.1, §2.4)** | Continuous phase accumulator φ(t) with infinite-bandwidth discontinuities | 4-point cubic B-spline `Blep4` residuals (±2 samples); integral from d to 2 for BLEP (0.5 at edge, 0 at d=2), second integral for BLAMP (7/30 at corner, 1/120 at d=1); `setWaveform()` latched at phase wrap past 1.0 | Exact alias cancellation for phase increment ≤ 0.25 cycles/sample; bounded residual aliasing up to 0.49 cap; treble compensation filter retains state across waveform switches |
 | **CHOP Modulation (§4)** | Instantaneous periodic binary masking x(t)(1 − o · p[k]) | Cycle-boundary latched pattern/Comb; 10 ms smoothed Overtone; BLEP-scaled jumps with high-frequency fade depth = clamp((L − 2)/2, 0, 1) where L = 1/(Δt · 16 C) | Full depth for L ≥ 4 samples, linear fade between 4 and 2, zero for L ≤ 2 samples |
 | **Wavefolding (§6)** | Memoryless odd-symmetric sine folder F(x) = sin((π/2) drive · x) | 2× oversampled half-band FIR interpolation/decimation, DC blocker, and integer + first-order all-pass dry alignment | Substantially suppresses foldover aliasing; dry/wet alignment is a first-order group-delay approximation |
 | **Sample & Granular (§7–8)** | Continuous sinc reconstruction and unbounded overlapping grain summation | 3 prefiltered levels (95-tap Blackman FIR) + Catmull–Rom cubic read; 32.32 fixed-point granular engine with [4u(1 − u)]<sup>2</sup> window and SIMD (scalar/SSE2/AVX2) | Capped at 32 simultaneous grains; 1/√(max(1, overlap)) gain scaling; FMA contraction disabled for cross-ISA consistency |
 | **Envelopes & Smoothers (§9, §15)** | Piecewise-linear ADSR trajectories and exact exponential parameter glides | Linear per-sample step increments; amplitude envelope (`(source * level) * env`) + independent filter envelope (10/300/0.5/300 ms defaults) | v1.7.1 gliding smoother double-step bug (B6) fixed in v1.8.0; exact multiplication order preserved within 0 ULP of v1.7.1 |
-| **LFO (§10.1, §10.5)** | Periodic control signal m(t) from −1 to +1 at 0.02–20 Hz, or phase-locked to musical time | One shared phase accumulator rendered per block into a per-sample buffer; seeded sample-and-hold; rate limiter of 2 per 2 ms; 10 ms shape crossfade; synced phase = frac(ppq / beats) | Shapes bit-exact to their formulas within a cycle; rates accurate 0.02–20 Hz; independent of block size; 1/8T at 120 BPM = 6 Hz; renders from `reset()` bit-identical (44.1/48/96 kHz) |
+| **LFO (§10.1, §10.5)** | Periodic control signal m(t) from −1 to +1 at 0.02–20 Hz, or phase-locked to musical time | One shared phase accumulator rendered per block into a per-sample buffer; seeded sample-and-hold; rate limiter of 2 per 2 ms; 10 ms shape crossfade; synced phase = frac(ppq / beats), bars of 4n/d beats under an n/d signature | Shapes bit-exact to their formulas within a cycle; rates accurate 0.02–20 Hz; independent of block size; 1/8T at 120 BPM = 6 Hz; renders from `reset()` bit-identical (44.1/48/96 kHz) |
 | **Pitch modulation (§10.2, §10.6)** | Instantaneous frequency f · 2<sup>s(t)/12</sup> for bend, vibrato and LFO in semitones | One `exp2` per sample, shared; oscillator step × r capped at 0.49; sample increment × r with version switch (2 ms linear crossfade, one semitone hysteresis); grain 32.32 step scaled once per chunk of ≤ 32 samples | Each source within 3 cents of note × ratio (granular 25); all-1 buffer bit-identical; 0 → +24 st sweep click-free; ±30 cents at 5.5 Hz; bend glides 5 ms from its sample; bend reaches channel-16 notes; vibrato 16 at 1.28%, bend granular at 6.05% of a core |
 | **Cutoff & amplitude modulation (§10.3–10.4, §11.5, §12.2)** | f<sub>c</sub> · 2<sup>d·m(t)</sup>; bounded AM g = 1 − A(1 − m)/2 | LFO octaves in the cutoff sum, forcing 16-sample coefficient updates; tremolo on the voice sum before output gain; null buffers when idle | g never above 1, reaching 1 − A; LFO cutoff 3 octaves at 2 Hz moves brightness; lfo cutoff 16 at 1.73% vs 1.35%; default sessions bit-identical to v1.8.0 |
-| **Voice allocation (§1.1)** | N-voice polyphony, oldest-first stealing | `findFreeVoice` over the first N voices (free, same note, oldest released, oldest); JUCE's own choice at 16 | Lights set the parameter in one gesture; no allocation while the limit changes; stealing order by inspection, no dedicated test |
+| **Voice allocation (§1.1, §1.5)** | N-voice polyphony with a stated stealing policy | `findFreeVoice` over the first N voices (free, oldest on the same note, oldest released with pedal-held notes counted as held, oldest); JUCE's own choice at 16 | Lights set the parameter in one gesture; no allocation while the limit changes; stealing order matches a reference implementation (`VoiceStealingTests`) |
+| **Glide (§10.7)** | Constant-time portamento, exponential in frequency: f(t) = f<sub>from</sub>(f<sub>to</sub>/f<sub>from</sub>)<sup>t/T<sub>g</sub></sup> | Per-voice offset in octaves moving linearly by Δo = distance / (T<sub>g</sub> F<sub>s</sub>), clamped onto the target; 2<sup>o</sup> multiplies the shared ratio r[n] read by every source; keyboard notes glide when GLIDE > 0, sequencer steps only after SLIDE | Every interval in GLIDE time, halfway in pitch at halfway in time; all sources glide; identical under every block plan; GLIDE 0 and first notes bit-identical to v1.10.1 |
+| **Legato, slide, HOLD (§10.7–10.8)** | Monophonic last-note priority with return; 303-style slide; sustain latch | 16-key note stack; legato step via `startVoice` on the sounding voice with the hard stop ignored; slide marked by CC 68 around the note-on on channel 16; HOLD keeps keyboard note-offs in a 128-entry set | Envelope continues through overlaps; returns to the held key within 2 cents; unmarked overlaps retrigger as before (bit for bit); no click larger than the steady tone's own step |
+| **Sequencer timing (§13.2–13.3, §13.7)** | Steps at exact beat positions; polymeter; tie and slide as gap rules | index = k mod L<sub>p</sub> with swing from k; held notes carried to the next step that fires; internal clock beat = origin + s · BPM / (60 F<sub>s</sub>) | Every length repeats after that many steps, each step on its sample; ties end with the gate of the last tied step; steps on the same sample for block sizes 1 to 4096 at 44.1–192 kHz, internal clock included |
+| **Scale lock (§13.4–13.5)** | Nearest member of a pitch-class set | 12-bit masks for 13 scales; search outward, below before above (ties to the lower note); randomise from a seeded 48-bit LCG | Snapped notes in scale and nearest, ties to the lower; same seed, same pattern |
 | **Multi-Mode Filter (§11)** | Continuous 2-pole state-variable prototype (12 dB/oct) with LP/HP/BP/Notch outputs | Trapezoidal TPT (`CytomicSvf.h`) matching JUCE operation order; 10 ms mode crossfade; 20 ms exponential cutoff smoothing; coefficients updated every 16 samples while moving | Bit-identical to JUCE `StateVariableTPTFilter` at Res 0%, Drive 0%; 16-sample counter persists across blocks (887 ms vs 1498 ms per 60 s sweep on 16 voices) |
 | **Filter Self-Oscillation & Drive (§11.3–11.4)** | Bounded limit-cycle oscillation and alias-free pre-filter saturation | Van der Pol damping k<sub>eff</sub> = k + Bq/(B+q) from quadrature states A<sup>2</sup> = (s<sub>1</sub><sup>2</sup> + s<sub>2</sub><sup>2</sup>)/4 scaled to L = max(vel · ampEnv, 10<sup>−6</sup>); double-precision 1st-order ADAA sat(u) = u/√(1+u<sup>2</sup>) with 5% dry crossfade | Self-oscillates at Res ≥ 98% (k ≤ 0), peak ≈ 1.05 L (±1 dB from 100 Hz to 5 kHz, −3.6 dB at 10 kHz, −5.6 dB at 15 kHz at 48 kHz), pitch within 0.02% of f<sub>c</sub>; Drive adds +8.6 dB boost to quiet signals with −32.4 dB vs −32.7 dB alias floor (11–17 dB cleaner than naive clipping) |
 | **Output Soft Clipper (§12.3)** | Smooth static saturation curve bounding summed voice peaks | Rational polynomial q(u) = u(27+u<sup>2</sup>)/(27+9u<sup>2</sup>) between knee a = 0.50118723 (−6 dBFS) and ceiling b = 0.89125094 (−1 dBFS), capped at u = 3 (+4.5 dBFS) | Zero slope above +4.5 dBFS; ≈ 4 ns/sample vs ≈ 16 ns/sample for `std::tanh` (MSVC) |
@@ -1500,24 +1782,26 @@ This summary table contrasts the ideal continuous-time mathematical model, the d
 
 JUCE provides host-facing infrastructure, audio utilities, and GUI facilities. It does not design the instrument's DSP.
 
-| Facility | Role in NeonSynth (v1.10.1) |
+| Facility | Role in NeonSynth (v1.11.0) |
 |---|---|
 | `AudioProcessor` | Lifecycle, processing, state |
 | `AudioProcessorEditor` | Window |
-| `Synthesiser` / voice classes | Events and polyphony; `findFreeVoice` overridden for the Voices limit |
+| `Synthesiser` / voice classes | Events and polyphony; `PlayingSynthesiser` adds LEGATO and the slide, `findFreeVoice` is overridden for the Voices limit |
 | `AudioBuffer` / `MidiBuffer` | Audio and timestamped events; bend and wheel read from the incoming `MidiBuffer` before the synth renders |
 | `AudioProcessorValueTreeState` | Parameters/state integration |
 | Attachments | Control bindings |
 | `SmoothedValue` | Parameter ramps, bend and wheel glides, modulation depths |
-| `AudioPlayHead` | Tempo and song position for the sequencer and the LFO's SYNC |
+| `AudioPlayHead` | Tempo, song position, time signature, and last bar line for the sequencer and the LFO's SYNC |
 | `FFT` | Spectrum analysis (filtering now handled by custom `CytomicSvf.h`) |
 | FIFO / atomics | Display transfer |
 | Formats / thread pool | Loading/preparation |
 | Components / Graphics / Timer | Custom UI |
 
-NeonSynth provides its oscillator corrections, CHOP, folder, custom TPT/van der Pol resonant filter (`CytomicSvf.h`), ADAA drive, envelopes, readers, granular engine, sequencer, and (since v1.9.0) its LFO and modulation stage.
+NeonSynth provides its oscillator corrections, CHOP, folder, custom TPT/van der Pol resonant filter (`CytomicSvf.h`), ADAA drive, envelopes, readers, granular engine, sequencer, (since v1.9.0) its LFO and modulation stage, and (since v1.11.0) glide, legato, and the sequencer's slide contract.
 
 Two v1.9.0 choices show where NeonSynth steps around JUCE's defaults. The Voices limit is a `Synthesiser` subclass whose `findFreeVoice` override searches only the first N voices, and calls JUCE's own `findFreeVoice` when N is 16, so the old allocation is kept exactly. Pitch bend and the mod wheel are not taken from JUCE's per-voice `pitchWheelMoved()` and `controllerMoved()` callbacks, which JUCE delivers per channel, to the voices playing on that channel, between the sub-blocks it renders. Instead `processBlock` hands the incoming `MidiBuffer` to `Modulation`, which reads every message with its sample position and builds the buffers shared by all voices, before `synth.renderNextBlock()` runs. One message then moves every voice, whatever channel its note came from.
+
+v1.11.0 steps around one more default. JUCE's `Synthesiser` has no notion of moving a sounding note: a note-on always starts a voice. `PlayingSynthesiser` overrides `noteOn`, `noteOff`, `allNotesOff`, and `handleController` to keep the note stack and the slide mark, and performs a legato step by calling JUCE's own `startVoice` on the sounding voice after telling the voice to ignore the stop that comes first. Working through `startVoice` rather than beside it means JUCE's bookkeeping (the voice's note, channel, key state, and age) stays true, so pedals, later note-offs, and the stealing order of §1.5 need no special cases.
 
 ### 20.2 Lifecycle
 
@@ -1530,7 +1814,8 @@ prepareToPlay:
 processBlock:
     acquire sample, snapshot parameters, set the Voices limit,
     read bend and wheel from the incoming MIDI and render the modulation,
-    build MIDI, render voices, apply tremolo and output stages,
+    build MIDI (HOLD, keyboard routing, internal clock, sequencer),
+    render voices (legato steps, glides), apply tremolo and output stages,
     publish displays
 releaseResources:
     mark audio inactive and permit safe cleanup
