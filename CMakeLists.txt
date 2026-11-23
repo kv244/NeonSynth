@@ -175,6 +175,7 @@ target_sources(NeonSynth
         src/state/FactoryPresets.h
         # src/gui
         src/gui/NeonSynthEditor.h
+        src/gui/NeonSynthEditor.cpp
         src/gui/CrtTheme.h
         src/gui/CrtFrame.h
         src/gui/CrtLookAndFeel.h
@@ -195,6 +196,7 @@ target_sources(NeonSynth
         src/plugin/NeonSynthProcessor.h
         src/plugin/NeonSynthProcessor.cpp
         src/plugin/NeonSynthVoice.h
+        src/plugin/NeonSynthVoice.cpp
         src/plugin/MidiLogger.h
 )
 
@@ -307,7 +309,7 @@ if(NEONSYNTH_BUILD_TESTS)
 #endif
 ")
 
-    add_library(neonsynth_engine STATIC src/plugin/NeonSynthProcessor.cpp)
+    add_library(neonsynth_engine STATIC src/plugin/NeonSynthProcessor.cpp src/plugin/NeonSynthVoice.cpp src/gui/NeonSynthEditor.cpp)
     target_include_directories(neonsynth_engine PUBLIC ${CMAKE_CURRENT_LIST_DIR}/src)
     target_link_libraries(neonsynth_engine
         PUBLIC
