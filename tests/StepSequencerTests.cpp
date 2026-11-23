@@ -261,9 +261,10 @@ int main()
             const double spb = testSampleRate * 60.0 / bpm;
             if (b == 20)   // tempo change at the block's midpoint
             {
-                hostBeat += (double) (block / 2) / spb;
+                const double halfBlock = 0.5 * block;   // 512 samples: block is even
+                hostBeat += halfBlock / spb;
                 bpm = 126.0;
-                hostBeat += (double) (block / 2) / (testSampleRate * 60.0 / bpm);
+                hostBeat += halfBlock / (testSampleRate * 60.0 / bpm);
             }
             else
             {
