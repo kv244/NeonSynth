@@ -167,9 +167,14 @@ public:
         The value of table n at phase t (0..1), by cubic (Catmull-Rom) interpolation between
         table points. Audio thread: no allocation.
     */
-    float read (int n, float t) const noexcept
+    float read (int n, float t) const noexcept   { return readTable (getTable (n), t); }
+
+    /**
+        read() on a table from getTable(), for a caller that keeps the pointer while it plays
+        one table (the oscillator, v1.12.0): the same arithmetic, without looking the table up.
+    */
+    static float readTable (const float* tab, float t) noexcept
     {
-        const float* tab = getTable (n);
         const float x = t * (float) tableSize;
         int i = (int) x;
         const float f = x - (float) i;

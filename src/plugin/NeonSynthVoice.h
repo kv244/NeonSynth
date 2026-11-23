@@ -25,7 +25,8 @@ public:
     One synth voice: sound source -> ADSR (VoiceEnvelope) -> TPT low-pass -> pan.
 
     The source is chosen per note (see Source): the band-limited oscillator
-    or the Random step wave (Oscillator.h), the loaded sample
+    (or, v1.12.0, CUSTOM's wavetables and NAIVE's textbook waves, both inside
+    it) or the Random step wave (Oscillator.h), the loaded sample
     (SampleReader.h) or grains of it (GrainCloud.h). Sources plug in at nextSourceSample(), so nothing after
     it changes. A voice retriggered or stolen while playing the sample
     crossfades from its old read position to the new one over 2 ms; grains

@@ -431,7 +431,7 @@ if(NEONSYNTH_BUILD_TESTS)
     #   PitchTests, MidiModulationTests, PlayingTests, PresetTests, VoiceStealingTests, SweepTests
     #   RouterTests           the MIDI router alone (HOLD, the ENTER queue, the internal clock)
     set(NEONSYNTH_ENGINE_TESTS RealtimeSafetyTests ParameterLayoutTests SessionStateTests StateFuzzTests EditorTests PitchTests MidiModulationTests
-        PlayingTests PresetTests VoiceStealingTests SweepTests RouterTests FourierTests)
+        PlayingTests PresetTests VoiceStealingTests SweepTests RouterTests FourierTests FourierDspTests)
 
     foreach(program ${NEONSYNTH_UNIT_TESTS} ${NEONSYNTH_ENGINE_TESTS} RenderBenchmark)
         add_executable(${program} tests/${program}.cpp)
