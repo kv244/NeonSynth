@@ -136,19 +136,20 @@ endif()
 # headers only (no "using namespace juce"), so a file sees the same names it did. The test
 # programs share one precompiled header (neonsynth_test_pch below).
 option(NEONSYNTH_PCH "Precompile JUCE's headers for NeonSynth's own sources" ON)
+# C++ only: the project also enables C (JUCE compiles a few C files), which must not get it.
 set(neonsynth_pch_headers
-    <juce_core/juce_core.h>
-    <juce_events/juce_events.h>
-    <juce_data_structures/juce_data_structures.h>
-    <juce_graphics/juce_graphics.h>
-    <juce_gui_basics/juce_gui_basics.h>
-    <juce_gui_extra/juce_gui_extra.h>
-    <juce_audio_basics/juce_audio_basics.h>
-    <juce_audio_formats/juce_audio_formats.h>
-    <juce_audio_devices/juce_audio_devices.h>
-    <juce_audio_processors/juce_audio_processors.h>
-    <juce_audio_utils/juce_audio_utils.h>
-    <juce_dsp/juce_dsp.h>)
+    "$<$<COMPILE_LANGUAGE:CXX>:<juce_core/juce_core.h>>"
+    "$<$<COMPILE_LANGUAGE:CXX>:<juce_events/juce_events.h>>"
+    "$<$<COMPILE_LANGUAGE:CXX>:<juce_data_structures/juce_data_structures.h>>"
+    "$<$<COMPILE_LANGUAGE:CXX>:<juce_graphics/juce_graphics.h>>"
+    "$<$<COMPILE_LANGUAGE:CXX>:<juce_gui_basics/juce_gui_basics.h>>"
+    "$<$<COMPILE_LANGUAGE:CXX>:<juce_gui_extra/juce_gui_extra.h>>"
+    "$<$<COMPILE_LANGUAGE:CXX>:<juce_audio_basics/juce_audio_basics.h>>"
+    "$<$<COMPILE_LANGUAGE:CXX>:<juce_audio_formats/juce_audio_formats.h>>"
+    "$<$<COMPILE_LANGUAGE:CXX>:<juce_audio_devices/juce_audio_devices.h>>"
+    "$<$<COMPILE_LANGUAGE:CXX>:<juce_audio_processors/juce_audio_processors.h>>"
+    "$<$<COMPILE_LANGUAGE:CXX>:<juce_audio_utils/juce_audio_utils.h>>"
+    "$<$<COMPILE_LANGUAGE:CXX>:<juce_dsp/juce_dsp.h>>")
 if(NEONSYNTH_PCH)
     if(DEFINED JUCE_DIR)
         set(neonsynth_juce_source_dir "${JUCE_DIR}")
