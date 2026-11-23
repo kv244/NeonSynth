@@ -1,12 +1,14 @@
 # Manual figures
 
-The figures in `docs/images/` for [the user manual](../NeonSynth-User-Manual.md), the scripts that make them, and how to remake them. Edition 1.8 of the manual, for NeonSynth v1.10.0. v1.10.0 gives the editor the retro CRT look (a dark green tube in a bezel, scanlines, phosphor text in VT323 and IBM Plex Mono, knobs as arc rings, block sliders and meters, the playing step drawn inverted), so all four captures were retaken with v1.10.0, in the same states as before and with the scanlines on, the default. The layout did not move, so the boxes in Figures 1, 3, 6 and 8 are unchanged. Three things in `compose_ui.py` did change: Figure 1's marker 8 moved right (to x 766), clear of the new SCANLINES button in the header; Figure 8's key describes the new step cells (5 is now the inverted step, no longer a cyan outline; 4 a row of velocity blocks), and its pointer 3 sits a little further right, beside the wider VT323 note name. The white callouts read as before against the darker window, so their colours are unchanged. The cover was redrawn in the CRT look (see below). The sound did not change, so Figures 2, 4, 5, 7 and 9 were not rendered again: they and `render-settings.json` remain the v1.9.0 renders (revision `v1.9.0 (bc56754)`), which v1.10.0 reproduces bit for bit; Figure 10, drawn from the source code, is unchanged too.
+The figures in `docs/images/` for [the user manual](../NeonSynth-User-Manual.md), the scripts that make them, and how to remake them. Edition 2.0 of the manual, for NeonSynth v1.11.0. v1.11.0 changes the layout for the first time since v1.7: the header gains the preset bar and HOLD, the MODULATION panel GLIDE and LEGATO, and the sequencer a pattern row (LENGTH, KEY, SCALE, TOOLS, ENTER, UNDO), with TIE and SLD markers on each step. So Figure 1 (`ui-oscillator-running`) was retaken with v1.11.0 and gains regions 11–14, and Figure 8 now has its own capture, `ui-sequencer`, which shows a tie, two slides and LENGTH 12, with pointers 6–9 for them. The SOURCE panel did not change, so Figures 3 and 6 keep their v1.10.0 captures. The sound of default sessions did not change, so the rendered plots stay as they were. The cover was redrawn for v1.11.0.
+
+How the v1.11.0 captures were set up: rather than setting controls with the mouse, the state was written into the Standalone's settings file (`~/.config/NeonSynth.settings`, `filterState`: JUCE's `copyXmlToBinary` of the session XML, in `MemoryBlock::toBase64Encoding`'s format) before starting it, so each capture shows exactly the stated settings. `ui-oscillator-running`: every parameter at its default except Sawtooth, LFO CUTOFF +1.5 oct, LFO RATE 2 Hz and RUN on; the frame with the playhead on step 9. `ui-sequencer`: the Rounded Bass factory preset's settings and pattern (slides on steps 8 and 12), plus a TIE on step 3 and LENGTH 12, RUN on; the frame with the playhead on step 9.
 
 ## What each figure is
 
 | Figure | File | Kind | Made by |
 |---|---|---|---|
-| 1 Main window, ten numbered regions | `fig01-interface` | Actual application capture | `compose_ui.py` |
+| 1 Main window, fourteen numbered regions | `fig01-interface` | Actual application capture | `compose_ui.py` |
 | 2 The four waveforms and their spectra | `fig02-waveforms` | Plot derived from rendered audio | `render_plots.py` |
 | 3 The SOURCE panel with the SHAPE strip | `fig03-shape-strip` | Actual application capture | `compose_ui.py` |
 | 4 Amplitude envelope | `fig04-envelope` | Plot derived from rendered audio | `render_plots.py` |
@@ -53,7 +55,7 @@ The renders come from the Linux build of the VST3 at the revision above. The bui
 
 The scanlines are part of the v1.10 look and stay on in the captures (the SCANLINES button in the header turns them off; a fresh instance has them on). Each `ui-oscillator-running` frame of the 25 fps grab shows the playhead on one step for about four frames; pick one from the middle of the run on step 9.
 
-Figure 1 has ten regions: 1 source and waveform menus, 2 the strip and its knob row, 3 the display, 4 the envelope with its AMP / FILTER tabs, 5 the filter, 6 OUTPUT (WIDTH, the GAIN fader and the meters), 7 MODULATION (LFO, BEND, VIBRATO), 8 the voice lights and their readout, 9 quick help, 10 the step sequencer. A white strip left of the capture holds the markers for 1, 2 and 10.
+Figure 1 has fourteen regions: 1 source and waveform menus, 2 the strip and its knob row, 3 the display, 4 the envelope with its AMP / FILTER tabs, 5 the filter, 6 OUTPUT (WIDTH, the GAIN fader and the meters), 7 MODULATION (LFO, BEND, VIBRATO), 8 the voice lights and their readout, 9 quick help, 10 the step sequencer, and since v1.11.0 11 the preset bar, 12 HOLD, 13 GLIDE and LEGATO, 14 the pattern row. A white strip left of the capture holds the markers for 1, 2, 10 and 14.
 
 Boxes in `compose_ui.py` are in design pixels (the coordinates used by `NeonSynthEditor::layout()`) and scaled by 1.5 to the captures. If the layout changes, move the boxes there and retake the captures.
 
