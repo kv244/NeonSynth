@@ -50,6 +50,22 @@ v1.11.1 rebuilt the CMake file for speed; nothing that ships changed.
 - **The numbers.** A cold build of the plugin and every test (2 cores, no compile cache) took 32 min 10 s at v1.11.0 and 6 min (359 s) at v1.11.1, measured on 23 November 2026: about 5× faster.
 - **`NEONSYNTH_LTO`** (on by default): link-time optimisation for the plugin's Release build. It is the slowest step of the plugin's build and changes nothing you hear (`-ffp-contract=off` and no fast-math keep the arithmetic exact either way). It stays on for releases and for the Windows CI job that runs the compare test and pluginval, so what ships is what is tested; the Linux build job turns it off (`-DNEONSYNTH_LTO=OFF`), and so can you for local work. With GCC the final step runs on every core (`-flto=auto`).
 - **ccache.** The Linux CI jobs (the GCC build, the sanitizers and the Clang integrity build) compile through ccache (`-DCMAKE_CXX_COMPILER_LAUNCHER=ccache`), cached between runs, so a run recompiles only what changed. The same flags work locally.
+- **After v1.11.1: three more options**, all on by default, none changing the generated code (the compare test stays bit-identical):
+  - **`NEONSYNTH_PCH`**: JUCE's module headers are precompiled once for the plugin, once for the engine and once for all the test programs, instead of being parsed again for every source file. Only NeonSynth's own files use it; JUCE's module sources compile as before. With ccache, set `CCACHE_SLOPPINESS=pch_defines,time_macros,include_file_mtime,include_file_ctime` (CI does), or ccache skips the files that use it.
+  - **`NEONSYNTH_FAST_LINKER`** (Linux, GCC or Clang): links with mold when it is installed (`apt install mold`), or with lld under Clang.
+  - **`NEONSYNTH_SPLIT_DWARF`** (Linux, Debug and RelWithDebInfo): debug information stays in `.dwo` files beside the objects instead of going through the linker.
+- **What they gain**, measured on 23 November 2026 (2 cores, no compile cache, plugin and every test):
+
+  | | before | after |
+  |---|---|---|
+  | Development build (`-DNEONSYNTH_LTO=OFF`): cold | 379 s | 355 s |
+  | — rebuild after editing one `.cpp` | 7 s | 2 s |
+  | — rebuild after editing one DSP header | 72 s | 36 s |
+  | Release build (LTO on): cold | 437 s | 394 s |
+  | — rebuild after editing one DSP header | 210 s | 162 s |
+
+  A cold build is mostly JUCE's own module sources, which no option here touches. A Release build is mostly the LTO links of the Standalone and the VST3 (two minutes or more each, both shipped), so for day-to-day work configure with `-DNEONSYNTH_LTO=OFF`.
+- **Windows CI has no compile cache.** sccache cannot cache MSVC files that use a precompiled header, and the release build, which has no cache either way, uses the precompiled header; giving the Windows check a cache would mean building it differently from the release it guards.
 - **JUCE by FetchContent** when no `JUCE_DIR` is given (see [Steps](#steps)).
 - **Python dependencies with hashes.** Each `requirements*.txt` (`requirements-test.txt`, `docs/requirements-manual.txt`, `docs/figures/requirements.txt`) is compiled by pip-compile (pip-tools) from the `.in` file beside it, which lists only the top-level packages; every package in the `.txt`, dependencies included, is pinned with its hashes, so `pip install -r` refuses a file that differs. To change a version, edit the `.in` and recompile the `.txt`; the command is in the `.in` file's header, for example:
 

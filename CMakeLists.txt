@@ -127,6 +127,70 @@ if(NEONSYNTH_LTO)
     endif()
 endif()
 
+# Build speed (after v1.11.1). None of these changes the code the compiler generates, so the
+# compare test stays bit-identical; each can be switched off.
+#
+# NEONSYNTH_PCH: JUCE's module headers are parsed once per target, not once per source file.
+# Only NeonSynth's own sources use the precompiled header; JUCE's module sources, which set
+# macros before including their headers, are compiled as before. The header holds JUCE's module
+# headers only (no "using namespace juce"), so a file sees the same names it did. The test
+# programs share one precompiled header (neonsynth_test_pch below).
+option(NEONSYNTH_PCH "Precompile JUCE's headers for NeonSynth's own sources" ON)
+# C++ only: the project also enables C (JUCE compiles a few C files), which must not get it.
+set(neonsynth_pch_headers
+    "$<$<COMPILE_LANGUAGE:CXX>:<juce_core/juce_core.h$<ANGLE-R>>"
+    "$<$<COMPILE_LANGUAGE:CXX>:<juce_events/juce_events.h$<ANGLE-R>>"
+    "$<$<COMPILE_LANGUAGE:CXX>:<juce_data_structures/juce_data_structures.h$<ANGLE-R>>"
+    "$<$<COMPILE_LANGUAGE:CXX>:<juce_graphics/juce_graphics.h$<ANGLE-R>>"
+    "$<$<COMPILE_LANGUAGE:CXX>:<juce_gui_basics/juce_gui_basics.h$<ANGLE-R>>"
+    "$<$<COMPILE_LANGUAGE:CXX>:<juce_gui_extra/juce_gui_extra.h$<ANGLE-R>>"
+    "$<$<COMPILE_LANGUAGE:CXX>:<juce_audio_basics/juce_audio_basics.h$<ANGLE-R>>"
+    "$<$<COMPILE_LANGUAGE:CXX>:<juce_audio_formats/juce_audio_formats.h$<ANGLE-R>>"
+    "$<$<COMPILE_LANGUAGE:CXX>:<juce_audio_devices/juce_audio_devices.h$<ANGLE-R>>"
+    "$<$<COMPILE_LANGUAGE:CXX>:<juce_audio_processors/juce_audio_processors.h$<ANGLE-R>>"
+    "$<$<COMPILE_LANGUAGE:CXX>:<juce_audio_utils/juce_audio_utils.h$<ANGLE-R>>"
+    "$<$<COMPILE_LANGUAGE:CXX>:<juce_dsp/juce_dsp.h$<ANGLE-R>>")
+if(NEONSYNTH_PCH)
+    if(DEFINED JUCE_DIR)
+        set(neonsynth_juce_source_dir "${JUCE_DIR}")
+    else()
+        set(neonsynth_juce_source_dir "${juce_SOURCE_DIR}")
+    endif()
+    file(GLOB neonsynth_juce_module_sources
+        "${neonsynth_juce_source_dir}/modules/*/*.cpp" "${neonsynth_juce_source_dir}/modules/*/*.mm")
+    set_source_files_properties(${neonsynth_juce_module_sources} PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+    # ccache can cache files compiled with a precompiled header only if Clang leaves the
+    # header's timestamp out (CI sets CCACHE_SLOPPINESS=pch_defines,time_macros too).
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        add_compile_options("SHELL:-Xclang -fno-pch-timestamp")
+    endif()
+endif()
+
+# NEONSYNTH_FAST_LINKER: on Linux with GCC or Clang, link with mold, or with lld under Clang,
+# when installed. Linking the plugin and 24 test programs is most of a rebuild after a small edit.
+# mold also links GCC's LTO objects; lld does not, so GCC uses mold or the default linker.
+option(NEONSYNTH_FAST_LINKER "Linux, GCC or Clang: link with mold (or lld under Clang) when installed" ON)
+if(NEONSYNTH_FAST_LINKER AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    include(CheckLinkerFlag)
+    check_linker_flag(CXX "-fuse-ld=mold" NEONSYNTH_HAVE_MOLD)
+    if(NEONSYNTH_HAVE_MOLD)
+        add_link_options(-fuse-ld=mold)
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        check_linker_flag(CXX "-fuse-ld=lld" NEONSYNTH_HAVE_LLD)
+        if(NEONSYNTH_HAVE_LLD)
+            add_link_options(-fuse-ld=lld)
+        endif()
+    endif()
+endif()
+
+# NEONSYNTH_SPLIT_DWARF: in Debug and RelWithDebInfo builds on Linux, debug information goes to
+# .dwo files beside the objects instead of through the linker (the sanitizer and integrity jobs
+# build Debug).
+option(NEONSYNTH_SPLIT_DWARF "Linux, GCC or Clang: keep debug information out of the link (Debug, RelWithDebInfo)" ON)
+if(NEONSYNTH_SPLIT_DWARF AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    add_compile_options($<$<CONFIG:Debug,RelWithDebInfo>:-gsplit-dwarf>)
+endif()
+
 juce_add_plugin(NeonSynth
     VERSION                     1.11.1
     COMPANY_NAME                "AudioDSP"
@@ -249,6 +313,9 @@ target_include_directories(NeonSynth
     PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}/src
 )
+if(NEONSYNTH_PCH)
+    target_precompile_headers(NeonSynth PRIVATE ${neonsynth_pch_headers})
+endif()
 
 # ---------------------------------------------------------------------------
 # Optional tests, one executable per file in tests/ (listed in NEONSYNTH_UNIT_TESTS or
@@ -343,6 +410,9 @@ if(NEONSYNTH_BUILD_TESTS)
             juce::juce_recommended_warning_flags
             neonsynth_warning_tweaks)
     set_target_properties(neonsynth_engine PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    if(NEONSYNTH_PCH)
+        target_precompile_headers(neonsynth_engine PRIVATE ${neonsynth_pch_headers})
+    endif()
 
     # Unit tests of single classes: one program per file, linking only JUCE.
     set(NEONSYNTH_UNIT_TESTS StepSequencerTests VoiceEnvelopeTests OscillatorTests ChopTests SculptTests SampleDataTests SampleReaderTests GranularTests FilterTests LfoTests ModulationTests)
@@ -376,6 +446,23 @@ if(NEONSYNTH_BUILD_TESTS)
     foreach(test ${NEONSYNTH_UNIT_TESTS})
         target_link_libraries(${test} PRIVATE neonsynth_test_juce)
     endforeach()
+
+    # One precompiled header for all the test programs, built by this small target with the
+    # same flags they use (a precompiled header only fits a compile with matching flags).
+    if(NEONSYNTH_PCH)
+        file(CONFIGURE OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/neonsynth_test_pch.cpp CONTENT "// precompiled header owner\n")
+        add_library(neonsynth_test_pch OBJECT ${CMAKE_CURRENT_BINARY_DIR}/neonsynth_test_pch.cpp)
+        target_compile_definitions(neonsynth_test_pch PRIVATE
+            NEONSYNTH_TESTS_DIR="${CMAKE_CURRENT_LIST_DIR}/tests")
+        target_link_libraries(neonsynth_test_pch PRIVATE
+            neonsynth_test_juce
+            juce::juce_recommended_warning_flags
+            neonsynth_warning_tweaks)
+        target_precompile_headers(neonsynth_test_pch PRIVATE ${neonsynth_pch_headers})
+        foreach(program ${NEONSYNTH_UNIT_TESTS} ${NEONSYNTH_ENGINE_TESTS} RenderBenchmark)
+            target_precompile_headers(${program} REUSE_FROM neonsynth_test_pch)
+        endforeach()
+    endif()
     foreach(program ${NEONSYNTH_ENGINE_TESTS} RenderBenchmark)
         target_link_libraries(${program} PRIVATE neonsynth_engine)
     endforeach()
