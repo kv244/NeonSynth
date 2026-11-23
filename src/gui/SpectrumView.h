@@ -4,6 +4,7 @@
 
 #pragma once
 #include <JuceHeader.h>
+#include "dsp/CytomicSvf.h"
 #include "gui/NeonStyle.h"
 #include "gui/SignalHistory.h"
 
@@ -264,7 +265,7 @@ private:
 
     std::array<juce::dsp::FFT, 3> ffts { juce::dsp::FFT (baseFftOrder), juce::dsp::FFT (baseFftOrder + 1), juce::dsp::FFT (baseFftOrder + 2) };
     int fftOrder = baseFftOrder;
-    std::array<float, 2 * maxFftSize> fftData {};
+    std::array<float, 2 * static_cast<std::size_t> (maxFftSize)> fftData {};
     std::array<float, maxFftSize> window {};
     float windowSum = 0.0f;
     std::array<float, numPoints> levels {};

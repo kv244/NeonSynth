@@ -961,7 +961,7 @@ The included `log_to_midi.py` utility converts a captured text log into a MIDI f
 
 ### Building from source
 
-The repository specifies C++17, CMake 3.21 or newer, and JUCE 9.0.0. Since v1.11.1 you do not need to download JUCE yourself: when you do not name a copy, CMake fetches JUCE 9.0.0 from GitHub the first time you configure (this needs git and a network connection). A copy you already have can still be named with `-DJUCE_DIR`. Follow the [build instructions](../README.md#building) when setting up your development environment.
+The repository specifies C++17, CMake 3.22 or newer, and JUCE 9.0.0. Since v1.11.1 you do not need to download JUCE yourself: when you do not name a copy, CMake fetches JUCE 9.0.0 from GitHub the first time you configure (this needs git and a network connection). A copy you already have can still be named with `-DJUCE_DIR`. Follow the [build instructions](../README.md#building) when setting up your development environment.
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release

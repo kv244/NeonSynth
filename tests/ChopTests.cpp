@@ -89,7 +89,8 @@ int main()
         for (int c = 0; c < cycles; ++c)
             for (int i = 2; i < stepLength - 2; ++i)
             {
-                const float v = x[(size_t) (c * cycle + step * stepLength + i)];
+                const int index = c * cycle + step * stepLength + i;
+                const float v = x[(size_t) index];
                 sum += (double) v * v;
                 ++n;
             }
@@ -128,7 +129,8 @@ int main()
             for (int step = 1; step < 16; step += 2)
                 for (int i = 2; i < stepLength - 2; ++i)
                 {
-                    const size_t k = (size_t) (cyc * cycle + step * stepLength + i);
+                    const int index = cyc * cycle + step * stepLength + i;
+                    const size_t k = (size_t) index;
                     residual += std::pow ((double) a[k] + c[k], 2.0);
                     reference += (double) a[k] * a[k];
                 }

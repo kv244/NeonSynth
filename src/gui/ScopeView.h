@@ -159,8 +159,8 @@ private:
     static constexpr double periodsShown   = 2.0;    // a locked trace shows two cycles of the lowest note
     static constexpr float traceInset      = 8.0f;   // the graticule and trace sit this far inside the panel
 
-    std::array<float, baseSearchLength * maxDisplayRateFactor> recent {};
-    std::array<float, baseMaxDisplay * maxDisplayRateFactor>   display {};
+    std::array<float, static_cast<std::size_t> (baseSearchLength) * maxDisplayRateFactor> recent {};
+    std::array<float, static_cast<std::size_t> (baseMaxDisplay) * maxDisplayRateFactor>   display {};
     int   displayLength = baseFreeRunLength;
     float range = 0.25f;
     float lockHz = 0.0f;

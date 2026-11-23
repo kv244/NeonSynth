@@ -5,6 +5,7 @@
 #pragma once
 #include <JuceHeader.h>
 #include "plugin/NeonSynthProcessor.h"
+#include "gui/AdsrView.h"
 #include "gui/NeonStyle.h"
 
 //==============================================================================

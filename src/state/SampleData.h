@@ -202,7 +202,7 @@ private:
                 if (i >= 0 && i < inputLength)
                     acc += (double) taps[(size_t) k] * in[i];
             }
-            out[(size_t) (padding + n)] = (float) acc;
+            out[(size_t) padding + (size_t) n] = (float) acc;
         }
         return out;
     }

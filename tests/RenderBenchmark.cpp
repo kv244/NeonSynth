@@ -319,8 +319,8 @@ int main (int argc, char* argv[])
             const auto inChord = s % 12000;
             for (int k = 0; k < 8; ++k)
             {
-                if (inChord == k * 144)        midi.addEvent (juce::MidiMessage::noteOn  (1, 48 + 3 * k, (juce::uint8) 100), (int) (s - blockStart));
-                if (inChord == 9600 + k * 144) midi.addEvent (juce::MidiMessage::noteOff (1, 48 + 3 * k), (int) (s - blockStart));
+                if (inChord == juce::int64 { k } * 144)        midi.addEvent (juce::MidiMessage::noteOn  (1, 48 + 3 * k, (juce::uint8) 100), (int) (s - blockStart));
+                if (inChord == 9600 + juce::int64 { k } * 144) midi.addEvent (juce::MidiMessage::noteOff (1, 48 + 3 * k), (int) (s - blockStart));
             }
         }
     };

@@ -17,7 +17,7 @@
 namespace SampleLoader
 {
     /** Samples whose FLAC encoding is larger than this are saved by path only. */
-    constexpr size_t maxEmbeddedBytes = 10 * 1024 * 1024;
+    constexpr size_t maxEmbeddedBytes = size_t { 10 } * 1024 * 1024;
 
     /** Result of a load: the sample, or why there isn't one. */
     struct Result

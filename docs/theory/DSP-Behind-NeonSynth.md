@@ -1827,7 +1827,7 @@ Preparation may allocate. Rendering should not depend on file access, GUI progre
 
 ### 20.3 Build and verify
 
-The release documentation specifies C++17, CMake 3.21+, and JUCE 9.0.0 supplied separately. CMake builds VST3 and Standalone.
+The release documentation specifies C++17, CMake 3.22+, and JUCE 9.0.0 (fetched by CMake when no copy is named). CMake builds VST3 and Standalone.
 
 ```text
 cmake -S . -B build \
