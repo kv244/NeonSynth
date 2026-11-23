@@ -131,10 +131,10 @@ CONSTANTS = [
     {"name": "slideController"},
     {"what": "the voice's 5 ms hard-stop fade (the envelope's release and the tail the host is told)",
      "literal": r"\b0\.005f?\b",
-     "files": ["src/plugin/NeonSynthVoice.h", "src/plugin/NeonSynthProcessor.h", "src/plugin/NeonSynthProcessor.cpp"]},
+     "files": ["src/plugin/NeonSynthVoice.h", "src/plugin/NeonSynthVoice.cpp", "src/plugin/NeonSynthProcessor.h", "src/plugin/NeonSynthProcessor.cpp"]},
     {"what": "the voice's 2 ms crossfade between two read positions of the sample (a retrigger, a move to another copy)",
      "literal": r"\b0\.002 \* sampleRate\b",
-     "files": ["src/plugin/NeonSynthVoice.h"]},
+     "files": ["src/plugin/NeonSynthVoice.h", "src/plugin/NeonSynthVoice.cpp"]},
 ]
 
 problems = []

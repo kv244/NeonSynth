@@ -177,6 +177,7 @@ target_sources(NeonSynth
         src/state/SessionState.cpp
         # src/gui
         src/gui/NeonSynthEditor.h
+        src/gui/NeonSynthEditor.cpp
         src/gui/CrtTheme.h
         src/gui/CrtFrame.h
         src/gui/CrtLookAndFeel.h
@@ -202,6 +203,7 @@ target_sources(NeonSynth
         src/plugin/MidiRouter.cpp
         src/plugin/VoiceAllocator.h
         src/plugin/NeonSynthVoice.h
+        src/plugin/NeonSynthVoice.cpp
         src/plugin/MidiLogger.h
         src/plugin/MidiLogger.cpp
 )
@@ -320,7 +322,9 @@ if(NEONSYNTH_BUILD_TESTS)
         src/plugin/Parameters.cpp
         src/plugin/MidiRouter.cpp
         src/plugin/MidiLogger.cpp
-        src/state/SessionState.cpp)
+        src/plugin/NeonSynthVoice.cpp
+        src/state/SessionState.cpp
+        src/gui/NeonSynthEditor.cpp)
     target_include_directories(neonsynth_engine PUBLIC ${CMAKE_CURRENT_LIST_DIR}/src)
     target_link_libraries(neonsynth_engine
         PUBLIC
