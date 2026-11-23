@@ -173,6 +173,8 @@ target_sources(NeonSynth
         src/state/SampleSlot.h
         src/state/PresetManager.h
         src/state/FactoryPresets.h
+        src/state/SessionState.h
+        src/state/SessionState.cpp
         # src/gui
         src/gui/NeonSynthEditor.h
         src/gui/CrtTheme.h
@@ -194,8 +196,14 @@ target_sources(NeonSynth
         # src/plugin
         src/plugin/NeonSynthProcessor.h
         src/plugin/NeonSynthProcessor.cpp
+        src/plugin/Parameters.h
+        src/plugin/Parameters.cpp
+        src/plugin/MidiRouter.h
+        src/plugin/MidiRouter.cpp
+        src/plugin/VoiceAllocator.h
         src/plugin/NeonSynthVoice.h
         src/plugin/MidiLogger.h
+        src/plugin/MidiLogger.cpp
 )
 
 target_compile_definitions(NeonSynth
@@ -307,7 +315,12 @@ if(NEONSYNTH_BUILD_TESTS)
 #endif
 ")
 
-    add_library(neonsynth_engine STATIC src/plugin/NeonSynthProcessor.cpp)
+    add_library(neonsynth_engine STATIC
+        src/plugin/NeonSynthProcessor.cpp
+        src/plugin/Parameters.cpp
+        src/plugin/MidiRouter.cpp
+        src/plugin/MidiLogger.cpp
+        src/state/SessionState.cpp)
     target_include_directories(neonsynth_engine PUBLIC ${CMAKE_CURRENT_LIST_DIR}/src)
     target_link_libraries(neonsynth_engine
         PUBLIC
@@ -330,8 +343,9 @@ if(NEONSYNTH_BUILD_TESTS)
     #   EditorTests           drives the editor offscreen with mouse events and paints it (on
     #                         Linux it needs an X display, e.g. xvfb-run)
     #   PitchTests, MidiModulationTests, PlayingTests, PresetTests, VoiceStealingTests, SweepTests
+    #   RouterTests           the MIDI router alone (HOLD, the ENTER queue, the internal clock)
     set(NEONSYNTH_ENGINE_TESTS RealtimeSafetyTests ParameterLayoutTests SessionStateTests StateFuzzTests EditorTests PitchTests MidiModulationTests
-        PlayingTests PresetTests VoiceStealingTests SweepTests)
+        PlayingTests PresetTests VoiceStealingTests SweepTests RouterTests)
 
     foreach(program ${NEONSYNTH_UNIT_TESTS} ${NEONSYNTH_ENGINE_TESTS} RenderBenchmark)
         add_executable(${program} tests/${program}.cpp)
@@ -372,6 +386,7 @@ endif()
 
 if(NEONSYNTH_INTEGRITY)
     file(GLOB neonsynth_test_sources CONFIGURE_DEPENDS ${CMAKE_CURRENT_LIST_DIR}/tests/*.cpp)
-    set_source_files_properties(src/plugin/NeonSynthProcessor.cpp ${neonsynth_test_sources}
+    set_source_files_properties(src/plugin/NeonSynthProcessor.cpp src/plugin/Parameters.cpp src/plugin/MidiRouter.cpp
+                                src/plugin/MidiLogger.cpp src/state/SessionState.cpp ${neonsynth_test_sources}
         PROPERTIES COMPILE_OPTIONS "${neonsynth_integrity_flags}")
 endif()

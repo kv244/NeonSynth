@@ -46,6 +46,21 @@ public:
         stream.reset();
     }
 
+    /**
+        Log path from NEONSYNTH_MIDILOG, or (Standalone only) from "--midilog <file>"; empty
+        when neither is given and nothing is logged. BASICSYNTH_MIDILOG, the name before v1.4,
+        still works.
+    */
+    static juce::String findMidiLogPath (juce::AudioProcessor::WrapperType wrapper);
+
+    /**
+        Each plugin instance that logs gets its own file, so instances never
+        delete or overwrite each other's log: the first uses the path as given
+        (relative to the working directory), later ones in the same process add
+        "-2", "-3", ... before the extension (midi.log, midi-2.log, ...).
+    */
+    static juce::File midiLogFileForNewInstance (const juce::String& path);
+
     /** Called from prepareToPlay(). */
     void setSampleRate (double newRate) noexcept    { sampleRate.store (newRate); }
 
