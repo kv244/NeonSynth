@@ -432,8 +432,8 @@ void NeonSynthProcessor::pushScope (const float* left, const float* right, int n
     int i = 0;
     scopeFifo.write (numFrames).forEach ([&] (int index)
     {
-        scopeRing[(size_t) (2 * index)]     = left[i];
-        scopeRing[(size_t) (2 * index + 1)] = right[i];
+        scopeRing[2 * (size_t) index]     = left[i];
+        scopeRing[2 * (size_t) index + 1] = right[i];
         ++i;
     });
 }
@@ -464,8 +464,8 @@ int NeonSynthProcessor::drainScope (float* destLeft, float* destRight, int maxFr
     int i = 0;
     scopeFifo.read (juce::jmin (maxFrames, scopeFifo.getNumReady())).forEach ([&] (int index)
     {
-        destLeft[i]  = scopeRing[(size_t) (2 * index)];
-        destRight[i] = scopeRing[(size_t) (2 * index + 1)];
+        destLeft[i]  = scopeRing[2 * (size_t) index];
+        destRight[i] = scopeRing[2 * (size_t) index + 1];
         ++i;
     });
     return i;

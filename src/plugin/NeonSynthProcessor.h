@@ -226,7 +226,7 @@ private:
 
     // Stereo frames, interleaved L/R: index i of the FIFO lives at 2i and 2i + 1.
     juce::AbstractFifo scopeFifo { scopeFifoSize };
-    std::array<float, 2 * scopeFifoSize> scopeRing {};
+    std::array<float, 2 * (std::size_t) scopeFifoSize> scopeRing {};
 
     MidiLogger  midiLogger;
     juce::int64 samplesProcessed = 0;

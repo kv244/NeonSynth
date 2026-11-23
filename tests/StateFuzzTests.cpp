@@ -344,7 +344,7 @@ int main (int argc, char* argv[])
         // where most of them leave valid XML with different values.
         for (int i = 0; i < 150; ++i)
         {
-            auto block = padState;
+            auto block = padState;   // NOLINT(performance-unnecessary-copy-initialization): the copy is damaged below
             auto* bytes = static_cast<juce::uint8*> (block.getData());
             const int textBytes = (int) block.getSize() - 9;
             bytes[8 + random.nextInt (textBytes)] = (juce::uint8) "0123456789.-+eE nanif\""[random.nextInt (22)];
@@ -380,7 +380,7 @@ int main (int argc, char* argv[])
         juce::Random random (42);
         for (int i = 0; i < 150; ++i)
         {
-            auto damaged = flac;
+            auto damaged = flac;   // NOLINT(performance-unnecessary-copy-initialization): the copy is damaged below
             auto* bytes = static_cast<juce::uint8*> (damaged.getData());
             // Mostly the first kilobyte (STREAMINFO and the first frame headers), where a decoder is
             // most easily misled about sizes; the rest anywhere.

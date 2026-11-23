@@ -46,7 +46,7 @@ public:
     static constexpr int numFactoryPresets = 16;
 
     /** Largest preset file read: a session with the largest embedded sample is about 14 MB. */
-    static constexpr juce::int64 maxFileBytes = 32 * 1024 * 1024;
+    static constexpr juce::int64 maxFileBytes = juce::int64 { 32 } * 1024 * 1024;
 
     static inline const juce::Identifier categoryId { "category" };
     static inline const juce::Identifier presetId   { "preset" };

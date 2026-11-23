@@ -261,9 +261,9 @@ int main()
             const double spb = testSampleRate * 60.0 / bpm;
             if (b == 20)   // tempo change at the block's midpoint
             {
-                hostBeat += (block / 2) / spb;
+                hostBeat += (double) (block / 2) / spb;
                 bpm = 126.0;
-                hostBeat += (block / 2) / (testSampleRate * 60.0 / bpm);
+                hostBeat += (double) (block / 2) / (testSampleRate * 60.0 / bpm);
             }
             else
             {
@@ -502,9 +502,9 @@ int main()
             if (  e.on && e.note == 73) on73  = e.sample;
             if (  e.on && e.note == 74) on74  = e.sample;
         }
-        check (off64 == 5 * 6000, "a slide into a rest ends at the rest (a full-length note)");
-        check (on69 == -1 && off68 == 9 * 6000 + 3000, "a slide onto the same pitch holds the note (no note-on) and ends with the gate");
-        check (on73 == 13 * 6000 && off72 == 13 * 6000 && on74 == 14 * 6000 && off73 == 14 * 6000,
+        check (off64 == 5LL * 6000, "a slide into a rest ends at the rest (a full-length note)");
+        check (on69 == -1 && off68 == 9LL * 6000 + 3000, "a slide onto the same pitch holds the note (no note-on) and ends with the gate");
+        check (on73 == 13LL * 6000 && off72 == 13LL * 6000 && on74 == 14LL * 6000 && off73 == 14LL * 6000,
                "two slides in a row hand the note on twice");
         check (ccs == 2 * 3, "each slide to a new pitch is marked once (on and off), and nothing else is");
 
