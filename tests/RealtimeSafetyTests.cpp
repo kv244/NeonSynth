@@ -90,12 +90,21 @@ void* operator new   (std::size_t size, std::align_val_t a)               { retu
 void* operator new[] (std::size_t size, std::align_val_t a)               { return allocateAligned (size, a); }
 void  operator delete   (void* p) noexcept                                { release (p); }
 void  operator delete[] (void* p) noexcept                                { release (p); }
+// Clang does not declare the sized forms unless sized deallocation is on, so it would flag these
+// replacements as functions without a prototype (the integrity job's -Wmissing-prototypes).
+#if defined (__clang__)
+ #pragma clang diagnostic push
+ #pragma clang diagnostic ignored "-Wmissing-prototypes"
+#endif
 void  operator delete   (void* p, std::size_t) noexcept                   { release (p); }
 void  operator delete[] (void* p, std::size_t) noexcept                   { release (p); }
 void  operator delete   (void* p, std::align_val_t) noexcept              { releaseAligned (p); }
 void  operator delete[] (void* p, std::align_val_t) noexcept              { releaseAligned (p); }
 void  operator delete   (void* p, std::size_t, std::align_val_t) noexcept { releaseAligned (p); }
 void  operator delete[] (void* p, std::size_t, std::align_val_t) noexcept { releaseAligned (p); }
+#if defined (__clang__)
+ #pragma clang diagnostic pop
+#endif
 
 //==============================================================================
 namespace
