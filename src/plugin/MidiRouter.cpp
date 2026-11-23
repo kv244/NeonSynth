@@ -5,9 +5,18 @@
 #include "plugin/MidiRouter.h"
 #include <cstring>
 
+namespace
+{
+    // An entered note is packed into 16 bits: the note in the low byte, the velocity in the next.
+    constexpr int enteredVelocityShift = 8;
+
+    // Bytes reserved for one block's playing MIDI: far more than a block of keyboard + sequencer events needs.
+    constexpr size_t playMidiCapacityBytes = 8192;
+}
+
 void MidiRouter::prepare()
 {
-    playMidi.ensureSize (8192);   // bytes; far more than a block of keyboard + sequencer events needs
+    playMidi.ensureSize (playMidiCapacityBytes);
     restartInternalClock();
     numHeldKeys    = 0;
 }
@@ -50,7 +59,7 @@ void MidiRouter::pushEnteredNote (int note, int velocity) noexcept
 {
     const auto scope = enteredNotesFifo.write (1);
     if (scope.blockSize1 > 0)
-        enteredNotes[(size_t) scope.startIndex1] = (juce::uint16) ((velocity << 8) | note);
+        enteredNotes[(size_t) scope.startIndex1] = (juce::uint16) ((velocity << enteredVelocityShift) | note);
 }
 
 bool MidiRouter::popEnteredNote (int& note, int& velocity) noexcept
@@ -60,7 +69,7 @@ bool MidiRouter::popEnteredNote (int& note, int& velocity) noexcept
         return false;
     const auto packed = enteredNotes[(size_t) scope.startIndex1];
     note = packed & 0x7f;
-    velocity = (packed >> 8) & 0x7f;
+    velocity = (packed >> enteredVelocityShift) & 0x7f;
     return true;
 }
 

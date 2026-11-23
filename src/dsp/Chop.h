@@ -9,7 +9,14 @@
 /** CHOP's settings, shared by every voice; read once per block. */
 struct ChopSettings
 {
-    juce::uint16 pattern = 0xAAAA;   ///< bit k set = step k (0..15) chopped; default every second step
+    /** Every second step chopped (steps 1, 3 .. 15): the pattern a new session starts with (v1.6.0 plan). */
+    static constexpr juce::uint16 defaultPattern = 0xAAAA;
+    /** Comb's range ends here (as the parameter's does): 16 x 32 segments per cycle at most. */
+    static constexpr int maxComb = 32;
+    /** Overtone's top, 200%: a chopped step phase-inverted at full level. */
+    static constexpr float maxOvertone = 2.0f;
+
+    juce::uint16 pattern = defaultPattern;   ///< bit k set = step k (0..15) chopped; default every second step
     int   comb     = 1;              ///< the pattern repeats this many times per cycle (1..32)
     float overtone = 0.0f;           ///< 0..2: a chopped step is scaled by 1 - overtone (0 = no chop)
 };
@@ -36,17 +43,23 @@ class Chop
 public:
     static constexpr int stepsPerPattern = 16;
 
+    /** Overtone glides over this long (10 ms), so turning it never steps the level. */
+    static constexpr double overtoneGlideSeconds = 0.01;
+
+    /** Floor for a segment's phase step in the fade-out test: keeps 1 / step finite. */
+    static constexpr float minSegmentStep = 1.0e-6f;
+
     void prepare (double sampleRate) noexcept
     {
-        gain.reset (sampleRate, 0.01);
+        gain.reset (sampleRate, overtoneGlideSeconds);
         gain.setCurrentAndTargetValue (1.0f - pendingOvertone);
     }
 
     void set (const ChopSettings& s) noexcept
     {
         pendingPattern  = s.pattern;
-        pendingComb     = juce::jlimit (1, 32, s.comb);
-        pendingOvertone = juce::jlimit (0.0f, 2.0f, s.overtone);
+        pendingComb     = juce::jlimit (1, ChopSettings::maxComb, s.comb);
+        pendingOvertone = juce::jlimit (0.0f, ChopSettings::maxOvertone, s.overtone);
         gain.setTargetValue (1.0f - pendingOvertone);
     }
 
@@ -76,7 +89,7 @@ public:
         const float segDt    = dt * (float) segments;   // phase step within a segment
 
         // Full CHOP while a segment lasts four samples or more, none below two.
-        const float depth = juce::jlimit (0.0f, 1.0f, (1.0f / juce::jmax (segDt, 1.0e-6f) - 2.0f) * 0.5f);
+        const float depth = juce::jlimit (0.0f, 1.0f, (1.0f / juce::jmax (segDt, minSegmentStep) - 2.0f) * 0.5f);
         if (depth <= 0.0f)
             return x;
         const float chopped = 1.0f - depth * (1.0f - chopGain);
@@ -108,7 +121,7 @@ public:
 
 private:
     juce::SmoothedValue<float> gain { 1.0f };   // 1 - Overtone
-    juce::uint16 pattern = 0xAAAA, pendingPattern = 0xAAAA;
+    juce::uint16 pattern = ChopSettings::defaultPattern, pendingPattern = ChopSettings::defaultPattern;
     int   comb = 1, pendingComb = 1;
     float pendingOvertone = 0.0f;
 };

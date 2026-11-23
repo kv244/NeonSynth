@@ -56,6 +56,30 @@ public:
         another copy of the sample), short enough not to smear an attack. */
     static constexpr double sampleCrossfadeSeconds = 0.002;
 
+    /** A note's velocity level glides this long when a sounding voice is retriggered or stolen. */
+    static constexpr double levelGlideSeconds = 0.002;
+
+    /** Cutoff, resonance, drive, the filter's modulation amounts and the pan glide this long (20 ms). */
+    static constexpr double controlGlideSeconds = 0.02;
+
+    /** Switching the filter on or off, or its mode, crossfades this long (10 ms). */
+    static constexpr double filterSwitchSeconds = 0.01;
+
+    /** The cutoff before the parameters arrive (the Cutoff parameter's default). */
+    static constexpr float defaultCutoffHz = 2000.0f;
+
+    /** The cutoff stays inside 20 Hz .. 0.45 x the sample rate: well below Nyquist, where the filter's tan() blows up. */
+    static constexpr float minCutoffHz = 20.0f;
+    static constexpr float maxCutoffFraction = 0.45f;
+
+    /** The filter envelope's range in octaves (Filter Env, -5..+5) and velocity's (Filter Vel, 0..+4). */
+    static constexpr float maxFilterEnvOctaves = 5.0f;
+    static constexpr float maxFilterVelOctaves = 4.0f;
+
+    /** Pan by pitch: C4 (note 60) in the centre, the edges two octaves either side. */
+    static constexpr int   panCentreNote = 60;
+    static constexpr float panSpreadSemitones = 24.0f;
+
     /** Where a note's sound comes from (the Source parameter's order). */
     enum class Source { oscillator = 0, sample = 1, granular = 2, random = 3 };
 
@@ -63,7 +87,7 @@ public:
     struct Params
     {
         int   waveform = 0;            // PolyBlepOscillator::Waveform: 0 Sine, 1 Square, 2 Triangle, 3 Sawtooth
-        float cutoffHz = 2000.0f;
+        float cutoffHz = defaultCutoffHz;
         bool  filterOn = true;
 
         // Filter character (v1.8.0); the defaults are the v1.7.1 filter.
@@ -373,7 +397,7 @@ private:
 
     float clampCutoff (float hz) const noexcept
     {
-        return juce::jlimit (20.0f, 0.45f * (float) sampleRate, hz);   // stay well below Nyquist
+        return juce::jlimit (minCutoffHz, maxCutoffFraction * (float) sampleRate, hz);   // stay well below Nyquist
     }
 
     //==============================================================================
@@ -456,7 +480,8 @@ private:
     float filterStep (float dry, float gain) noexcept
     {
         // The floor keeps the ceiling above zero when the envelope is; below -120 dB nothing is heard.
-        const float ceiling = std::max (gain, 1.0e-6f);
+        constexpr float minCeiling = 1.0e-6f;
+        const float ceiling = std::max (gain, minCeiling);
 
         float x = dry;
         if (coefficientDrive > 0.0f)
@@ -692,7 +717,8 @@ private:
 
     // Granular source
     GrainCloud cloud;
-    std::vector<float> cloudBuffer = std::vector<float> (512, 0.0f);   // sized in prepare()
+    static constexpr size_t unpreparedCloudSize = 512;   // until prepare() sizes it for the host's block
+    std::vector<float> cloudBuffer = std::vector<float> (unpreparedCloudSize, 0.0f);   // sized in prepare()
     int cloudSamples = 0, cloudRead = 0;
     static constexpr int cloudChunk = 32;   // samples per cloud render under pitch modulation
     int voiceIndex = 0, noteCounter = 0;   // seed the grains, so the same MIDI renders the same audio
@@ -709,7 +735,8 @@ private:
 
     // GLIDE and legato (v1.11.0); see beginGlide().
     float glideSeconds = 0.0f;                      // from the GLIDE parameter
-    int   glideBaseNote = 60;                       // the note the source was started on
+    static constexpr int firstGlideBaseNote = 60;   // before a voice's first note, and after resetSeeds(): unused until then
+    int   glideBaseNote = firstGlideBaseNote;       // the note the source was started on
     bool  hasGlidePitch = false;                    // the voice has played a note to glide from
     float glideOctaves = 0.0f, glideTargetOctaves = 0.0f;   // offset from glideBaseNote, now and where it goes
     float glideStepOctaves = 0.0f;                  // per sample
@@ -733,7 +760,7 @@ private:
     CytomicSvf::Drive driveSettings;                                  // for coefficientDrive
     CytomicSvf::Mode mode = CytomicSvf::Mode::lowpass, previousMode = CytomicSvf::Mode::lowpass;
     juce::SmoothedValue<float> modeFade { 1.0f };                     // 0 -> 1 from previousMode to mode
-    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Multiplicative> cutoff { 2000.0f };
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Multiplicative> cutoff { defaultCutoffHz };
     static constexpr int coefficientInterval = 16;   // samples between coefficient updates while the cutoff moves
     int   coefficientCountdown = coefficientInterval;  // samples until the next one, 1..16; runs on across calls
     float coefficientCutoffHz = 0.0f;                  // the cutoff the coefficients were last set for

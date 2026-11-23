@@ -38,6 +38,9 @@ public:
     /** Notes are transposed relative to this key in Transpose mode (C4). */
     static constexpr int transposeReferenceNote = 60;
 
+    /** The sequencer's tempo (BPM) until the parameters say otherwise: the Sequencer Tempo parameter's default. */
+    static constexpr float defaultTempo = 120.0f;
+
     /** This block's settings, read from the parameters by the processor. */
     struct Controls
     {
@@ -45,10 +48,10 @@ public:
         SequencerMode sequencerMode = SequencerMode::layer;  ///< Sequencer Mode (only used while the sequencer is on)
         bool hold = false;                                   ///< HOLD
         bool sync = true;                                    ///< Sequencer Sync: follow the host's transport when it has one
-        float tempo = 120.0f;                                ///< Sequencer Tempo, BPM, for the internal clock
+        float tempo = defaultTempo;                           ///< Sequencer Tempo, BPM, for the internal clock
         StepSequencer::Rate rate = StepSequencer::Rate::sixteenth;
         float swing = 0.0f;
-        float gate = 0.5f;
+        float gate = StepSequencer::defaultGate;
         int length = StepSequencer::numSteps;
         double sampleRate = 44100.0;                         ///< the processor's, for the internal clock
     };
@@ -90,7 +93,7 @@ private:
     void trackHeldKey (int note, bool isDown) noexcept;
 
     // v1.11.0 (region B), HOLD: keyboard note-offs kept back while it is on, sent when it goes off.
-    std::array<bool, 128> notesHeldByHold {};   // keyboard notes whose note-off HOLD is keeping back
+    std::array<bool, (size_t) StepSequencer::numMidiNotes> notesHeldByHold {};   // keyboard notes whose note-off HOLD is keeping back
     bool wasHolding = false;
     void releaseHeldNotes (SequencerMode mode) noexcept;
 
@@ -106,15 +109,17 @@ private:
     }
     void restartInternalClock() noexcept   { internalBeatOrigin = 0.0; internalSamples = 0; internalTempo = 0.0; }
     bool   wasSequencerOn = false;
-    std::array<int, 16> heldKeys {};           // Transpose mode: keys currently down, most recent last
+    static constexpr size_t maxHeldKeys = 16;  // keys tracked at once; a 17th is not tracked
+    std::array<int, maxHeldKeys> heldKeys {};  // Transpose mode: keys currently down, most recent last
     int    numHeldKeys = 0;
 
     // ENTER's queue of keyboard notes (note in the low byte, velocity in the next).
     std::atomic<bool> noteEntryArmed { false };
-    juce::AbstractFifo enteredNotesFifo { 64 };
-    std::array<juce::uint16, 64> enteredNotes {};
+    static constexpr int enteredNotesCapacity = 64;   // far more notes than anyone plays between two editor timer ticks
+    juce::AbstractFifo enteredNotesFifo { enteredNotesCapacity };
+    std::array<juce::uint16, (size_t) enteredNotesCapacity> enteredNotes {};
     void pushEnteredNote (int note, int velocity) noexcept;
-    std::atomic<float> sequencerTempo { 120.0f };
+    std::atomic<float> sequencerTempo { defaultTempo };
     std::atomic<bool>  sequencerFollowsHost { false };
 
     JUCE_DECLARE_NON_COPYABLE (MidiRouter)

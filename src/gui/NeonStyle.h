@@ -83,10 +83,11 @@ namespace neon
         g.fillRect (juce::Rectangle<float> (area.getX(), cy, area.getWidth(), 1.0f));
 
         g.setColour (hue.withAlpha (0.26f));
-        const float dx = area.getWidth() / (float) (columns * 5), dy = area.getHeight() / (float) (rows * 5);
-        for (int i = 1; i < columns * 5; ++i)
+        constexpr int ticksPerDivision = 5;   // minor ticks on the centre lines, as on an oscilloscope's graticule
+        const float dx = area.getWidth() / (float) (columns * ticksPerDivision), dy = area.getHeight() / (float) (rows * ticksPerDivision);
+        for (int i = 1; i < columns * ticksPerDivision; ++i)
             g.fillRect (juce::Rectangle<float> (std::round (area.getX() + dx * (float) i), cy - 2.0f, 1.0f, 5.0f));
-        for (int i = 1; i < rows * 5; ++i)
+        for (int i = 1; i < rows * ticksPerDivision; ++i)
             g.fillRect (juce::Rectangle<float> (cx - 2.0f, std::round (area.getY() + dy * (float) i), 5.0f, 1.0f));
     }
 

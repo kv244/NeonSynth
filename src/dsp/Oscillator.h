@@ -167,11 +167,17 @@ class RandomStepOscillator
 public:
     static constexpr int numSteps = 16;
 
+    /** The seed used for a seed of 0 (xorshift would stay at 0 for ever): 2^32 / golden ratio. */
+    static constexpr juce::uint32 fallbackSeed = 0x9e3779b9u;
+
+    /** Generator steps thrown away after seeding, so nearby seeds give unrelated streams. */
+    static constexpr int warmUpSteps = 8;
+
     /** Restarts the random stream and the phase (prepare, reset). */
     void reseed (juce::uint32 seed) noexcept
     {
-        state = seed != 0 ? seed : 0x9e3779b9u;
-        for (int i = 0; i < 8; ++i)   // warm up: nearby seeds give unrelated streams
+        state = seed != 0 ? seed : fallbackSeed;
+        for (int i = 0; i < warmUpSteps; ++i)   // warm up: nearby seeds give unrelated streams
             nextRandom();
         for (auto& l : levels)
             l = nextRandom();
@@ -265,7 +271,7 @@ private:
 
     std::array<float, numSteps> levels {};
     Chop chop;
-    juce::uint32 state = 0x9e3779b9u;
+    juce::uint32 state = fallbackSeed;
     float phase = 0.0f, phaseInc = 0.0f;
     float baseInc = 0.0f;   // hz / sampleRate before the clamp: what a pitch ratio multiplies
     int   lastStep = 0, stepsSinceReroll = 0;

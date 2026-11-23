@@ -22,26 +22,43 @@
 */
 struct SculptSettings
 {
+    // Fold Drive's range and default (the parameter's, v1.6.0 plan).
+    static constexpr float minFoldDrive = 1.0f;
+    static constexpr float maxFoldDrive = 10.0f;
+    static constexpr float defaultFoldDrive = 3.0f;
+
     float noise    = 0.0f;   ///< 0..1: equal-power crossfade from the wave to white noise
-    float foldDrive = 3.0f;  ///< 1..10
+    float foldDrive = defaultFoldDrive;  ///< 1..10
     float foldMix  = 0.0f;   ///< 0..1: dry/wet; 0 skips the fold
 };
 
 class Sculpt
 {
 public:
+    /** Every knob glides over 10 ms, and so does switching the fold on or off. */
+    static constexpr double smoothingSeconds = 0.01;
+
+    /** The fold's DC blocker: a one-pole high-pass at about 10 Hz. */
+    static constexpr float dcBlockerHz = 10.0f;
+
+    /** The seed used for a seed of 0 (xorshift would stay at 0 for ever). */
+    static constexpr juce::uint32 fallbackSeed = 0x2545f491u;
+
+    /** Generator steps thrown away after seeding, so nearby seeds give unrelated streams. */
+    static constexpr int warmUpSteps = 8;
+
     void prepare (double newSampleRate) noexcept
     {
-        noise.reset (newSampleRate, 0.01);
-        drive.reset (newSampleRate, 0.01);
-        mix.reset (newSampleRate, 0.01);
-        engage.reset (newSampleRate, 0.01);
+        noise.reset (newSampleRate, smoothingSeconds);
+        drive.reset (newSampleRate, smoothingSeconds);
+        mix.reset (newSampleRate, smoothingSeconds);
+        engage.reset (newSampleRate, smoothingSeconds);
         noise.setCurrentAndTargetValue (pending.noise);
         drive.setCurrentAndTargetValue (pending.foldDrive);
         mix.setCurrentAndTargetValue (pending.foldMix);
         engage.setCurrentAndTargetValue (pending.foldMix > 0.0f ? 1.0f : 0.0f);
         // One-pole DC blocker at about 10 Hz.
-        dcCoefficient = 1.0f - juce::MathConstants<float>::twoPi * 10.0f / (float) newSampleRate;
+        dcCoefficient = 1.0f - juce::MathConstants<float>::twoPi * dcBlockerHz / (float) newSampleRate;
         dcIn = dcOut = dryIn = dryOut = 0.0f;
         input.fill (0.0f);
         foldedEven.fill (0.0f);
@@ -51,7 +68,7 @@ public:
 
     void set (const SculptSettings& s) noexcept
     {
-        pending = { juce::jlimit (0.0f, 1.0f, s.noise), juce::jlimit (1.0f, 10.0f, s.foldDrive), juce::jlimit (0.0f, 1.0f, s.foldMix) };
+        pending = { juce::jlimit (0.0f, 1.0f, s.noise), juce::jlimit (SculptSettings::minFoldDrive, SculptSettings::maxFoldDrive, s.foldDrive), juce::jlimit (0.0f, 1.0f, s.foldMix) };
         noise.setTargetValue (pending.noise);
         drive.setTargetValue (pending.foldDrive);
         mix.setTargetValue (pending.foldMix);
@@ -61,8 +78,8 @@ public:
     /** Restarts the noise generator (prepare, reset): the same seed and notes render the same audio. */
     void reseed (juce::uint32 seed) noexcept
     {
-        state = seed != 0 ? seed : 0x2545f491u;
-        for (int i = 0; i < 8; ++i)
+        state = seed != 0 ? seed : fallbackSeed;
+        for (int i = 0; i < warmUpSteps; ++i)
             nextNoise();
     }
 
@@ -235,8 +252,8 @@ private:
     }
 
     SculptSettings pending;
-    juce::SmoothedValue<float> noise { 0.0f }, drive { 3.0f }, mix { 0.0f }, engage { 0.0f };
-    juce::uint32 state = 0x2545f491u;
+    juce::SmoothedValue<float> noise { 0.0f }, drive { SculptSettings::defaultFoldDrive }, mix { 0.0f }, engage { 0.0f };
+    juce::uint32 state = fallbackSeed;
     History input {}, foldedEven {}, foldedOdd {};
     size_t inputPos = 0, foldedPos = 0;
     float noiseGainsFor = -1.0f, waveGain = 1.0f, noiseGain = 0.0f;

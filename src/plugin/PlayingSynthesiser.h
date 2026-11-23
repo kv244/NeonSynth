@@ -139,7 +139,7 @@ public:
         if (midiChannel == StepSequencer::midiChannel && controllerNumber == StepSequencer::slideController)
         {
             const juce::ScopedLock sl (lock);
-            slideDown = controllerValue >= 64;
+            slideDown = controllerValue >= switchOnValue;
             if (! slideDown)
                 swallowNoteOff = -1;   // a slide's MIDI ends with CC 68 = 0: nothing is left to swallow
         }
@@ -226,7 +226,9 @@ private:
     }
 
     bool monoLegato = false;
-    std::array<int, 16> keysDown {};   // keyboard keys down, most recent last
+    static constexpr int switchOnValue = 64;    // a switch controller (CC 64..69) is on from 64 up (MIDI's rule)
+    static constexpr size_t maxKeysDown = 16;   // keys remembered for mono legato; a 17th forgets the oldest
+    std::array<int, maxKeysDown> keysDown {};   // keyboard keys down, most recent last
     int numKeysDown = 0;
     int lastKeyboardNote = -1;   // the keyboard note played last, for GLIDE (-1 = none yet)
     bool slideDown = false;            // CC 68 is down on channel 16: a note-on now is a slide

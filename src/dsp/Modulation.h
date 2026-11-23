@@ -62,6 +62,15 @@ public:
     static constexpr int minBufferSize = 8192;
     static constexpr int maxEvents = 256;          // controller messages kept per block; more are merged into the last
     static constexpr double vibratoRateHz = 5.5;   // the mod wheel's vibrato
+    static constexpr double bendGlideSeconds = 0.005;    // 5 ms: a bend message glides instead of stepping the pitch
+    static constexpr double depthGlideSeconds = 0.02;    // 20 ms: the wheel and the depths don't zipper
+    static constexpr float  maxVibratoCents = 100.0f;    // the vibrato depth's range ends at a semitone
+    static constexpr int    maxBendRangeSemitones = 24;  // the bend range's top: two octaves
+
+    // MIDI controller numbers handleMidi() reads.
+    static constexpr int modWheelController = 1;               // CC 1, coarse (MSB)
+    static constexpr int modWheelFineController = 33;          // CC 33, fine (LSB): CC 1 + 32
+    static constexpr int resetAllControllers = 121;            // CC 121
 
     void prepare (double newSampleRate, int samplesPerBlock)
     {
@@ -73,9 +82,9 @@ public:
         cutoffBuffer.assign (size, 0.0f);
         ampBuffer.assign (size, 1.0f);
 
-        bend.reset (newSampleRate, 0.005);   // 5 ms: a bend message glides instead of stepping the pitch
+        bend.reset (newSampleRate, bendGlideSeconds);
         for (auto* s : { &wheel, &vibratoDepth, &pitchDepth, &cutoffDepth, &ampDepth })
-            s->reset (newSampleRate, 0.02);  // 20 ms: the wheel and the depths don't zipper
+            s->reset (newSampleRate, depthGlideSeconds);
         reset();
     }
 
@@ -103,7 +112,7 @@ public:
     {
         settings = s;
         lfo.setSettings (s.lfo);
-        vibratoDepth.setTargetValue (juce::jlimit (0.0f, 100.0f, s.vibratoCents) * 0.01f);   // semitones at the wheel's top
+        vibratoDepth.setTargetValue (juce::jlimit (0.0f, maxVibratoCents, s.vibratoCents) * 0.01f);   // semitones at the wheel's top
         pitchDepth  .setTargetValue (s.lfoPitchSemitones);
         cutoffDepth .setTargetValue (s.lfoCutoffOctaves);
         ampDepth    .setTargetValue (juce::jlimit (0.0f, 1.0f, s.lfoAmp));
@@ -136,16 +145,16 @@ public:
                 const int offset = (data1 | (data2 << 7)) - 8192;
                 midiBend = offset >= 0 ? (float) offset / 8191.0f : (float) offset / 8192.0f;
             }
-            else if (status == 0xb0 && data1 == 1)   // mod wheel, coarse: on its own it is a 7-bit value
+            else if (status == 0xb0 && data1 == modWheelController)   // mod wheel, coarse: on its own it is a 7-bit value
             {
                 wheelMsb = data2;
                 midiWheel = (float) data2 / 127.0f;
             }
-            else if (status == 0xb0 && data1 == 33)  // mod wheel, fine: with the last coarse value, 14 bits
+            else if (status == 0xb0 && data1 == modWheelFineController)  // mod wheel, fine: with the last coarse value, 14 bits
             {
                 midiWheel = (float) ((wheelMsb << 7) | data2) / 16383.0f;
             }
-            else if (status == 0xb0 && data1 == 121) // reset all controllers
+            else if (status == 0xb0 && data1 == resetAllControllers) // reset all controllers
             {
                 midiBend = 0.0f;
                 midiWheel = 0.0f;
@@ -193,7 +202,7 @@ public:
 
         const double vibratoIncrement = vibratoRateHz / sampleRate;
         bool pitchNeutral = true, cutoffNeutral = true;
-        const float bendRange = (float) juce::jlimit (0, 24, settings.bendRangeSemitones);
+        const float bendRange = (float) juce::jlimit (0, maxBendRangeSemitones, settings.bendRangeSemitones);
         int nextEvent = 0;
 
         for (int i = 0; i < n; ++i)

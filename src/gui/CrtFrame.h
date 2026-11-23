@@ -159,9 +159,10 @@ namespace neon::crt::frame
     inline void drawTitle (juce::Graphics& g, const juce::String& name, juce::Rectangle<float> area, juce::Colour hue)
     {
         const auto words = "> " + name;
-        float height = 24.0f;
+        constexpr float largestTitle = 24.0f, smallestTitle = 16.0f;   // the panel titles' sizes, in units
+        float height = largestTitle;
         auto titleFont = displayFont (height);
-        while (height > 16.0f && juce::GlyphArrangement::getStringWidth (titleFont, words) > area.getWidth())
+        while (height > smallestTitle && juce::GlyphArrangement::getStringWidth (titleFont, words) > area.getWidth())
             titleFont = displayFont (height -= 1.0f);
         drawHaloText (g, words, area.withSizeKeepingCentre (area.getWidth(), juce::jmax (area.getHeight(), height + 4.0f)),
                       lit (hue), hue, titleFont, juce::Justification::centredLeft);

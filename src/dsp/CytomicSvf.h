@@ -118,8 +118,17 @@ public:
     /** Drive 0..1 -> D, 1 (exactly) at 0 up to 10 (20 dB) at 1, exponential. */
     static float driveToGain (float drive01) noexcept
     {
-        return std::pow (10.0f, juce::jlimit (0.0f, 1.0f, drive01));
+        return std::pow (maxDriveGain, juce::jlimit (0.0f, 1.0f, drive01));
     }
+
+    /** D at the top of the knob: 10, 20 dB. */
+    static constexpr float maxDriveGain = 10.0f;
+
+    /** The first 5% of the knob crossfades from the dry signal: blend = 20 x drive, up to 1. */
+    static constexpr double dryBlendSlope = 20.0;
+
+    /** Below this input step the ADAA quotient is 0 / 0 in the limit: the midpoint is used instead. */
+    static constexpr double adaaMinStep = 1.0e-5;
 
     /** The drive stage's per-setting values, computed once when the knob moves. */
     struct Drive
@@ -133,7 +142,7 @@ public:
     {
         const double d = juce::jlimit (0.0f, 1.0f, drive01);
         const double quarter = 0.25 * (double) driveToGain ((float) d);
-        return { quarter, 1.0 / sat (quarter), std::min (1.0, 20.0 * d) };
+        return { quarter, 1.0 / sat (quarter), std::min (1.0, dryBlendSlope * d) };
     }
 
     /** The drive stage, ahead of the filter: ceiling > 0. Call trackInput()
@@ -143,7 +152,7 @@ public:
         const double scale = d.gain / (double) ceiling;
         const double u = scale * (double) x, uPrev = scale * (double) lastInput;
         const double du = u - uPrev;
-        const double shaped = std::abs (du) > 1.0e-5 ? (std::sqrt (1.0 + u * u) - std::sqrt (1.0 + uPrev * uPrev)) / du
+        const double shaped = std::abs (du) > adaaMinStep ? (std::sqrt (1.0 + u * u) - std::sqrt (1.0 + uPrev * uPrev)) / du
                                                      : sat (0.5 * (u + uPrev));
         lastInput = x;
         return (float) ((double) x + d.blend * ((double) ceiling * d.makeup * shaped - (double) x));
