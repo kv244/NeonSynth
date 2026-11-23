@@ -1,0 +1,6 @@
+# Top-level Python dependencies; the .txt file next to it is compiled from this with
+# pip-compile --generate-hashes (pip-tools), so every install checks each file's hash (v1.11.1).
+# After changing a version here: pip-compile --generate-hashes --allow-unsafe --strip-extras --no-emit-index-url --output-file requirements-test.txt requirements-test.in
+pedalboard==0.9.23
+mido==1.3.3
+numpy==2.3.5

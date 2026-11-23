@@ -4,11 +4,30 @@ project(NeonSynth VERSION 1.11.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Override with -DJUCE_DIR=... if JUCE is not checked into the project tree
-if(NOT DEFINED JUCE_DIR)
+# JUCE, the only C++ dependency (FLAC comes inside it). Three ways, first match wins:
+#   -DJUCE_DIR=<path>   a JUCE checkout of your own (CI's cached copy, an offline machine);
+#   ./JUCE              a checkout inside the project tree;
+#   otherwise           CMake downloads it (v1.11.1), pinned to the 9.0.0 release's commit
+#                       rather than its tag, so what we build against can never move.
+# The JUCE team recommends fetching it from GitHub over package managers; with one dependency
+# and no transitive ones, FetchContent needs no extra tool.
+set(NEONSYNTH_JUCE_VERSION "9.0.0")
+set(NEONSYNTH_JUCE_COMMIT "f8f8864172464b9adf9eba6101e1f784838d1597")   # tag 9.0.0
+if(NOT DEFINED JUCE_DIR AND EXISTS "${CMAKE_CURRENT_LIST_DIR}/JUCE/CMakeLists.txt")
     set(JUCE_DIR "${CMAKE_CURRENT_LIST_DIR}/JUCE")
 endif()
-add_subdirectory("${JUCE_DIR}" "${CMAKE_BINARY_DIR}/JUCE")
+if(DEFINED JUCE_DIR)
+    add_subdirectory("${JUCE_DIR}" "${CMAKE_BINARY_DIR}/JUCE")
+else()
+    include(FetchContent)
+    message(STATUS "No JUCE_DIR: fetching JUCE ${NEONSYNTH_JUCE_VERSION} (${NEONSYNTH_JUCE_COMMIT})")
+    FetchContent_Declare(JUCE
+        GIT_REPOSITORY https://github.com/juce-framework/JUCE.git
+        GIT_TAG        ${NEONSYNTH_JUCE_COMMIT}
+        GIT_SHALLOW    FALSE
+        GIT_PROGRESS   TRUE)
+    FetchContent_MakeAvailable(JUCE)
+endif()
 
 # No fused multiply-add contraction. The grain loop (GrainCloud.h) has scalar, SSE2 and
 # AVX2 versions that must render bit-identical audio, so a session sounds the same on
