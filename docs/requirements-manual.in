@@ -2,4 +2,4 @@
 # pip-compile --generate-hashes (pip-tools), so every install checks each file's hash (v1.11.1).
 # After changing a version here: pip-compile --generate-hashes --allow-unsafe --strip-extras --no-emit-index-url --output-file docs/requirements-manual.txt docs/requirements-manual.in
 markdown==3.11
-playwright==1.63.0
+playwright==1.65.2
