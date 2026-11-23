@@ -132,7 +132,7 @@ public:
 
         auto s = dragStart;
         if (e.mods.isShiftDown() || e.mods.isRightButtonDown() || dragZone != Zone::body)   // v1.11.0: or on the velocity bar
-            s.velocity = juce::jlimit (1, 127, dragStart.velocity + juce::roundToInt (dy));
+            s.velocity = juce::jlimit (1, StepSequencer::maxMidiValue, dragStart.velocity + juce::roundToInt (dy));
         else
             s.note = StepSequencer::moveInScale (dragStart.note, key(), scale(), juce::roundToInt (dy / 6.0f));   // v1.11.0: snaps
 
@@ -161,7 +161,7 @@ public:
 
         const int direction = wheel.deltaY > 0.0f ? 1 : -1;
         auto s = steps[(size_t) index];
-        if (e.mods.isShiftDown()) s.velocity = juce::jlimit (1, 127, s.velocity + 4 * direction);
+        if (e.mods.isShiftDown()) s.velocity = juce::jlimit (1, StepSequencer::maxMidiValue, s.velocity + wheelVelocityStep * direction);
         else                      s.note     = StepSequencer::moveInScale (s.note, key(), scale(), direction);   // v1.11.0: snaps
         editNoted = false;   // each wheel notch is an edit of its own
         if (! (s == steps[(size_t) index]))
@@ -169,6 +169,8 @@ public:
     }
 
 private:
+    static constexpr int wheelVelocityStep = 4;   // a mouse-wheel notch with Shift moves the velocity this much
+
     // Amber phosphor shades (from the CRT mock-up): lit text, its halo, the
     // dim text of an off step, and the inverted block of the playing step.
     static inline const juce::Colour litText   { 0xffffd28a };

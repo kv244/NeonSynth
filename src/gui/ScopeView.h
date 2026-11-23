@@ -26,11 +26,11 @@ public:
         history.copyLatest (recent.data(), searchLength);
 
         const double period = (lowestNoteHz > 0.0f && sampleRate > 0.0) ? sampleRate / lowestNoteHz : 0.0;
-        displayLength = period > 0.0 ? juce::jlimit (128, maxDisplay, (int) std::lround (2.0 * period)) : 1024 * factor;
+        displayLength = period > 0.0 ? juce::jlimit (minDisplayLength, maxDisplay, (int) std::lround (periodsShown * period)) : baseFreeRunLength * factor;
 
         // Walk back from the newest possible start to the nearest rising zero crossing.
         const int latestStart = searchLength - displayLength;
-        const int span        = period > 0.0 ? (int) std::ceil (period) + 2 : 1024 * factor;
+        const int span        = period > 0.0 ? (int) std::ceil (period) + 2 : baseFreeRunLength * factor;
         int start = latestStart;
 
         for (int i = latestStart; i > juce::jmax (1, latestStart - span); --i)
@@ -87,7 +87,7 @@ public:
         {
             const auto bounds = getLocalBounds().toFloat();
             neon::drawPanel (bg, bounds, neon::cyan);
-            neon::drawGraticule (bg, bounds.reduced (8.0f), neon::cyan, 8, 4);
+            neon::drawGraticule (bg, bounds.reduced (traceInset), neon::cyan, 8, 4);
         });
 
         auto area = traceArea();
@@ -108,7 +108,7 @@ public:
     const neon::crt::CachedPainter& getBackdrop() const noexcept { return backdrop; }
 
 private:
-    juce::Rectangle<float> traceArea() const { return getLocalBounds().toFloat().reduced (8.0f); }
+    juce::Rectangle<float> traceArea() const { return getLocalBounds().toFloat().reduced (traceInset); }
 
     /** The trace for the samples in `display`, built once per new frame (paint only strokes it). */
     void buildTrace()
@@ -154,10 +154,14 @@ private:
 
     static constexpr int baseSearchLength = 4096;   // at 48 kHz; times displayRateFactor()
     static constexpr int baseMaxDisplay   = 2048;
+    static constexpr int baseFreeRunLength = 1024;   // shown with no note to lock to (and at first), times displayRateFactor()
+    static constexpr int minDisplayLength  = 128;    // the shortest trace, for the highest notes
+    static constexpr double periodsShown   = 2.0;    // a locked trace shows two cycles of the lowest note
+    static constexpr float traceInset      = 8.0f;   // the graticule and trace sit this far inside the panel
 
-    std::array<float, baseSearchLength * 4> recent {};
-    std::array<float, baseMaxDisplay * 4>   display {};
-    int   displayLength = 1024;
+    std::array<float, baseSearchLength * maxDisplayRateFactor> recent {};
+    std::array<float, baseMaxDisplay * maxDisplayRateFactor>   display {};
+    int   displayLength = baseFreeRunLength;
     float range = 0.25f;
     float lockHz = 0.0f;
     bool  shownSilent = false;   // the last repaint showed silence

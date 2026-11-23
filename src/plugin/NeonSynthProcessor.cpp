@@ -54,7 +54,7 @@ void NeonSynthProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     for (auto* v : voices)
         v->prepare (sampleRate, samplesPerBlock);
 
-    outputGain.reset (sampleRate, 0.02);
+    outputGain.reset (sampleRate, outputGainGlideSeconds);
     outputGain.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (parameters.gain->get()));
 
     midiLogger.setSampleRate (sampleRate);

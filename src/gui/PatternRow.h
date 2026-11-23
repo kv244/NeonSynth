@@ -198,7 +198,7 @@ private:
             enteredSinceArmed = false;
             int note = 0, velocity = 0;
             while (processor.popEnteredNote (note, velocity)) {}   // drop anything left from before
-            startTimerHz (60);
+            startTimerHz (entryPollHz);
         }
         else
         {
@@ -277,6 +277,7 @@ public:
     }
 
 private:
+    static constexpr int entryPollHz = 60;   // while ENTER is armed, played notes are picked up this often
     int seenStateLoads = 0;
 
     int key() const                  { return grid.key(); }

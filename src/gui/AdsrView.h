@@ -123,11 +123,12 @@ public:
     void update (float attack, float decay, float sustain, float release, const VoiceViews* voices)
     {
         constexpr float sustainWidth = 0.22f;
+        constexpr float minStageWidth = 0.04f;   // a stage of 0 s still gets a sliver, so its handle can be grabbed
         const float a = std::sqrt (attack), d = std::sqrt (decay), r = std::sqrt (release);
         const float total = a + d + r;
-        attackW  = juce::jmax (0.04f, (1.0f - sustainWidth) * a / total);
-        decayW   = juce::jmax (0.04f, (1.0f - sustainWidth) * d / total);
-        releaseW = juce::jmax (0.04f, (1.0f - sustainWidth) * r / total);
+        attackW  = juce::jmax (minStageWidth, (1.0f - sustainWidth) * a / total);
+        decayW   = juce::jmax (minStageWidth, (1.0f - sustainWidth) * d / total);
+        releaseW = juce::jmax (minStageWidth, (1.0f - sustainWidth) * r / total);
         const float scale = (1.0f - sustainWidth) / (attackW + decayW + releaseW);
         attackW *= scale;  decayW *= scale;  releaseW *= scale;
         sustainLevel = sustain;

@@ -8,6 +8,18 @@
 
 namespace
 {
+    // The destructor waits this long (ms) for a sample load that is running to finish.
+    constexpr int loaderStopTimeoutMs = 10000;
+
+    // An embedded sample's base64 text: the decoded size before the dot has at most this many
+    // digits (999 999 999 bytes, far above the cap), and the text may run this many characters
+    // past 4/3 of the cap (the size prefix and the dot).
+    constexpr int maxSizeDigits = 9;
+    constexpr size_t sizePrefixAllowance = 64;
+}
+
+namespace
+{
     using namespace StateFormat;   // the state's names and version (src/state/StateFormat.h)
 
     // State tree layout for CHOP's pattern (v1.6.0+): <Chop pattern="0101010101010101"/>,
@@ -47,7 +59,7 @@ SessionState::SessionState (juce::AudioProcessor& processorToNotify, juce::Audio
 
 SessionState::~SessionState()
 {
-    sampleLoader.removeAllJobs (true, 10000);   // a running load finishes before the slot it publishes into goes away
+    sampleLoader.removeAllJobs (true, loaderStopTimeoutMs);   // a running load finishes before the slot it publishes into goes away
 }
 
 void SessionState::loadDefaultPattern (StepSequencer& target) noexcept
@@ -298,9 +310,10 @@ void SessionState::load (const void* data, int sizeInBytes)
     for (int i = 0; i < juce::jmin (StepSequencer::numSteps, pattern.getNumChildren()); ++i)
     {
         const auto step = pattern.getChild (i);
+        const StepSequencer::Step absent;   // a missing note or velocity takes a new step's (60, 100)
         sequencer.setStep (i, { (bool) step.getProperty (onId, false),
-                                (int)  step.getProperty (noteId, 60),
-                                (int)  step.getProperty (velocityId, 100),
+                                (int)  step.getProperty (noteId, absent.note),
+                                (int)  step.getProperty (velocityId, absent.velocity),
                                 (bool) step.getProperty (tieId, false),
                                 (bool) step.getProperty (slideId, false) });
     }
@@ -358,7 +371,7 @@ void SessionState::restoreSample (const juce::ValueTree& sampleTree)
     auto plausibleEncoding = [] (const juce::String& encoded)
     {
         const int dot = encoded.indexOfChar ('.');
-        if (dot <= 0 || dot > 9 || ! encoded.substring (0, dot).containsOnly ("0123456789"))
+        if (dot <= 0 || dot > maxSizeDigits || ! encoded.substring (0, dot).containsOnly ("0123456789"))
             return false;
         const auto size = (size_t) encoded.substring (0, dot).getLargeIntValue();
         const auto payload = (size_t) (encoded.length() - dot - 1);
@@ -366,7 +379,7 @@ void SessionState::restoreSample (const juce::ValueTree& sampleTree)
     };
 
     if (const auto encoded = sampleTree.getProperty (sampleFlacId).toString();
-        encoded.isNotEmpty() && (size_t) encoded.length() <= SampleLoader::maxEmbeddedBytes / 3 * 4 + 64
+        encoded.isNotEmpty() && (size_t) encoded.length() <= SampleLoader::maxEmbeddedBytes / 3 * 4 + sizePrefixAllowance
             && plausibleEncoding (encoded))
     {
         juce::MemoryBlock flac;

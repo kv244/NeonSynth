@@ -100,6 +100,16 @@ class GrainCloud
 public:
     static constexpr int maxGrains = 32;
 
+    // The ranges the grain settings are held to (the parameters' ranges): Density in grains per
+    // second, Size in seconds. Size is clamped in float for the level and in double (the same
+    // decimal values, not the floats widened) where it sets a grain's length; both kept as they were.
+    static constexpr float  minDensity = 1.0f;
+    static constexpr float  maxDensity = 200.0f;
+    static constexpr float  minSizeSeconds = 0.005f;
+    static constexpr float  maxSizeSeconds = 0.5f;
+    static constexpr double minSizeSecondsDouble = 0.005;
+    static constexpr double maxSizeSecondsDouble = 0.5;
+
     /** Per-block settings from the Grain parameters. */
     struct Settings
     {
@@ -139,7 +149,7 @@ public:
         }
 
         hostRate = hostSampleRate;
-        rng = seed != 0 ? seed : 0x9e3779b9u;
+        rng = seed != 0 ? seed : fallbackSeed;
 
         const double ratio = std::pow (2.0, (midiNote - rootNote) / 12.0) * sample->getSampleRate() / hostRate;
         level = 0;
@@ -200,7 +210,7 @@ public:
 
         const int n = juce::jmin (max, numActive);
         for (int i = 0; i < n; ++i)
-            dest[i] = (float) ((double) grains[(size_t) i].position * (1.0 / 4294967296.0)) * grains[(size_t) i].lengthScale;
+            dest[i] = (float) ((double) grains[(size_t) i].position * (1.0 / fixedPointOne)) * grains[(size_t) i].lengthScale;
         return n;
     }
 
@@ -228,8 +238,8 @@ public:
             if (spawning && samplesToNextGrain <= 0)
             {
                 startGrain();
-                const double interval = hostRate / (double) juce::jlimit (1.0f, 200.0f, settings.density);
-                samplesToNextGrain = juce::jmax (1, (int) (interval * (0.7 + 0.6 * random01())));
+                const double interval = hostRate / (double) juce::jlimit (minDensity, maxDensity, settings.density);
+                samplesToNextGrain = juce::jmax (1, (int) (interval * (minOnsetScale + onsetScaleRange * random01())));
             }
 
             const int segment = spawning ? juce::jmin (numSamples - pos, samplesToNextGrain) : numSamples - pos;
@@ -250,7 +260,7 @@ public:
             pos += segment;
         }
 
-        const float overlap = juce::jlimit (0.005f, 0.5f, settings.sizeSeconds) * juce::jlimit (1.0f, 200.0f, settings.density);
+        const float overlap = juce::jlimit (minSizeSeconds, maxSizeSeconds, settings.sizeSeconds) * juce::jlimit (minDensity, maxDensity, settings.density);
         const float gain = 1.0f / std::sqrt (juce::jmax (1.0f, overlap));
         for (int i = 0; i < numSamples; ++i)
             out[i] *= gain;
@@ -265,6 +275,22 @@ public:
     }
 
 private:
+    /** 1.0 in the grains' 32.32 fixed-point positions and steps: 2^32. */
+    static constexpr double fixedPointOne = 4294967296.0;
+
+    /** Onsets are spaced by the interval times 0.7 .. 1.3 (+-30%), so dense clouds don't buzz at the density rate. */
+    static constexpr double minOnsetScale = 0.7;
+    static constexpr double onsetScaleRange = 0.6;
+
+    /** A grain is at least this many samples long (its window needs a start and an end). */
+    static constexpr int minGrainSamples = 2;
+
+    /** Source samples kept clear at the end of a copy: the cubic reads up to x[2] past a position. */
+    static constexpr double interpolationMargin = 3.0;
+
+    /** The seed used for a seed of 0 (xorshift would stay at 0 for ever): 2^32 / golden ratio. */
+    static constexpr juce::uint32 fallbackSeed = 0x9e3779b9u;
+
     /**
         A grain's read position is 32.32 fixed point (sample index in the top
         32 bits): stepping it is one integer add, so nothing slow sits on the
@@ -603,24 +629,24 @@ private:
         }
 
         const int length = sample->getLength (grainLevel);
-        const int sizeSamples = juce::jmax (2, (int) (juce::jlimit (0.005, 0.5, (double) settings.sizeSeconds) * hostRate));
+        const int sizeSamples = juce::jmax (minGrainSamples, (int) (juce::jlimit (minSizeSecondsDouble, maxSizeSecondsDouble, (double) settings.sizeSeconds) * hostRate));
 
         double increment = grainIncrement * std::pow (2.0, (double) (settings.jitterCents * (2.0f * random01() - 1.0f)) / 1200.0);
         const double span = (double) sizeSamples * increment;   // source samples the grain will read
-        if (span >= (double) length - 3.0)
-            increment = juce::jmax (0.0, ((double) length - 3.0) / (double) sizeSamples);   // longer than the file: slow it to fit
+        if (span >= (double) length - interpolationMargin)
+            increment = juce::jmax (0.0, ((double) length - interpolationMargin) / (double) sizeSamples);   // longer than the file: slow it to fit
 
         // Centre of the cloud, then the spray around it; the grain must fit inside the file.
         double centre = (double) juce::jlimit (0.0f, 1.0f, settings.position) + scanOffset;
         centre -= std::floor (centre);
         const double spread = 0.5 * (double) juce::jlimit (0.0f, 1.0f, settings.spray) * (2.0 * random01() - 1.0);
-        const double lastStart = juce::jmax (0.0, (double) length - (double) sizeSamples * increment - 3.0);
+        const double lastStart = juce::jmax (0.0, (double) length - (double) sizeSamples * increment - interpolationMargin);
         const double start = juce::jlimit (0.0, lastStart, (centre + spread) * (double) length);
 
         Grain g;
         g.data        = sample->getData (grainLevel);
-        g.position    = (juce::uint64) (start * 4294967296.0);
-        g.step        = (juce::uint64) (increment * 4294967296.0);
+        g.position    = (juce::uint64) (start * fixedPointOne);
+        g.step        = (juce::uint64) (increment * fixedPointOne);
         g.age         = 0;
         g.windowStep  = 1.0f / (float) sizeSamples;
         g.remaining   = sizeSamples;

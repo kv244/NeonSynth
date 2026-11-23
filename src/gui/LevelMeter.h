@@ -22,7 +22,7 @@ public:
 
     void update (const float* left, const float* right, int numSamples, int framesPerSecond)
     {
-        const float fall = 24.0f / (float) framesPerSecond;   // 24 dB per second
+        const float fall = fallDbPerSecond / (float) framesPerSecond;
         bool clipped = false;
 
         channels[0].update (left,  numSamples, fall, framesPerSecond * 3 / 2, clipped);
@@ -172,7 +172,7 @@ private:
     static juce::Colour segmentColour (const Layout& l, int segment)
     {
         const float mid = minDb + (maxDb - minDb) * ((float) segment + 0.5f) / (float) l.segments;
-        return mid >= -2.0f ? juce::Colour (0xffff7a7a) : mid >= -12.0f ? juce::Colour (0xffffd28a) : juce::Colour (0xff8dffd0);
+        return mid >= redFromDb ? juce::Colour (0xffff7a7a) : mid >= amberFromDb ? juce::Colour (0xffffd28a) : juce::Colour (0xff8dffd0);
     }
 
     neon::crt::CachedPainter backdrop;
@@ -180,6 +180,9 @@ private:
     static constexpr float minDb = -60.0f;
     static constexpr float maxDb = 6.0f;
     static constexpr float clipLightThreshold = 0.79432823f;   // -2 dBFS: the soft clipper is close to its ceiling
+    static constexpr float redFromDb   = -2.0f;      // segments turn red where the clip light comes on ...
+    static constexpr float amberFromDb = -12.0f;     // ... and amber from here
+    static constexpr float fallDbPerSecond = 24.0f;  // bars and peaks fall this fast
 
     struct Channel
     {

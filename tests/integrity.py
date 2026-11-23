@@ -129,6 +129,13 @@ CONSTANTS = [
     {"name": "baseWidth"},
     {"name": "baseHeight"},
     {"name": "slideController"},
+    {"name": "numMidiNotes"},             # v1.11.1: StepSequencer's; the router and the views use it
+    {"name": "maxMidiValue"},
+    {"name": "defaultGate"},
+    {"name": "defaultTempo"},
+    {"name": "maxComb"},                  # ChopSettings's; the SHAPE view clamps with it too
+    {"name": "defaultPattern"},
+    {"name": "maxDisplayRateFactor"},     # SignalHistory.h's; the scope sizes its buffers with it
     {"what": "the voice's 5 ms hard-stop fade (the envelope's release and the tail the host is told)",
      "literal": r"\b0\.005f?\b",
      "files": ["src/plugin/NeonSynthVoice.h", "src/plugin/NeonSynthVoice.cpp", "src/plugin/NeonSynthProcessor.h", "src/plugin/NeonSynthProcessor.cpp"]},

@@ -9,6 +9,16 @@
 #include "plugin/NeonSynthProcessor.h"
 #include "gui/NeonSynthEditor.h"
 
+namespace
+{
+    // How a control that does nothing at the moment is drawn: dimmed, still readable.
+    constexpr float unusedAlpha   = 0.45f;   // a source's controls while another source plays
+    constexpr float disabledAlpha = 0.4f;    // the filter's controls while the filter is off
+
+    // The window opens at this scale on a screen too small for it at 100%.
+    constexpr float smallScreenScale = 0.75f;
+}
+
 NeonSynthEditor::NeonSynthEditor (NeonSynthProcessor& p)
     : AudioProcessorEditor (&p), synthProcessor (p), apvts (p.getAPVTS()), sampleView (p, p.getAPVTS()), shapeView (p, p.getAPVTS()), stepGrid (p)
 {
@@ -192,9 +202,9 @@ NeonSynthEditor::NeonSynthEditor (NeonSynthProcessor& p)
             using Source = NeonSynthVoice::Source;
             const auto source = (Source) juce::roundToInt (value);
             const auto mode = source == Source::sample ? StripMode::sample : source == Source::granular ? StripMode::granular : StripMode::shape;
-            waveformCombo.setAlpha (source == Source::oscillator ? 1.0f : 0.45f);
-            smpLoopCombo.setAlpha (mode == StripMode::sample ? 1.0f : 0.45f);
-            sampleNameLabel.setAlpha (mode == StripMode::shape ? 0.45f : 1.0f);
+            waveformCombo.setAlpha (source == Source::oscillator ? 1.0f : unusedAlpha);
+            smpLoopCombo.setAlpha (mode == StripMode::sample ? 1.0f : unusedAlpha);
+            sampleNameLabel.setAlpha (mode == StripMode::shape ? unusedAlpha : 1.0f);
             sampleView.setVisible (mode != StripMode::shape);
             shapeView.setVisible (mode == StripMode::shape);
             if (std::exchange (stripMode, mode) != stripMode && getWidth() > 0)
@@ -655,7 +665,7 @@ float NeonSynthEditor::openingScale()
     {
         const auto area = display->userBounds;   // logical pixels, bars excluded
         if (area.getWidth() < baseWidth || area.getHeight() < baseHeight + titleBar)
-            return 0.75f;
+            return smallScreenScale;
     }
     return 1.0f;
 }
@@ -1053,10 +1063,10 @@ void NeonSynthEditor::updateFilterState (bool on)
                                 static_cast<juce::Component*> (&filterEnvAmtKnob), static_cast<juce::Component*> (&filterVelKnob) })
     {
         c->setEnabled (on);
-        c->setAlpha (on ? 1.0f : 0.4f);
+        c->setAlpha (on ? 1.0f : disabledAlpha);
     }
     for (auto* label : { &cutoffReadout, &filterResReadout, &filterDriveReadout, &filterEnvAmtReadout, &filterVelReadout })
-        label->setAlpha (on ? 1.0f : 0.4f);
+        label->setAlpha (on ? 1.0f : disabledAlpha);
 }
 
 void NeonSynthEditor::setScanlines (bool on)

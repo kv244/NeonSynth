@@ -254,6 +254,7 @@ private:
     Lfo::Transport lfoTransport() const;
 
     juce::SmoothedValue<float> outputGain { 1.0f };
+    static constexpr double outputGainGlideSeconds = 0.02;   // GAIN glides over 20 ms, so automating it doesn't zipper
 
     // The session and its sample; after apvts, the sequencer and chopPattern, which it saves and restores.
     SessionState session { *this, apvts, sequencer, chopPattern };

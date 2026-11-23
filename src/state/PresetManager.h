@@ -48,6 +48,10 @@ public:
     /** Largest preset file read: a session with the largest embedded sample is about 14 MB. */
     static constexpr juce::int64 maxFileBytes = juce::int64 { 32 } * 1024 * 1024;
 
+    /** A preset's name is cut to this many characters; its file name (made from it) to fewer. */
+    static constexpr int maxNameLength = 128;
+    static constexpr int maxFileNameLength = 64;
+
     static inline const juce::Identifier categoryId { "category" };
     static inline const juce::Identifier presetId   { "preset" };
     static inline const juce::Identifier programId  { "program" };
@@ -300,7 +304,7 @@ public:
     /** The file SAVE writes for a name: in the user folder, the name made safe for a file name. */
     juce::File userFileFor (const juce::String& name) const
     {
-        auto safe = juce::File::createLegalFileName (name.trim()).substring (0, 64).trim();
+        auto safe = juce::File::createLegalFileName (name.trim()).substring (0, maxFileNameLength).trim();
         if (safe.isEmpty())
             safe = "Untitled";
         return getUserFolder().getChildFile (safe + fileExtension);
@@ -442,7 +446,7 @@ private:
     {
         {
             const juce::ScopedLock sl (lock);
-            currentName = name.substring (0, 128);
+            currentName = name.substring (0, maxNameLength);
             currentCategory = validCategory (category);
             currentProgram = program;
             currentFile = file;

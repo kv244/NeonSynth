@@ -41,7 +41,7 @@ public:
     void stop()
     {
         enabled.store (false);
-        stopThread (1000);
+        stopThread (stopTimeoutMs);
         drain();
         stream.reset();
     }
@@ -87,10 +87,14 @@ public:
     }
 
 private:
+    static constexpr int stopTimeoutMs   = 1000;   // stop() waits this long for the writer thread to finish
+    static constexpr int drainIntervalMs = 50;     // the writer wakes this often: the log is at most this far behind
+    static constexpr size_t maxRecordBytes = 16;   // bytes of a message kept; longer ones (SysEx) are cut and marked
+
     struct Record
     {
         juce::int64 samplePos = 0;
-        std::array<juce::uint8, 16> bytes {};
+        std::array<juce::uint8, maxRecordBytes> bytes {};
         juce::uint8 numBytes = 0;
         bool truncated = false;
     };
@@ -100,7 +104,7 @@ private:
         while (! threadShouldExit())
         {
             drain();
-            wait (50);
+            wait (drainIntervalMs);
         }
     }
 

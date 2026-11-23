@@ -55,7 +55,7 @@ public:
         now.random   = juce::roundToInt (sourceValue->load()) == (int) NeonSynthVoice::Source::random;
         now.waveform = juce::roundToInt (waveformValue->load());
         now.overtone = overtoneValue->load() * 0.01f;
-        now.comb     = juce::jlimit (1, 32, juce::roundToInt (combValue->load()));
+        now.comb     = juce::jlimit (1, ChopSettings::maxComb, juce::roundToInt (combValue->load()));
         now.drive    = driveValue->load();
         now.foldMix  = foldMixValue->load() * 0.01f;
         now.pattern  = processor.getChopPattern();

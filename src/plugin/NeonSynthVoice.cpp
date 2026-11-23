@@ -9,6 +9,19 @@
 
 #include "plugin/NeonSynthVoice.h"
 
+namespace
+{
+    // Multipliers that spread a voice index, note or note count over all 32 bits of a seed
+    // (Knuth's multiplicative hash, xxHash's second prime, and a small odd prime), so nearby
+    // voices and notes get unrelated random streams.
+    constexpr juce::uint32 seedHashA = 2654435761u;
+    constexpr juce::uint32 seedHashB = 2246822519u;
+    constexpr juce::uint32 seedHashC = 40503u;
+
+    // The hard stop sets the envelope's attack and decay this short; only its release (the fade) is heard.
+    constexpr float hardStopAttackDecaySeconds = 0.001f;
+}
+
 NeonSynthVoice::Telemetry NeonSynthVoice::getTelemetry() const noexcept
 {
     Telemetry t;
@@ -48,27 +61,27 @@ void NeonSynthVoice::prepare (double newSampleRate, int maxBlockSize)
     filter.prepare (newSampleRate);
     cloudBuffer.assign ((size_t) juce::jmax (1, maxBlockSize), 0.0f);   // the granular source renders a block at a time
 
-    level.reset (newSampleRate, 0.002);       // 2 ms: a retriggered or stolen voice changes velocity without a click
+    level.reset (newSampleRate, levelGlideSeconds);       // 2 ms: a retriggered or stolen voice changes velocity without a click
     level.setCurrentAndTargetValue (level.getTargetValue());
 
-    cutoff.reset (newSampleRate, 0.02);       // 20 ms, multiplicative (even in octaves)
+    cutoff.reset (newSampleRate, controlGlideSeconds);       // 20 ms, multiplicative (even in octaves)
     cutoff.setCurrentAndTargetValue (clampCutoff (cutoff.getTargetValue()));
-    resonance.reset (newSampleRate, 0.02);    // 20 ms, as the cutoff
+    resonance.reset (newSampleRate, controlGlideSeconds);    // 20 ms, as the cutoff
     resonance.setCurrentAndTargetValue (resonance.getTargetValue());
-    drive.reset (newSampleRate, 0.02);
+    drive.reset (newSampleRate, controlGlideSeconds);
     drive.setCurrentAndTargetValue (drive.getTargetValue());
     for (auto* amount : { &filterEnvOctaves, &filterVelOctaves })   // 20 ms: automating them doesn't step the cutoff
     {
-        amount->reset (newSampleRate, 0.02);
+        amount->reset (newSampleRate, controlGlideSeconds);
         amount->setCurrentAndTargetValue (amount->getTargetValue());
     }
-    modeFade.reset (newSampleRate, 0.01);     // 10 ms crossfade when the mode changes
+    modeFade.reset (newSampleRate, filterSwitchSeconds);     // 10 ms crossfade when the mode changes
     modeFade.setCurrentAndTargetValue (1.0f);
     setFilterCoefficients();
 
-    filterMix.reset (newSampleRate, 0.01);    // 10 ms crossfade for the on/off toggle
+    filterMix.reset (newSampleRate, filterSwitchSeconds);    // 10 ms crossfade for the on/off toggle
 
-    pan.reset (newSampleRate, 0.02);          // 20 ms so Width changes don't zipper
+    pan.reset (newSampleRate, controlGlideSeconds);          // 20 ms so Width changes don't zipper
     pan.setCurrentAndTargetValue (notePan * width);
     updatePanGains (pan.getCurrentValue());
 }
@@ -87,10 +100,10 @@ void NeonSynthVoice::setParameters (const Params& p) noexcept
     filterMix.setTargetValue (p.filterOn ? 1.0f : 0.0f);
     resonance.setTargetValue (juce::jlimit (0.0f, 1.0f, p.filterResonance));
     drive.setTargetValue (juce::jlimit (0.0f, 1.0f, p.filterDrive));
-    setFilterMode (juce::jlimit (0, 3, p.filterMode));
+    setFilterMode (juce::jlimit ((int) CytomicSvf::Mode::lowpass, (int) CytomicSvf::Mode::notch, p.filterMode));
     filterEnvelope.setParameters (p.filterEnv);
-    filterEnvOctaves.setTargetValue (juce::jlimit (-5.0f, 5.0f, p.filterEnvOctaves));
-    filterVelOctaves.setTargetValue (juce::jlimit (0.0f, 4.0f, p.filterVelOctaves));
+    filterEnvOctaves.setTargetValue (juce::jlimit (-maxFilterEnvOctaves, maxFilterEnvOctaves, p.filterEnvOctaves));
+    filterVelOctaves.setTargetValue (juce::jlimit (0.0f, maxFilterVelOctaves, p.filterVelOctaves));
 
     width = p.width;
     pan.setTargetValue (notePan * width);
@@ -149,7 +162,7 @@ void NeonSynthVoice::startNote (int midiNote, float velocity, juce::SynthesiserS
     // smoothers stopped advancing when it went quiet, so without the snap a
     // cutoff or filter-toggle change made while it was idle would sweep
     // audibly over the first 10-20 ms of the note.
-    notePan = juce::jlimit (-1.0f, 1.0f, (float) (midiNote - 60) / 24.0f);
+    notePan = juce::jlimit (-1.0f, 1.0f, (float) (midiNote - panCentreNote) / panSpreadSemitones);
     const float newLevel = velocity * voiceGain;
 
     // The filter envelope attacks from its current level, like the amp envelope. Both it and
@@ -211,7 +224,7 @@ void NeonSynthVoice::stopNote (float, bool allowTailOff)
     // a click, a stolen voice's next note retriggers it from where it is, and when the fade
     // ends the voice resets it.
     hardStopping = true;
-    adsr.setParameters ({ 0.001f, 0.001f, 1.0f, (float) hardStopFadeSeconds });
+    adsr.setParameters ({ hardStopAttackDecaySeconds, hardStopAttackDecaySeconds, 1.0f, (float) hardStopFadeSeconds });
     adsr.noteOff();
     clearCurrentNote();
 }
@@ -253,8 +266,8 @@ void NeonSynthVoice::startSource (int midiNote) noexcept
 
     if (source == Source::granular)
     {
-        const auto seed = (juce::uint32) midiNote * 2654435761u ^ (juce::uint32) (voiceIndex + 1) * 40503u
-                        ^ (juce::uint32) noteCounter * 2246822519u;
+        const auto seed = (juce::uint32) midiNote * seedHashA ^ (juce::uint32) (voiceIndex + 1) * seedHashC
+                        ^ (juce::uint32) noteCounter * seedHashB;
         cloud.begin (blockSample, midiNote, sampleSettings.rootNote, sampleRate, cloud.getSettings(), seed);
     }
     else
@@ -281,7 +294,7 @@ void NeonSynthVoice::beginGlide (float fromOctaves, float toOctaves) noexcept
 void NeonSynthVoice::glideToNote (int midiNote) noexcept
 {
     beginGlide (glideOctaves, (float) (midiNote - glideBaseNote) / 12.0f);
-    notePan = juce::jlimit (-1.0f, 1.0f, (float) (midiNote - 60) / 24.0f);   // the pan follows (20 ms smoothing)
+    notePan = juce::jlimit (-1.0f, 1.0f, (float) (midiNote - panCentreNote) / panSpreadSemitones);   // the pan follows (20 ms smoothing)
     pan.setTargetValue (notePan * width);
     samplesSinceOff = -1;   // a key holds it again (a return to a held key)
 }
@@ -289,12 +302,12 @@ void NeonSynthVoice::glideToNote (int midiNote) noexcept
 void NeonSynthVoice::resetSeeds() noexcept
 {
     noteCounter = 0;
-    randomOscillator.reseed ((juce::uint32) (voiceIndex + 1) * 2654435761u);
-    sculpt.reseed ((juce::uint32) (voiceIndex + 1) * 2246822519u);
+    randomOscillator.reseed ((juce::uint32) (voiceIndex + 1) * seedHashA);
+    sculpt.reseed ((juce::uint32) (voiceIndex + 1) * seedHashB);
 
     // v1.11.0: forget the last pitch too, so a repeated render's first notes don't glide.
     hasGlidePitch = false;
-    glideBaseNote = 60;
+    glideBaseNote = firstGlideBaseNote;
     glideOctaves = glideTargetOctaves = 0.0f;
     glideRatio = 1.0f;
 }

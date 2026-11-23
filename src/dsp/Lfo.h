@@ -54,11 +54,18 @@ public:
 
     /** Length of a division in beats (quarter notes), with bars of `beatsPerBar` beats (v1.11.0;
         4 in 4/4, where the bar divisions are 16, 8 and 4 beats exactly as before). */
-    static constexpr double divisionBeats (Division d, double beatsPerBar = 4.0) noexcept
+    static constexpr double divisionBeats (Division d, double beatsPerBar = commonTimeBeatsPerBar) noexcept
     {
         constexpr double beats[] = { 4.0, 2.0, 1.0, 2.0, 1.0, 0.5, 0.25, 1.0 / 3.0, 1.0 / 6.0 };   // bars, then beats
         return isBarDivision (d) ? beats[(int) d] * beatsPerBar : beats[(int) d];
     }
+
+    /** A bar of 4/4: what a bar is with no host, or with a time signature that makes no sense. */
+    static constexpr double commonTimeBeatsPerBar = 4.0;
+
+    /** The bar lengths render() believes (1/16 to 64 beats); anything else is a host bug. */
+    static constexpr double minBeatsPerBar = 0.0625;
+    static constexpr double maxBeatsPerBar = 64.0;
 
     /** 4 bars, 2 bars and 1 bar: lengths that follow the time signature (v1.11.0). */
     static constexpr bool isBarDivision (Division d) noexcept   { return d == Division::bars4 || d == Division::bars2 || d == Division::bar1; }
@@ -77,7 +84,7 @@ public:
         bool   hostPlaying = false;   // a host transport is running: take the phase from ppq
         double ppq = 0.0;             // song position at the block's first sample, in beats
         double bpm = 120.0;           // tempo (host or internal)
-        double beatsPerBar = 4.0;     // v1.11.0: the host's time signature, numerator x 4 / denominator
+        double beatsPerBar = commonTimeBeatsPerBar;     // v1.11.0: the host's time signature, numerator x 4 / denominator
         bool   hasBarStart = false;   // v1.11.0: the host reported where the current bar began
         double barStartPpq = 0.0;     //          ... at this song position, in beats
     };
@@ -139,8 +146,8 @@ public:
     void render (float* out, int numSamples, const Transport& transport) noexcept
     {
         // A bar is between 1/16 and 64 beats long; anything else (a host bug) counts as 4/4.
-        const bool   sensibleBar = transport.beatsPerBar >= 0.0625 && transport.beatsPerBar <= 64.0;
-        const double beatsPerBar = sensibleBar ? transport.beatsPerBar : 4.0;
+        const bool   sensibleBar = transport.beatsPerBar >= minBeatsPerBar && transport.beatsPerBar <= maxBeatsPerBar;
+        const double beatsPerBar = sensibleBar ? transport.beatsPerBar : commonTimeBeatsPerBar;
         const double beats = divisionBeats (settings.division, beatsPerBar);
         const double rate = settings.sync ? transport.bpm / 60.0 / beats
                                           : (double) juce::jlimit (minRateHz, maxRateHz, settings.rateHz);
@@ -240,7 +247,7 @@ private:
 
         const double barsBefore = transport.barStartPpq / beatsPerBar;
         const double wholeBars  = std::round (barsBefore);
-        if (std::abs (barsBefore - wholeBars) < 1.0e-6)
+        if (std::abs (barsBefore - wholeBars) < barAlignmentTolerance)
             return transport.ppq / beats;   // the bars line up with beat 0
 
         // The host does not say how many bars came before (VST3 has no bar count), so the bars
@@ -260,7 +267,7 @@ private:
         // host is just carrying on where we were, rounding can put its position a hair either side
         // of a wrap we did (or haven't yet done) ourselves: count only a forward crossing then, so
         // a wrap never draws twice. A real jump (a loop, a relocate) draws if the cycle changed.
-        const bool continuing = std::abs (position - expected) < 0.01;
+        const bool continuing = std::abs (position - expected) < continuingTolerance;
 
         if (continuing ? hostCycle > cycle : hostCycle != cycle)
             held = nextRandom();
@@ -273,9 +280,18 @@ private:
 
     static constexpr juce::int64 randomSeed = 0x4e656f6e4c666fLL;   // fixed, so Random repeats after reset()
 
-    double   sampleRate = 48000.0;
-    float    maxStep = (float) (2.0 / (slewSeconds * 48000.0));
-    int      crossfadeLength = 480;
+    // Song positions within these distances (in bars, then in cycles) count as the same: a host's
+    // rounding, not a jump.
+    static constexpr double barAlignmentTolerance = 1.0e-6;
+    static constexpr double continuingTolerance = 0.01;
+
+    // Until prepare() gives the real rate: 48 kHz, and the crossfade's length at it (10 ms).
+    static constexpr double defaultSampleRate = 48000.0;
+    static constexpr int    defaultCrossfadeLength = 480;
+
+    double   sampleRate = defaultSampleRate;
+    float    maxStep = (float) (2.0 / (slewSeconds * defaultSampleRate));
+    int      crossfadeLength = defaultCrossfadeLength;
     Settings settings;
     double   phase = 0.0;
     std::int64_t cycle = 0;      // whole cycles so far (song position in cycles when following a host)
@@ -283,6 +299,6 @@ private:
     float    held = 0.0f;        // Random's value for this cycle
     Follower current, previous;
     float    previousOffset = 0.0f;
-    int      fadePosition = 480;
+    int      fadePosition = defaultCrossfadeLength;
     float    lastValue = 0.0f;
 };
