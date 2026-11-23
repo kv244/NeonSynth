@@ -30,12 +30,16 @@ are only roughly comparable.
 
 - C++17, in the JUCE style the code already uses: a space before the parentheses of a call, braces on
   their own line, 4 spaces, no tabs. Match the file you are in.
-- Header-only modules, grouped by job under `src/`: `src/dsp` (signal processing), `src/sequencer`,
-  `src/state`, `src/gui` and `src/plugin`. Each part of the plugin is one `.h` file
-  (`dsp/Oscillator.h`, `sequencer/StepSequencer.h`, `state/SampleSlot.h`, ...); only
-  `plugin/NeonSynthProcessor.cpp` is a source file. Includes name the folder
-  (`#include "dsp/Oscillator.h"`). A new module is a new header in the folder of its job, added to
-  the [Project Structure](docs/DEVELOPMENT.md#project-structure) table.
+- Modules grouped by job under `src/`: `src/dsp` (signal processing), `src/sequencer`, `src/state`,
+  `src/gui` and `src/plugin`. Code that runs for every sample (the oscillators, CHOP, the filter, the
+  grain loop, the voice's render loop) stays header-only, so the compiler sees it inline; setup,
+  per-note work and the GUI go in `.cpp` files. Those are `plugin/NeonSynthProcessor.cpp`,
+  `plugin/Parameters.cpp`, `plugin/MidiRouter.cpp`, `plugin/MidiLogger.cpp`,
+  `plugin/NeonSynthVoice.cpp`, `state/SessionState.cpp` and `gui/NeonSynthEditor.cpp` (v1.11.1); a
+  new one goes in the plugin's `target_sources` and, if the tests need it, in `neonsynth_engine`'s
+  sources in `CMakeLists.txt`. Includes name the folder (`#include "dsp/Oscillator.h"`). A new module
+  goes in the folder of its job and in the [Project Structure](docs/DEVELOPMENT.md#project-structure)
+  table.
 - Comments explain why, not what: the reason for a constant, a choice or an ordering. Say in a
   function's comment which thread may call it, as the existing headers do ("Audio thread", "Message
   thread", "Any thread").

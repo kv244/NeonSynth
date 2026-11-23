@@ -6,16 +6,16 @@
 
 NeonSynth is a learning synthesizer: a place to hear what a waveform sounds like, see what changes when you shape it, and explore the code that makes it happen. Its oscillator, sample, random, and granular engines provide different starting points for that exploration, with source code available to read, build, and modify ([NeonSynth project](https://github.com/kv244/NeonSynth)).
 
-For musicians, begin with one note and one waveform, without stacked oscillator layers obscuring what you are hearing. For coders, follow the same sound into the C++ implementation, from waveform generation through envelope, filter, and output; the interface and the code become two views of the same instrument ([voice architecture](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/plugin/NeonSynthVoice.h)).
+For musicians, begin with one note and one waveform, without stacked oscillator layers obscuring what you are hearing. For coders, follow the same sound into the C++ implementation, from waveform generation through envelope, filter, and output; the interface and the code become two views of the same instrument ([voice architecture](https://github.com/kv244/NeonSynth/blob/v1.11.1/src/plugin/NeonSynthVoice.h)).
 
 **Instrument:** NeonSynth by Razvan Julian Petrescu / AudioDSP  
-**Edition:** 2.0, updated 23 November 2026 (v1.11.0 "Playing": HOLD, GLIDE and LEGATO; pattern length, ties, slides, a scale lock, step entry, pattern tools and undo in the sequencer; presets, with a bank of 16 factory presets)<br>
-**Applies to:** NeonSynth v1.11.0, source tag `v1.11.0`  
-**Formats:** VST3 instrument and standalone application; a Windows installer is supplied for this release ([v1.11.0 release](https://github.com/kv244/NeonSynth/releases/tag/v1.11.0)).
+**Edition:** 2.1, updated 23 November 2026 (v1.11.1: the granular fix, the licence and warranty text, and the source and build notes for the reorganised code; edition 2.0 covered v1.11.0 "Playing": HOLD, GLIDE and LEGATO, the sequencer's new tools and presets)<br>
+**Applies to:** NeonSynth v1.11.1, source tag `v1.11.1`  
+**Formats:** VST3 instrument and standalone application; a Windows installer is supplied for this release ([v1.11.1 release](https://github.com/kv244/NeonSynth/releases/tag/v1.11.1)).
 
 ### About this manual
 
-The instructions were checked against the v1.11.0 source code. Every recipe in the sound-design chapter was rendered through the plugin, to confirm that it sounds, releases cleanly to silence and stays clear of the output soft clipper: the first six through v1.6.0, which v1.7.0 to v1.11.0 keep bit-identical at the settings they use (each version's new controls start neutral), as the project's compare test checks; the wind recipe through v1.9.0, which v1.10.0 and v1.11.0 keep bit-identical. The 16 factory presets of v1.11.0 are checked by the project's preset test: each one loads, renders below −6 dBFS, under the output soft clipper, and ends in silence. This is not a certification of compatibility with every audio device or DAW.
+The instructions were checked against the v1.11.1 source code. Every recipe in the sound-design chapter was rendered through the plugin, to confirm that it sounds, releases cleanly to silence and stays clear of the output soft clipper: the first six through v1.6.0, which v1.7.0 to v1.11.1 keep bit-identical at the settings they use (each version's new controls start neutral), as the project's compare test checks; the wind recipe through v1.9.0, which v1.10.0 to v1.11.1 keep bit-identical. The 16 factory presets of v1.11.0 are checked by the project's preset test: each one loads, renders below −6 dBFS, under the output soft clipper, and ends in silence. This is not a certification of compatibility with every audio device or DAW.
 
 Each figure is labelled by how it was made: **Actual application capture** (a screenshot of the running instrument, with numbered callouts added), **Plot derived from rendered audio** (measured from sound the plugin produced, with the settings stated), or **Explanatory schematic** (a drawing that explains an idea and is not a measurement). How to regenerate them is in [figures/README.md](figures/README.md).
 
@@ -24,6 +24,12 @@ The sound-design settings are starting points to set by hand; most of them are a
 ## What's new in this version
 
 Each release adds its entry at the top of this section; the full history, fixes and internal changes included, is in the [CHANGELOG](https://github.com/kv244/NeonSynth/blob/master/CHANGELOG.md).
+
+### v1.11.1
+
+- **Nothing you hear or see changes,** with one exception: on the Granular source, a grain whose pitch is raised while it plays (pitch bend, vibrato, the LFO on pitch, or a glide up) so far that it would read past the end of the sample now ends there. Before, how it ended depended on the audio block size, so the same session could sound slightly different in two DAWs. Only notes bent up near the very end of a sample are affected. See [Pitch bend and mod wheel](#pitch-bend-and-mod-wheel).
+- **Licence and warranty:** the fine print at the end of this manual now follows the AGPL-3.0-only licence the project uses, including its own no-warranty terms.
+- **For builders:** CMake now downloads JUCE by itself when you do not point it at a copy, and the plugin and its tests build about five times faster. See [Building from source](#building-from-source).
 
 ### v1.11.0 "Playing"
 
@@ -63,7 +69,7 @@ Earlier versions: [CHANGELOG](https://github.com/kv244/NeonSynth/blob/master/CHA
 
 ### Install the Windows release
 
-Download `NeonSynth-1.11.0-Windows-Setup.exe` from the [v1.11.0 release page](https://github.com/kv244/NeonSynth/releases/tag/v1.11.0). The installer provides the VST3 instrument and an optional standalone application (see [Installation](../README.md#installation) in the README).
+Download `NeonSynth-1.11.1-Windows-Setup.exe` from the [v1.11.1 release page](https://github.com/kv244/NeonSynth/releases/tag/v1.11.1). The installer provides the VST3 instrument and an optional standalone application (see [Installation](../README.md#installation) in the README).
 
 | Component | Default location |
 |---|---|
@@ -373,7 +379,7 @@ The bend glides over 5 ms so a wheel that sends coarse steps doesn't sound stepp
 
 Beside each knob a small bar shows where the wheel is. If you move a wheel and its bar stays still, the controller's messages aren't reaching NeonSynth: check its MIDI channel and the DAW's MIDI routing.
 
-All four sources follow the pitch. A Sample note bent far upwards switches to one of its prepared lower-rate copies with a short crossfade, so it stays clean; Granular starts new grains at the bent pitch and moves the running ones with it.
+All four sources follow the pitch. A Sample note bent far upwards switches to one of its prepared lower-rate copies with a short crossfade, so it stays clean; Granular starts new grains at the bent pitch and moves the running ones with it. A running grain bent up so far that it would read past the end of the sample ends there (v1.11.1).
 
 Earlier versions ignored pitch bend and the mod wheel. A project that contains such messages, recorded with an older version, now responds to them.
 
@@ -856,28 +862,32 @@ You do not need to understand the whole application before investigating one par
 
 | Start here | What to look for | Connect it to the instrument |
 |---|---|---|
-| `src/dsp/Oscillator.h` | Waveform generation, phase, band-limiting, and CHOP. | Compare Sine, Triangle, Square, and Sawtooth on the same note. |
+| `src/dsp/Oscillator.h` / `src/dsp/Chop.h` | Waveform generation, phase and band-limiting; CHOP in a file of its own. | Compare Sine, Triangle, Square, and Sawtooth on the same note. |
 | `src/dsp/Sculpt.h` / `src/gui/ShapeView.h` | Noise, the oversampled wavefolder, and the SHAPE strip's drawing. | Sweep DRIVE while watching the drawing and the spectrum. |
 | `src/dsp/VoiceEnvelope.h` | Envelope stages and their time/level behaviour. | Move ATTACK, DECAY, SUSTAIN, and RELEASE while watching the graph. |
-| `src/plugin/NeonSynthVoice.h` | One note's source, envelope, filter, panning, and glide. | Follow a note from source generation to stereo placement; set GLIDE and watch it slide. |
+| `src/plugin/NeonSynthVoice.h` / `src/plugin/NeonSynthVoice.cpp` | One note's source, envelope, filter, panning, and glide: the per-sample rendering in the header, note start and stop and the parameter plumbing in the `.cpp`. | Follow a note from source generation to stereo placement; set GLIDE and watch it slide. |
 | `src/plugin/PlayingSynthesiser.h` | LEGATO and the sequencer's slides: moving a sounding voice to a new note. | Play overlapping keys at MONO with LEGATO on and off. |
-| `src/plugin/NeonSynthProcessor.cpp` | Parameter ranges/defaults, MIDI routing, HOLD, the internal clock, output processing, and state. | Match a displayed control to its stored value and playback effect. |
+| `src/plugin/VoiceAllocator.h` | The VOICES limit and which voice a new note takes when all are busy. | Set VOICES to 4 and play a fifth note while the pedal is down. |
+| `src/plugin/Parameters.cpp` | Every parameter's range and default, in `createParameterLayout()`. | Match a displayed control to its stored value. |
+| `src/plugin/MidiRouter.cpp` | MIDI routing: the keyboard channel, the sequencer modes, HOLD, the ENTER queue and the internal clock. | Switch HOLD and the sequencer mode while a pattern runs. |
+| `src/plugin/NeonSynthProcessor.cpp` | One audio block: modulation, the voices, output gain and the soft clipper. | Push GAIN up on a chord and watch the meters stop short of 0 dB. |
+| `src/state/SessionState.cpp` | Saving and restoring a session, the embedded sample and CHOP's pattern. | Save a session with a loaded sample, delete the file and reopen it. |
 | `src/state/SampleData.h` / `src/state/SampleLoader.h` | File preparation, mono conversion, normalisation, and embedded audio. | Compare an imported recording with its prepared sample. |
 | `src/dsp/SampleReader.h` | Pitch mapping and crossfaded loop playback. | Investigate ROOT, loop boundaries, and XFADE. |
 | `src/dsp/GrainCloud.h` | Grain scheduling, windows, scan positions, and SIMD paths. | Connect SIZE, DENS, and SCAN to individual fragments. |
 | `src/sequencer/StepSequencer.h` / `src/gui/SequencerView.h` | Timing engine, ties and slides, the scale lock, the pattern tools and undo, versus the editable grid. | See how a visual step becomes a timed note event. |
 | `src/gui/PatternRow.h` | The pattern row: LENGTH, KEY, SCALE, TOOLS, ENTER and UNDO wired to the grid. | Follow an ENTER run from a played key to a written step. |
 | `src/state/PresetManager.h` / `src/state/FactoryPresets.h` / `src/gui/PresetBar.h` | Preset files, the factory bank written as data, and the preset bar. | Change a factory preset's value by ear and rebuild. |
-| `src/gui/ScopeView.h` / `src/gui/NeonSynthEditor.h` | Display processing and control attachments. | Understand how sound and parameter state reach the screen. |
+| `src/gui/ScopeView.h` / `src/gui/NeonSynthEditor.cpp` | Display processing and control attachments. | Understand how sound and parameter state reach the screen. |
 | `tests/` | Focused engine tests and the render benchmark. | Read the expected behaviour before changing its implementation. |
 
-Since v1.11.0 the source files are grouped by what they do: `src/dsp` (sound), `src/sequencer`, `src/state` (samples and presets), `src/gui` (the window) and `src/plugin` (the processor and the voice).
+Since v1.11.0 the source files are grouped by what they do: `src/dsp` (sound), `src/sequencer`, `src/state` (samples, presets and the saved session), `src/gui` (the window) and `src/plugin` (the processor, its parameters, the MIDI router and the voice). Since v1.11.1 the processor's jobs are in files of their own, and the editor and the voice have `.cpp` files for their setup work; the code that runs for every sample stays in headers.
 
 It is an editorial guide, not a requirement to read every file in this order.
 
 ### Make a small change, then test it
 
-A useful first experiment is to change a default envelope time in `createParameterLayout()` (in `src/plugin/NeonSynthProcessor.cpp`), rebuild, and open a fresh instance to hear the result. Existing saved sessions can restore their own settings, so they are not a reliable way to check that a new default has taken effect ([parameter definitions and state restoration](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/plugin/NeonSynthProcessor.cpp)).
+A useful first experiment is to change a default envelope time in `createParameterLayout()` (in `src/plugin/Parameters.cpp`), rebuild, and open a fresh instance to hear the result. Existing saved sessions can restore their own settings, so they are not a reliable way to check that a new default has taken effect ([parameter definitions](https://github.com/kv244/NeonSynth/blob/v1.11.1/src/plugin/Parameters.cpp), [state restoration](https://github.com/kv244/NeonSynth/blob/v1.11.1/src/state/SessionState.cpp)).
 
 For a deeper exercise, inspect why a waveform change waits for a cycle boundary or how grain size and density affect overlap. Make one change at a time, work on a branch, and run the relevant tests before comparing the result with the original; the developer notes' [Unit tests and benchmark](DEVELOPMENT.md#unit-tests-and-benchmark) section lists what each test checks.
 
@@ -893,11 +903,11 @@ The project identifies Claude-assisted development, but Claude is not a runtime 
 
 ### Signal path
 
-Keyboard notes pass HOLD on their way in, and the voice allocator (built on JUCE's synthesiser as `PlayingSynthesiser`) moves a sounding voice to a new note for LEGATO and for the sequencer's slides instead of starting another. The voice engine places its amplitude envelope before the filter and panner; voices are then summed, followed by output gain and soft clipping. The filter's drive and its limiter scale with the envelope, so the filter behaves as if the envelope came after it. This is the implemented path, rather than a generic synthesis diagram ([voice engine](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/plugin/NeonSynthVoice.h), [filter](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/dsp/CytomicSvf.h), [processor](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/plugin/NeonSynthProcessor.cpp)).
+Keyboard notes pass HOLD on their way in, and the voice allocator (built on JUCE's synthesiser as `PlayingSynthesiser`) moves a sounding voice to a new note for LEGATO and for the sequencer's slides instead of starting another. The voice engine places its amplitude envelope before the filter and panner; voices are then summed, followed by output gain and soft clipping. The filter's drive and its limiter scale with the envelope, so the filter behaves as if the envelope came after it. This is the implemented path, rather than a generic synthesis diagram ([voice engine](https://github.com/kv244/NeonSynth/blob/v1.11.1/src/plugin/NeonSynthVoice.h), [filter](https://github.com/kv244/NeonSynth/blob/v1.11.1/src/dsp/CytomicSvf.h), [MIDI routing](https://github.com/kv244/NeonSynth/blob/v1.11.1/src/plugin/MidiRouter.cpp), [processor](https://github.com/kv244/NeonSynth/blob/v1.11.1/src/plugin/NeonSynthProcessor.cpp)).
 
 ![The signal path. Keyboard MIDI and the step sequencer go through MIDI routing to voice allocation (up to 16 voices, set by the VOICES limit). Inside each voice, Oscillator and Random pass through CHOP, Noise and Fold; all four sources then go through velocity times the amp envelope, drive and the filter (bypassed together by the filter's ON switch), and the pitch-based pan. The voices are summed, then tremolo, output gain and the soft clipper lead to the audio output and the displays. A shared modulation stage, worked out once per block, sends the pitch ratio to all four sources, the LFO cutoff to the filter and the tremolo to the mix.](images/fig10-signal-path.png)
 
-Figure 10. The signal path in v1.10.0 (unchanged since v1.9.0); v1.11.0 adds HOLD to the MIDI routing, LEGATO and slides to voice allocation, and the glide to each voice's pitch, as the text version below shows. *Explanatory schematic,* drawn from the source code: each box is a stage in the order the [processor](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/plugin/NeonSynthProcessor.cpp) and the [voice](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/plugin/NeonSynthVoice.h) run them. Solid arrows carry audio, dashed ones the shared modulation, which is worked out once per block for all voices. Drive and the filter form one stage: switching the filter OFF bypasses both. The same path in text:
+Figure 10. The signal path in v1.10.0 (unchanged since v1.9.0); v1.11.0 adds HOLD to the MIDI routing, LEGATO and slides to voice allocation, and the glide to each voice's pitch, as the text version below shows. *Explanatory schematic,* drawn from the source code: each box is a stage in the order the [processor](https://github.com/kv244/NeonSynth/blob/v1.11.1/src/plugin/NeonSynthProcessor.cpp) and the [voice](https://github.com/kv244/NeonSynth/blob/v1.11.1/src/plugin/NeonSynthVoice.h) run them. Solid arrows carry audio, dashed ones the shared modulation, which is worked out once per block for all voices. Drive and the filter form one stage: switching the filter OFF bypasses both. The same path in text:
 
 ```text
 MIDI keyboard / DAW notes → HOLD ─┐
@@ -937,7 +947,7 @@ voice sum → tremolo → output gain → soft clipper → mono/stereo output an
 | Random / granular variation | Seeded for reproducible renders from the same reset state and event sequence. |
 | Imported sample audio | Prepared mono audio; original file is not modified. |
 
-These details follow the [voice allocator](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/plugin/PlayingSynthesiser.h), [sequencer](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/sequencer/StepSequencer.h), [presets](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/state/PresetManager.h), the [voice engine](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/plugin/NeonSynthVoice.h), [modulation](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/dsp/Modulation.h), [LFO](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/dsp/Lfo.h), [processor](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/plugin/NeonSynthProcessor.cpp), [grain engine](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/dsp/GrainCloud.h), and [sample preparation](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/state/SampleData.h).
+These details follow the [voice allocator](https://github.com/kv244/NeonSynth/blob/v1.11.1/src/plugin/PlayingSynthesiser.h) and its [voice limit](https://github.com/kv244/NeonSynth/blob/v1.11.1/src/plugin/VoiceAllocator.h), the [MIDI router](https://github.com/kv244/NeonSynth/blob/v1.11.1/src/plugin/MidiRouter.cpp) (HOLD and the internal clock), [sequencer](https://github.com/kv244/NeonSynth/blob/v1.11.1/src/sequencer/StepSequencer.h), [presets](https://github.com/kv244/NeonSynth/blob/v1.11.1/src/state/PresetManager.h), the [voice engine](https://github.com/kv244/NeonSynth/blob/v1.11.1/src/plugin/NeonSynthVoice.h), [modulation](https://github.com/kv244/NeonSynth/blob/v1.11.1/src/dsp/Modulation.h), [LFO](https://github.com/kv244/NeonSynth/blob/v1.11.1/src/dsp/Lfo.h), [processor](https://github.com/kv244/NeonSynth/blob/v1.11.1/src/plugin/NeonSynthProcessor.cpp), [grain engine](https://github.com/kv244/NeonSynth/blob/v1.11.1/src/dsp/GrainCloud.h), and [sample preparation](https://github.com/kv244/NeonSynth/blob/v1.11.1/src/state/SampleData.h).
 
 ### Optional MIDI diagnostics
 
@@ -951,10 +961,10 @@ The included `log_to_midi.py` utility converts a captured text log into a MIDI f
 
 ### Building from source
 
-The repository specifies C++17, CMake 3.21 or newer, and a separately supplied JUCE checkout; its current README identifies JUCE 9.0.0. Follow the [build instructions](../README.md#building) when setting up your development environment.
+The repository specifies C++17, CMake 3.21 or newer, and JUCE 9.0.0. Since v1.11.1 you do not need to download JUCE yourself: when you do not name a copy, CMake fetches JUCE 9.0.0 from GitHub the first time you configure (this needs git and a network connection). A copy you already have can still be named with `-DJUCE_DIR`. Follow the [build instructions](../README.md#building) when setting up your development environment.
 
 ```bash
-cmake -S . -B build -DJUCE_DIR="/path/to/JUCE" -DCMAKE_BUILD_TYPE=Release
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release
 ```
 
@@ -966,6 +976,6 @@ Record the application version, operating system, standalone/DAW context, audio 
 
 Keep a copy of the project and source sample before experimenting with a workaround. A small reproducible example is more useful than a screenshot of unexplained silence.
 
-<p class="fineprint"><strong>Licence.</strong> Copyright © 2026 Razvan Julian Petrescu. NeonSynth is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General Public License, version 3 only (SPDX: AGPL-3.0-only), as published by the Free Software Foundation (<a href="https://github.com/kv244/NeonSynth/blob/v1.11.0/LICENSE">LICENSE</a>). This manual is part of the NeonSynth source repository and is distributed under the same licence. If you distribute NeonSynth or a program built from it, the licence requires you to make its complete corresponding source available under the same terms; the repository at the release's tag is that source for the official releases. NeonSynth is built on <a href="https://juce.com">JUCE</a>, used under JUCE's AGPLv3 option. The two fonts compiled into the plugin, VT323 and IBM Plex Mono, are under the SIL Open Font License 1.1; their licences are installed next to the plugin. Releases up to and including v1.3.0 were published under the MIT license; from v1.4.0 the project is licensed under the AGPLv3.</p>
+<p class="fineprint"><strong>Licence.</strong> Copyright © 2026 Razvan Julian Petrescu. NeonSynth is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General Public License, version 3 only (SPDX: AGPL-3.0-only), as published by the Free Software Foundation (<a href="https://github.com/kv244/NeonSynth/blob/v1.11.1/LICENSE">LICENSE</a>). This manual is part of the NeonSynth source repository and is distributed under the same licence. If you distribute NeonSynth or a program built from it, the licence requires you to make its complete corresponding source available under the same terms; the repository at the release's tag is that source for the official releases. NeonSynth is built on <a href="https://juce.com">JUCE</a>, used under JUCE's AGPLv3 option. The two fonts compiled into the plugin, VT323 and IBM Plex Mono, are under the SIL Open Font License 1.1; their licences are installed next to the plugin. Releases up to and including v1.3.0 were published under the MIT license; from v1.4.0 the project is licensed under the AGPLv3.</p>
 
 <p class="fineprint"><strong>No warranty.</strong> As sections 15 and 16 of the licence set out, NeonSynth and this manual are provided “as is”, without warranty of any kind, express or implied, including the implied warranties of merchantability and fitness for a particular purpose, to the extent permitted by applicable law. The entire risk as to their quality and performance is with you. Unless required by applicable law or agreed to in writing, no copyright holder or other party who modifies or conveys the program is liable to you for damages, including any general, special, incidental or consequential damages (such as loss of data, damage to equipment or hearing) arising out of the use of or inability to use the program, even if advised of the possibility of such damages. The licence's own text is the binding version. Audio software can produce sudden loud sounds: keep monitoring levels low while experimenting.</p>
