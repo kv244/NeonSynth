@@ -25,6 +25,7 @@
 #include <cmath>
 #include <complex>
 #include <cstdio>
+#include <thread>
 
 namespace
 {
@@ -136,6 +137,39 @@ namespace
         check (a.getSpectrum() == HarmonicSpectrum::square(), "the set the audio thread holds is not rebuilt under it");
         check (bank.acquire().getSpectrum() == HarmonicSpectrum::sine(), "the next acquire() gets the newest, skipping the one in between");
         check (bank.acquire().getSpectrum() == HarmonicSpectrum::sine(), "with nothing new, acquire() keeps its set");
+
+        // Concurrent: a writer publishes 300 spectra while an "audio thread" acquires and reads.
+        // Each spectrum has every level equal, so a set that is complete has table 32's first
+        // point equal to its spectrum's prediction; a torn read (a set rebuilt under the reader)
+        // would not. Under ThreadSanitizer (the TSan job) any race here fails the run.
+        WavetableBank shared (HarmonicSpectrum::sine());
+        std::atomic<bool> done { false };
+        std::atomic<int> torn { 0 }, reads { 0 };
+        std::thread audio ([&]
+        {
+            while (! done.load())
+            {
+                const auto& set = shared.acquire();
+                const float level = set.getSpectrum().levels[0];
+                double expected = 0.0;   // every harmonic at `level`, phase 0.25 rad: sum of level * sin (0.25)
+                for (int k = 0; k < HarmonicSpectrum::numHarmonics; ++k)
+                    expected += (double) set.getSpectrum().levels[(size_t) k] * std::sin ((double) set.getSpectrum().phases[(size_t) k]);
+                if (level > 0.0f && std::abs ((double) set.getTable (32)[0] - expected * set.getScale()) > 1.0e-4)
+                    torn.fetch_add (1);
+                reads.fetch_add (1);
+            }
+        });
+        for (int i = 1; i <= 300; ++i)
+        {
+            HarmonicSpectrum s;
+            s.levels.fill ((float) (i % 7 + 1) / 32.0f);
+            s.phases.fill (0.25f);
+            shared.publish (s);
+        }
+        done.store (true);
+        audio.join();
+        std::printf ("    %d reads while publishing\n", reads.load());
+        check (torn.load() == 0, "concurrent publish and acquire: every set read is complete");
     }
 
     juce::MemoryBlock saveState (NeonSynthProcessor& p)

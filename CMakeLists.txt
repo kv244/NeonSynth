@@ -108,6 +108,30 @@ if(NEONSYNTH_SANITIZE)
     target_link_options(neonsynth_sanitize INTERFACE ${neonsynth_sanitize_flags})
 endif()
 
+# ThreadSanitizer build (v1.12.0, off by default): the CI job that runs the unit tests with
+# -fsanitize=thread, so a data race between the audio thread and the message thread (the
+# wavetable hand-off, the scope FIFO, the sample slot) fails the tests. It cannot be combined
+# with NEONSYNTH_SANITIZE (ASan and TSan exclude each other). Configure with Debug.
+option(NEONSYNTH_TSAN "Build NeonSynth and its tests with ThreadSanitizer (GCC/Clang)" OFF)
+if(NEONSYNTH_TSAN)
+    if(MSVC OR NEONSYNTH_SANITIZE)
+        message(FATAL_ERROR "NEONSYNTH_TSAN needs GCC or Clang, and not NEONSYNTH_SANITIZE")
+    endif()
+    target_compile_options(neonsynth_sanitize INTERFACE -fsanitize=thread -fno-omit-frame-pointer)
+    target_link_options(neonsynth_sanitize INTERFACE -fsanitize=thread)
+endif()
+
+# Code coverage (v1.12.0, off by default): Clang's source-based coverage for the coverage CI job,
+# which merges the unit tests' profiles and reports line coverage per file of src/.
+option(NEONSYNTH_COVERAGE "Clang only: instrument NeonSynth and its tests for llvm-cov" OFF)
+if(NEONSYNTH_COVERAGE)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        message(FATAL_ERROR "NEONSYNTH_COVERAGE needs Clang")
+    endif()
+    target_compile_options(neonsynth_sanitize INTERFACE -fprofile-instr-generate -fcoverage-mapping)
+    target_link_options(neonsynth_sanitize INTERFACE -fprofile-instr-generate)
+endif()
+
 # Link-time optimisation for the plugin (v1.11.1), Release builds only. The default is ON, so a
 # plain configure builds what ships; releases and the CI job that runs the compare test and
 # pluginval always use it. For faster local builds, and in the other CI jobs, configure with
@@ -484,6 +508,11 @@ if(NEONSYNTH_BUILD_TESTS)
         get_property(neonsynth_all_tests DIRECTORY PROPERTY TESTS)
         set_tests_properties(${neonsynth_all_tests} PROPERTIES ENVIRONMENT
             "ASAN_OPTIONS=strict_string_checks=1:detect_stack_use_after_return=1:check_initialization_order=1;UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1:suppressions=${CMAKE_CURRENT_LIST_DIR}/tests/sanitizer-suppressions.txt")
+    endif()
+    if(NEONSYNTH_TSAN)
+        get_property(neonsynth_all_tests DIRECTORY PROPERTY TESTS)
+        set_tests_properties(${neonsynth_all_tests} PROPERTIES ENVIRONMENT
+            "TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1:suppressions=${CMAKE_CURRENT_LIST_DIR}/tests/tsan-suppressions.txt")
     endif()
 endif()
 
