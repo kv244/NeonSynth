@@ -106,6 +106,9 @@ PARAMETER_TERMS = {
     "hold":          [r"\bHOLD\b"],
     "glide":         [r"\bGLIDE\b"],
     "legato":        [r"\bLEGATO\b"],
+    "naive":         [r"\bNAIVE\b"],        # v1.12.0 "Fourier"
+    "custom":        [r"\bCUSTOM\b"],
+    "harmonics":     [r"\bHARMONICS\b"],
     "seqLength":     [r"\bLENGTH\b"],
     "seqKey":        [r"\bKEY\b"],
     "seqScale":      [r"\bSCALE\b"],

@@ -49,6 +49,18 @@ public:
     }
 
     /** Re-reads the settings and, for Random, the sounding levels. Message thread. */
+    /**
+        v1.12.0, DRAW (the editor's switch, saved with the editor's view): with DRAW on and
+        CUSTOM on, the pointer draws one cycle instead of toggling CHOP's steps (agent C).
+    */
+    void setDrawMode (bool on)
+    {
+        if (std::exchange (drawMode, on) != on)
+            repaint();
+    }
+
+    bool isDrawMode() const noexcept   { return drawMode; }
+
     void refresh()
     {
         Shown now;
@@ -151,6 +163,7 @@ public:
     }
 
 private:
+    bool drawMode = false;   // v1.12.0
     struct Shown
     {
         bool random = false;

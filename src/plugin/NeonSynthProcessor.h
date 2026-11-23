@@ -212,6 +212,23 @@ public:
     juce::uint16 getChopPattern() const noexcept   { return chopPattern.load(); }
 
     //==========================================================================
+    // v1.12.0 "Fourier": CUSTOM's 32 harmonics and the drawn cycle, saved with the session,
+    // not host parameters. Any thread except the audio thread.
+
+    HarmonicSpectrum getHarmonicSpectrum() const                { return fourier.getSpectrum(); }
+
+    /** New levels and phases (sanitised): the voices pick them up at their next block, and the host is told the session changed. */
+    void setHarmonicSpectrum (const HarmonicSpectrum& spectrum);
+
+    std::optional<FourierState::Drawing> getCycleDrawing() const   { return fourier.getDrawing(); }
+
+    /** A drawn cycle and the spectrum analysed from it, stored together; or no drawing (std::nullopt) and the spectrum. */
+    void setCycleDrawing (const std::optional<FourierState::Drawing>& drawing, const HarmonicSpectrum& spectrum);
+
+    /** Moves whenever the spectrum or the drawing changes (views repaint when it does). */
+    int getFourierVersion() const noexcept                       { return fourier.getVersion(); }
+
+    //==========================================================================
     // Scope data: audio thread writes, editor timer (message thread) reads.
     static constexpr int scopeFifoSize = 1 << 15;   // ~0.7 s at 48 kHz
 
@@ -256,8 +273,11 @@ private:
     juce::SmoothedValue<float> outputGain { 1.0f };
     static constexpr double outputGainGlideSeconds = 0.02;   // GAIN glides over 20 ms, so automating it doesn't zipper
 
-    // The session and its sample; after apvts, the sequencer and chopPattern, which it saves and restores.
-    SessionState session { *this, apvts, sequencer, chopPattern };
+    /** v1.12.0: CUSTOM's harmonics, the drawn cycle and their wavetables. */
+    FourierState fourier;
+
+    // The session and its sample; after apvts, the sequencer, chopPattern and fourier, which it saves and restores.
+    SessionState session { *this, apvts, sequencer, chopPattern, fourier };
     const SampleData* blockSample = nullptr;   // audio thread: the sample for the current block
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (NeonSynthProcessor)

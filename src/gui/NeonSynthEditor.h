@@ -19,6 +19,7 @@
 #include "gui/HelpOverlay.h"
 #include "gui/SampleView.h"
 #include "gui/ShapeView.h"
+#include "gui/HarmonicsView.h"
 #include "gui/LfoView.h"
 #include "gui/PresetBar.h"   // v1.11.0
 
@@ -81,6 +82,7 @@ private:
     static constexpr int baseHeight = 860;
     static constexpr int timerHz    = 30;
     static inline const juce::Identifier viewPropertyId { "view" };
+    static inline const juce::Identifier drawPropertyId { "draw" };   // v1.12.0: DRAW in the SHAPE strip
     static inline const juce::Identifier envTabPropertyId { "envelopeTab" };   // 0 = AMP, 1 = FILTER
 
     float scale() const noexcept { return (float) getWidth() / (float) baseWidth; }
@@ -241,7 +243,8 @@ private:
     VoiceLeds        voiceLeds;
     std::array<float, NeonSynthProcessor::scopeFifoSize> scratchLeft {}, scratchRight {}, scratchMid {};
 
-    juce::TextButton scopeButton { "SCOPE" }, spectrumButton { "SPECTRUM" };
+    juce::TextButton scopeButton { "SCOPE" }, spectrumButton { "SPECTRUM" }, harmonicsButton { "HARMONICS" };
+    HarmonicsView    harmonicsView;   // v1.12.0: the third view
     juce::TooltipWindow tooltipWindow { this };
 
     // Controls
@@ -327,6 +330,11 @@ private:
     PresetBar        presetBar { synthProcessor.getPresetManager() };
     juce::TextButton holdButton { "HOLD" };
     std::unique_ptr<ButtonAttachment> holdAttachment;
+
+    // v1.12.0 "Fourier": above the SHAPE strip while Oscillator or Random plays.
+    juce::TextButton customButton { "CUSTOM" }, naiveButton { "NAIVE" }, drawButton { "DRAW" };
+    std::unique_ptr<ButtonAttachment> customAttachment, naiveAttachment;
+    void setDrawMode (bool on);
     CutoffBand cutoffBand;   // as last drawn under the cutoff slider
 
     // Help

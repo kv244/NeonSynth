@@ -11,6 +11,7 @@
 #include "dsp/GrainCloud.h"
 #include "dsp/CytomicSvf.h"
 #include "dsp/Modulation.h"
+#include "dsp/Wavetable.h"
 #include "sequencer/StepSequencer.h"
 
 class NeonSynthSound : public juce::SynthesiserSound
@@ -111,6 +112,12 @@ public:
         SculptSettings sculpt;                    // Oscillator and Random: Noise, then Fold
 
         float glideSeconds = 0.0f;                // v1.11.0, GLIDE: time to slide to a new note; 0 = jump (v1.10.1)
+
+        // v1.12.0 "Fourier" (Oscillator source; NAIVE also Random and CHOP). Both off = v1.11's path.
+        bool  naive = false;                      // NAIVE: no band-limiting, so harmonics above Nyquist alias
+        bool  custom = false;                     // CUSTOM: the wavetable wave instead of `waveform`
+        int   harmonics = HarmonicSpectrum::numHarmonics;   // CUSTOM: how many of the 32 play
+        const WavetableSet* wavetables = nullptr; // CUSTOM: this block's tables (FourierState::acquireForAudio)
     };
 
     /** What the editor's visualisers need to know about this voice. */

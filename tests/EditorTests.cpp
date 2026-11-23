@@ -459,6 +459,8 @@ int main()
                     for (int source = 0; source < 4; ++source)
                         if (c.shown[source]) { set (processor, "source", (float) source); break; }
             showEnvTab (ed, isFilterEnvControl (ranged->getParameterID()) ? 1 : 0);
+            if (auto* views = dynamic_cast<juce::Button*> (find (ed, ranged->getParameterID() == "harmonics" ? "harmonicsButton" : "scopeButton")))
+                views->setToggleState (true, juce::sendNotificationSync);   // v1.12.0: HARMONICS lives in its own view
 
             const auto id = ranged->getParameterID();
             check (showing (*slider, ed), id + ": shown");

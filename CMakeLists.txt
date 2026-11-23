@@ -235,6 +235,7 @@ target_sources(NeonSynth
         src/dsp/Lfo.h
         src/dsp/Modulation.h
         src/dsp/Sculpt.h
+        src/dsp/Wavetable.h
         # src/sequencer
         src/sequencer/StepSequencer.h
         # src/state
@@ -244,6 +245,7 @@ target_sources(NeonSynth
         src/state/PresetManager.h
         src/state/FactoryPresets.h
         src/state/SessionState.h
+        src/state/FourierState.h
         src/state/SessionState.cpp
         # src/gui
         src/gui/NeonSynthEditor.h
@@ -260,6 +262,7 @@ target_sources(NeonSynth
         src/gui/VoiceLights.h
         src/gui/SampleView.h
         src/gui/ShapeView.h
+        src/gui/HarmonicsView.h
         src/gui/LfoView.h
         src/gui/SequencerView.h
         src/gui/HelpOverlay.h
@@ -428,7 +431,7 @@ if(NEONSYNTH_BUILD_TESTS)
     #   PitchTests, MidiModulationTests, PlayingTests, PresetTests, VoiceStealingTests, SweepTests
     #   RouterTests           the MIDI router alone (HOLD, the ENTER queue, the internal clock)
     set(NEONSYNTH_ENGINE_TESTS RealtimeSafetyTests ParameterLayoutTests SessionStateTests StateFuzzTests EditorTests PitchTests MidiModulationTests
-        PlayingTests PresetTests VoiceStealingTests SweepTests RouterTests)
+        PlayingTests PresetTests VoiceStealingTests SweepTests RouterTests FourierTests)
 
     foreach(program ${NEONSYNTH_UNIT_TESTS} ${NEONSYNTH_ENGINE_TESTS} RenderBenchmark)
         add_executable(${program} tests/${program}.cpp)

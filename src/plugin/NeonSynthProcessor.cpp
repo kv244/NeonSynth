@@ -100,6 +100,10 @@ void NeonSynthProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     params.chop = { chopPattern.load (std::memory_order_relaxed), parameters.chopComb->get(), parameters.chopOvertone->get() * 0.01f };
     params.sculpt = { parameters.noiseLevel->get() * 0.01f, parameters.foldDrive->get(), parameters.foldMix->get() * 0.01f };
     params.glideSeconds = parameters.glide->get() * 0.001f;   // v1.11.0 (region B): GLIDE, ms to seconds
+    params.naive      = parameters.naive->get();               // v1.12.0 "Fourier"
+    params.custom     = parameters.custom->get();
+    params.harmonics  = parameters.harmonics->get();
+    params.wavetables = &fourier.acquireForAudio();            // lock-free; the newest finished tables
 
     // Modulation (v1.9.0): the LFO, pitch bend and the mod wheel, worked out once for all voices.
     // Bend and wheel are read from the incoming MIDI, with their sample positions, so they reach
@@ -295,6 +299,22 @@ void NeonSynthProcessor::setChopStep (int step, bool chopped) noexcept
     while (! chopPattern.compare_exchange_weak (current, chopped ? (juce::uint16) (current | bit) : (juce::uint16) (current & ~bit)))
     {
     }
+}
+
+//==============================================================================
+// v1.12.0 "Fourier"
+
+void NeonSynthProcessor::setHarmonicSpectrum (const HarmonicSpectrum& spectrum)
+{
+    if (fourier.setSpectrum (spectrum))
+        updateHostDisplay (ChangeDetails().withNonParameterStateChanged (true));
+}
+
+void NeonSynthProcessor::setCycleDrawing (const std::optional<FourierState::Drawing>& drawing, const HarmonicSpectrum& spectrum)
+{
+    fourier.setDrawing (drawing);
+    fourier.setSpectrum (spectrum);
+    updateHostDisplay (ChangeDetails().withNonParameterStateChanged (true));
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
