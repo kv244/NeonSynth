@@ -15,7 +15,8 @@ and the **[user manual](docs/NeonSynth-User-Manual.md)** teaches it by ear and m
 ![NeonSynth v1.10.0 in its retro CRT look, with a sawtooth and the sequencer running](docs/images/captures/ui-oscillator-running.png)
 
 **[If you want to hear it in action](https://github.com/kv244/NeonSynth/releases/download/demo/neonsynth-demo.wav)**: a 42-second piece (WAV, 8 MB) in which every
-sound is NeonSynth. Six instances play together: a granular pad breathing with the LFO, a Random-source bass through
+sound is NeonSynth, the drums included. Nine instances play together: a kick, snare and crash made by
+sweeping a note down with GLIDE, a granular pad breathing with the LFO, a Random-source bass through
 CHOP and the wavefolder, a 303-style acid line from the step sequencer (one voice, slides, ties and accents into a
 resonant, driven filter, latched with HOLD), noise hats through the high-pass filter, a chopped sawtooth arpeggio
 through a resonant band-pass, and a looped-sample lead played MONO with LEGATO and GLIDE, the mod wheel's vibrato

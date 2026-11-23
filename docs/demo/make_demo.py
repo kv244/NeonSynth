@@ -7,7 +7,7 @@ The WAV is not kept in git (it is in .gitignore). One copy, the latest, is the a
 of the 'demo' release, which the README links to; after a re-render replace it with
     gh release upload demo docs/demo/neonsynth-demo.wav --clobber
 
-Every sound is NeonSynth: six instances of the plugin, one per part, each
+Every sound is NeonSynth, the drums included: nine instances of the plugin, one per part, each
 rendered offline with pedalboard and summed. Nothing else touches the audio
 except a gain per part, a fade at the end and peak normalisation.
 
@@ -19,7 +19,11 @@ The parts (16 bars at 100 BPM, Am - F - C - G; v1.11):
   acid    the step sequencer as a 303: one voice, ties, slides gliding at GLIDE time, accents
           (step velocity) opening a resonant, driven filter through the filter envelope;
           Transpose mode with HOLD: one key, pressed once and let go, latches the riff
+  kick    a sine at one voice: each hit is a high note then a low one a sample later, so GLIDE
+          (45 ms) sweeps the pitch down from about 1 kHz to 55 Hz: the classic drum-machine kick
+  snare   a triangle swept down the same way, half NOISE, through the low-pass, with a roll into bar 13
   hats    Oscillator faded fully into NOISE, through the high-pass filter
+  crash   NOISE with a long decay through the high-pass, at bars 5, 9 and 13
   arp     Sawtooth, CHOP overtone and comb sweeping, folded, through a resonant band-pass
   lead    Sample: the built-in pad looped, MONO with LEGATO and GLIDE, the mod wheel's vibrato
           rising through long notes, and a pitch bend down at the end
@@ -218,8 +222,6 @@ def hats_part(vst):
             on = bar * BAR + eighth * BEAT / 2
             if eighth % 2 == 1:                       # offbeat hat
                 events.append((96, on, on + 0.03, 92))
-            elif eighth in (2, 6):                    # backbeat: a longer, lower burst
-                events.append((60, on, on + 0.11, 118))
             if bar >= 8 and eighth % 2 == 1:          # sixteenth ghost notes from bar 9
                 events.append((100, on + BEAT / 4, on + BEAT / 4 + 0.02, 48))
     return render(vst, dict(waveform="Square", noise=100.0, fold_drive=7.0, fold_mix=55.0,
@@ -227,6 +229,55 @@ def hats_part(vst):
                             attack=0.001, decay=0.05, sustain=0.0, release=0.06, stereo_width=0.7),
                   notes(events),
                   lambda t: dict(cutoff=sweep(t, 4 * BAR, 14 * BAR, 5000.0, 8000.0)))
+
+
+def drum_hits(hits, high, gap=1.0 / SR):
+    """(note, seconds, velocity) -> a high note, then the drum's note one sample later: at one voice
+    GLIDE slides the pitch down from the high note, which is what makes it a drum."""
+    messages = []
+    for note, on, velocity in hits:
+        messages += [(on, mido.Message("note_on", note=high, velocity=velocity)),
+                     (on, mido.Message("note_off", note=high)),
+                     (on + gap, mido.Message("note_on", note=note, velocity=velocity)),
+                     (on + 0.25, mido.Message("note_off", note=note))]
+    return messages
+
+
+def kick_part(vst):
+    hits = []
+    for bar in range(4, BARS):
+        for beat in range(4):
+            if bar == 11 and beat == 3:               # room for the snare roll
+                continue
+            hits.append((33, bar * BAR + beat * BEAT, 124 if beat == 0 else 112))
+        if bar % 4 == 3 and bar != 11:                # a pickup at the end of each phrase
+            hits.append((33, bar * BAR + 3.5 * BEAT, 90))
+    hits.append((33, BARS * BAR, 124))                # the last downbeat
+    return render(vst, dict(waveform="Sine", voices=1, glide=45.0, fold_drive=2.0, fold_mix=12.0,
+                            attack=0.001, decay=0.32, sustain=0.0, release=0.12, stereo_width=0.0,
+                            filter_enabled=False),
+                  drum_hits(hits, high=84))
+
+
+def snare_part(vst):
+    hits = []
+    for bar in range(4, BARS):
+        for beat in (1, 3):
+            hits.append((50, bar * BAR + beat * BEAT, 116))
+    for i in range(8):                                # a sixteenth roll, rising, into bar 13
+        hits.append((50, 11 * BAR + 2 * BEAT + i * BEAT / 4, 60 + 8 * i))
+    return render(vst, dict(waveform="Triangle", noise=55.0, voices=1, glide=20.0, fold_drive=3.0, fold_mix=25.0,
+                            filter_mode="Low-pass", cutoff=7500.0, filter_resonance=10.0,
+                            attack=0.001, decay=0.13, sustain=0.0, release=0.1, stereo_width=0.3),
+                  drum_hits(hits, high=62))
+
+
+def crash_part(vst):
+    events = [(88, bar * BAR, bar * BAR + 0.5, 110) for bar in (4, 8, 12)]
+    return render(vst, dict(waveform="Square", noise=100.0, fold_drive=6.0, fold_mix=40.0,
+                            filter_mode="High-pass", cutoff=4500.0, filter_resonance=15.0,
+                            attack=0.001, decay=1.8, sustain=0.0, release=1.8, stereo_width=1.0),
+                  notes(events))
 
 
 def arp_part(vst):
@@ -284,7 +335,8 @@ def main():
     out = Path(sys.argv[2]) if len(sys.argv) > 2 else Path(__file__).with_name("neonsynth-demo.wav")
 
     parts = [("pad", pad_part, 0.7), ("bass", bass_part, 0.8), ("acid", acid_part, 0.6),
-             ("hats", hats_part, 0.4), ("arp", arp_part, 0.45), ("lead", lead_part, 0.7)]
+             ("kick", kick_part, 1.3), ("snare", snare_part, 1.0), ("hats", hats_part, 0.4),
+             ("crash", crash_part, 0.3), ("arp", arp_part, 0.45), ("lead", lead_part, 0.7)]
     mix = np.zeros((2, int(round(LENGTH / STEP)) * int(round(STEP * SR))), dtype=np.float64)
     for name, part, gain in parts:
         audio = part(vst)
