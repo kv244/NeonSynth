@@ -71,6 +71,13 @@
     loop, so the scalar and SIMD loops stay bit-identical; and at ratio 1
     every step is exactly what it was before v1.9.0.
 
+    A grain bent up so far that it would read past the end of its copy ends
+    there (v1.11.1): it stops before the first sample whose read position
+    reaches the end. Until v1.11.0 its step shrank to fit the rest of each render() call
+    instead (frozen at 0 once it got there), which made the result depend on
+    the block size. A grain that stays inside its copy is unchanged: without
+    pitch modulation none ever reaches the end (each is sized to fit).
+
     Voices. Up to 32 grains at once; an onset is skipped while all 32 are
     busy (stealing one would click). Notes pitched well above the root read
     the sample's band-limited copies, as in SampleReader.
@@ -379,10 +386,26 @@ private:
     */
     bool renderGrain (Grain& g, float* __restrict out, int count, SimdPath path) noexcept
     {
-        const int n = juce::jmin (count, g.remaining);
-        int s = 0;
-        const juce::uint64 step = stepNow (g, n);
+        const juce::uint64 step = stepNow (g);
 
+        // Bent up past the end of its copy (v1.11.1): render the samples whose position is
+        // still inside it, then end. Which sample that is depends only on the grain's own
+        // positions, never on where the block boundaries fall.
+        int n = juce::jmin (count, g.remaining);
+        bool runsOut = false;
+        if (n > 0 && g.position + (juce::uint64) n * step > g.end)
+        {
+            const juce::uint64 inside = g.position >= g.end ? juce::uint64 (0)
+                                      : step == 0           ? (juce::uint64) n
+                                                            : (g.end - g.position + step - 1) / step;   // positions below the end
+            if (inside < (juce::uint64) n)
+            {
+                n = (int) inside;
+                runsOut = true;
+            }
+        }
+
+        int s = 0;
         switch (path)
         {
            #if NEONSYNTH_GRAINS_AVX2
@@ -407,25 +430,21 @@ private:
             ++g.age;
         }
 
-        g.remaining -= n;
+        g.remaining = runsOut ? 0 : g.remaining - n;
         return g.remaining > 0;
     }
 
     /**
-        The grain's step for the next n samples. At the ratio it started at (always,
+        The grain's step for this render() call. At the ratio it started at (always,
         without pitch modulation) that is its own step, untouched; otherwise the step
-        scaled by the ratio's change since. Either way the n samples must stay inside
-        its copy (a grain was sized to fit at its starting pitch, and a bend up makes
-        it read further): if they wouldn't, the step shrinks to fit.
+        scaled by the ratio's change since. A bend up makes it read further than it was
+        sized for; renderGrain() ends it at the end of its copy.
     */
-    juce::uint64 stepNow (const Grain& g, int n) const noexcept
+    juce::uint64 stepNow (const Grain& g) const noexcept
     {
         juce::uint64 step = g.step;
         if (pitchRatio != g.pitch)
             step = (juce::uint64) ((double) g.step * ((double) pitchRatio / (double) g.pitch));
-
-        if (n > 0 && g.position + (juce::uint64) n * step > g.end)
-            step = g.position < g.end ? (g.end - g.position) / (juce::uint64) n : 0;
         return step;
     }
 
