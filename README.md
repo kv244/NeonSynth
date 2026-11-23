@@ -55,11 +55,11 @@ as a PDF.
 
 For the theory behind it, two companion books live in [`docs/theory`](docs/theory):
 **[The DSP Behind NeonSynth](docs/theory/DSP-Behind-NeonSynth.md)**, a short textbook for musicians and
-programmers that connects each control to its mathematics, its code and its tests, with sixteen listening
+programmers that connects each control to its mathematics, its code and its tests, with seventeen listening
 laboratories; and the **[Mathematical Compendium](docs/theory/Mathematical-Compendium.tex)** (LaTeX,
-[PDF](docs/theory/Mathematical-Compendium-v1.10.1.pdf)), the derivations: band-limited edges, the
+[PDF](docs/theory/Mathematical-Compendium-v1.11.0.pdf)), the derivations: band-limited edges, the
 zero-delay-feedback filter and its self-oscillation limiter, anti-aliased drive, granular synthesis,
-resampling and modulation. Both are checked against the release they name, like the manual.
+resampling, modulation, glide and the sequencer's clock. Both are checked against the release they name, like the manual.
 
 ## Installation
 
