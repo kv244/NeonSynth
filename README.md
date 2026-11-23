@@ -59,7 +59,7 @@ programmers that connects each control to its mathematics, its code and its test
 laboratories; and the **[Mathematical Compendium](docs/theory/Mathematical-Compendium.tex)** (LaTeX,
 [PDF](docs/theory/Mathematical-Compendium-v1.11.0.pdf)), the derivations: band-limited edges, the
 zero-delay-feedback filter and its self-oscillation limiter, anti-aliased drive, granular synthesis,
-resampling, modulation, glide and the sequencer's clock. Both are checked against the release they name, like the manual.
+resampling, modulation, glide and the sequencer's clock. Both are checked against the release they name, like the manual; an edition holds for every patch release of its version (the v1.11.0 editions hold for v1.11.1).
 
 ## Installation
 
@@ -79,13 +79,17 @@ may ask you to confirm. The manual's first chapters cover setup in detail.
 
 ## Building
 
-You need CMake 3.21 or newer, a C++17 compiler (MSVC 2022, Clang or GCC) and
-[JUCE 9.0.0](https://github.com/juce-framework/JUCE/releases/tag/9.0.0), downloaded separately.
+You need CMake 3.22 or newer, a C++17 compiler (MSVC 2022, Clang or GCC) and git.
+[JUCE 9.0.0](https://github.com/juce-framework/JUCE/releases/tag/9.0.0) comes by itself: the first
+configure downloads it (CMake's FetchContent, pinned to the 9.0.0 commit) into the build folder.
 
 ```bash
-cmake -S . -B build -DJUCE_DIR="/path/to/JUCE" -DCMAKE_BUILD_TYPE=Release
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release
 ```
+
+To build against a JUCE checkout you already have (offline, or shared between builds), add
+`-DJUCE_DIR="/path/to/JUCE"`; a checkout in `./JUCE` is picked up without it.
 
 The VST3 and the Standalone land in `build/NeonSynth_artefacts/Release/`. The
 **[developer notes](docs/DEVELOPMENT.md)** cover the unit tests, the Python test suite, the benchmark,
@@ -104,9 +108,9 @@ MIDI logging and the layout of the source.
 
 | Version | Date | What changed |
 |---|---|---|
+| [v1.11.1](https://github.com/kv244/NeonSynth/releases/tag/v1.11.1) | 23 Nov 2026 | Refactor release: controls, window and sound unchanged, except that a granular grain bent up past the end of its sample now ends there whatever the block size. The manual's licence and warranty text follows AGPL-3.0-only. JUCE is fetched by CMake when no JUCE_DIR is given; the processor is split by job into smaller files, and a cold build of the plugin and its tests is about five times faster (32 min to 6 min on 2 cores); Python dependencies are pinned with hashes and updated by Dependabot |
 | [v1.11.0](https://github.com/kv244/NeonSynth/releases/tag/v1.11.0) | 23 Nov 2026 | "Playing": HOLD, GLIDE and LEGATO; the sequencer gains LENGTH, TIE and SLD (303-style slides), a KEY and SCALE lock, ENTER from the keyboard, pattern TOOLS, 32-level UNDO and a draggable velocity bar as the accent; presets, with a preset bar, SAVE and 16 factory presets that are also the DAW's program list; LFO bars follow the time signature. Fixes: two voice-stealing faults below 16 voices (sessions using fewer voices may differ where a note is stolen) and a one-sample drift of the internal clock. New tests for playing, presets, voice stealing and sample-rate and block-size sweeps, and the integrity job |
 | [v1.10.1](https://github.com/kv244/NeonSynth/releases/tag/v1.10.1) | 18 Nov 2026 | Hardening: a damaged or hostile session can no longer crash or hang the plugin (a bad embedded-sample size, parameter values that are not numbers, XML nested hundreds of thousands deep, a relative sample path); the host hears of a background sample load on the message thread; new tests for broken sessions, sessions saved by v1.2 to v1.10, random sequencer and envelope settings, and an ASan/UBSan CI job; SECURITY, CONTRIBUTING and this changelog. No change to controls or sound |
-| [v1.10.0](https://github.com/kv244/NeonSynth/releases/tag/v1.10.0) | 18 Nov 2026 | The retro CRT look: phosphor text and traces on a dark green tube inside a bezel, scope and spectrum afterglow, block meters, arc-ring knobs, the sequencer's steps showing their notes, embedded VT323 and IBM Plex Mono fonts, and a SCANLINES switch saved with the session. The layout and the sound are unchanged: old sessions sound bit-identical |
 
 Every release is in the **[changelog](CHANGELOG.md)**, linked to its GitHub release with the installer
 (and, from v1.6.0, the manual as a PDF).

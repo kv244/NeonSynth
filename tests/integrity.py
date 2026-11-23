@@ -2,15 +2,16 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Licensed under the GNU Affero General Public License v3; see LICENSE.
 
-"""Consistency checks the compilers cannot make (the integrity job, v1.11.0).
+"""Consistency checks the compilers cannot make (the integrity job, since v1.11.0).
 
     python tests/integrity.py            # every check; exits 1 if any finds a problem
     python tests/integrity.py --list     # also print what each check looked at
     python tests/integrity.py --cppcheck # cppcheck instead (see run_cppcheck)
 
 1. Version: the same x.y.z in CMakeLists.txt (project and plugin), installer.nsi, the manual's
-   "Applies to" line, the cover (docs/images/cover.json, written by docs/figures/cover.py) and
-   the newest CHANGELOG row.
+   "Applies to" line, the newest entry of its "What's new in this version" section (v1.11.1),
+   the cover (docs/images/cover.json, written by docs/figures/cover.py) and the newest
+   CHANGELOG row.
 2. Parameters: every parameter in tests/parameter-layout.txt is named in the user manual and on
    the help page (HelpOverlay.h's text), by the label it has in the window. PARAMETER_TERMS
    below says which words count for each; a new parameter needs a line there.
@@ -129,12 +130,19 @@ CONSTANTS = [
     {"name": "baseWidth"},
     {"name": "baseHeight"},
     {"name": "slideController"},
+    {"name": "numMidiNotes"},             # v1.11.1: StepSequencer's; the router and the views use it
+    {"name": "maxMidiValue"},
+    {"name": "defaultGate"},
+    {"name": "defaultTempo"},
+    {"name": "maxComb"},                  # ChopSettings's; the SHAPE view clamps with it too
+    {"name": "defaultPattern"},
+    {"name": "maxDisplayRateFactor"},     # SignalHistory.h's; the scope sizes its buffers with it
     {"what": "the voice's 5 ms hard-stop fade (the envelope's release and the tail the host is told)",
      "literal": r"\b0\.005f?\b",
-     "files": ["src/plugin/NeonSynthVoice.h", "src/plugin/NeonSynthProcessor.h", "src/plugin/NeonSynthProcessor.cpp"]},
+     "files": ["src/plugin/NeonSynthVoice.h", "src/plugin/NeonSynthVoice.cpp", "src/plugin/NeonSynthProcessor.h", "src/plugin/NeonSynthProcessor.cpp"]},
     {"what": "the voice's 2 ms crossfade between two read positions of the sample (a retrigger, a move to another copy)",
      "literal": r"\b0\.002 \* sampleRate\b",
-     "files": ["src/plugin/NeonSynthVoice.h"]},
+     "files": ["src/plugin/NeonSynthVoice.h", "src/plugin/NeonSynthVoice.cpp"]},
 ]
 
 problems = []
@@ -183,6 +191,11 @@ def check_version():
 
     m = re.search(r"^\|\s*\[v(\d+\.\d+\.\d+)\]", read(ROOT / "CHANGELOG.md"), flags=re.M)
     found["CHANGELOG newest row"] = m.group(1) if m else None
+
+    # The manual's "What's new in this version" section opens with the current release (Julian,
+    # 23 Nov 2026: every release adds its entry there).
+    m = re.search(r"^## What's new in this version\s*$.*?^### v(\d+\.\d+\.\d+)", read(MANUAL), flags=re.M | re.S)
+    found["manual, newest What's new entry"] = m.group(1) if m else None
 
     expected = found["CMakeLists.txt project()"]
     for where, version in found.items():
@@ -311,7 +324,7 @@ CPPCHECK_IGNORED_IDS = {
 }
 CPPCHECK_SUPPRESSIONS = [
     ("containerOutOfBounds", "src/gui/SpectrumView.h", "curve has numPoints + 1 entries; cppcheck takes it for numPoints"),
-    ("badBitmaskCheck", "src/plugin/NeonSynthProcessor.cpp", "keyboardChannel - 1 is 0 on purpose: the channel bits are replaced"),
+    ("badBitmaskCheck", "src/plugin/MidiRouter.cpp", "keyboardChannel - 1 is 0 on purpose: the channel bits are replaced"),
     ("knownConditionTrueFalse", "tests/EditorTests.cpp", "the page cache's count changes inside paint calls cppcheck does not follow"),
     ("knownConditionTrueFalse", "tests/SampleDataTests.cpp", "where no hash was recorded for the platform, the pad is compared with itself"),
     ("knownConditionTrueFalse", "tests/PresetTests.cpp", "the host's counters change inside pumpMessages(), on the message thread, which cppcheck does not follow"),

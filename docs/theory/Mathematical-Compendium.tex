@@ -534,7 +534,7 @@ With the note's full-rate ratio $\varrho = 2^{(\mathrm{note}-\mathrm{root})/12} 
 \begin{equation}\label{eq:grainstep}
   s_j' = \bigl\lfloor s_j \cdot r[n_0]/r_j \bigr\rfloor \quad (32.32;\ r_j\text{: the ratio at the grain's start; chunks of } m \le 32 \text{ samples})
 \end{equation}
-Copy changes crossfade linearly over 2\,ms; a grain step shrinks rather than read past its copy.
+Copy changes crossfade linearly over 2\,ms; a grain bent up so far that it would read past its copy ends there (v1.11.1; in v1.11.0 its step shrank to fit each block).
 
 \begin{callout}{Bit-Identity Condition}
 A buffer reaches the voices as a null pointer when it is neutral for the whole block: pitch $\Leftrightarrow r[n] = 1\ \forall n$;

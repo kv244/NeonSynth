@@ -22,7 +22,7 @@ jobs:
           APT='-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20'
           sudo apt-get $APT update -q
           sudo apt-get $APT install -y \
-            cmake ninja-build \
+            cmake ninja-build ccache \
             libasound2-dev \
             libx11-dev libxcomposite-dev libxcursor-dev \
             libxext-dev libxinerama-dev libxrandr-dev libxrender-dev \
@@ -40,17 +40,34 @@ jobs:
         if: steps.cache-juce.outputs.cache-hit != 'true'
         run: git clone --depth=1 --branch 9.0.0 https://github.com/juce-framework/JUCE.git /tmp/JUCE
 
+      # v1.11.1: a compile cache. JUCE and most sources do not change between runs, so a run
+      # only compiles what a pull request touched. Restored from the newest cache of this job.
+      - name: Limit the compile cache (500 MB; GitHub keeps 10 GB per repository)
+        run: echo "CCACHE_MAXSIZE=500M" >> "$GITHUB_ENV"
+
+      - name: Cache compiled objects (ccache)
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830        # v4.3.0
+        with:
+          path: ~/.cache/ccache
+          key: ccache-build-${{ runner.os }}-juce-9.0.0-${{ github.sha }}
+          restore-keys: ccache-build-${{ runner.os }}-juce-9.0.0-
+
       - name: Configure
         run: |
           cmake -S . -B build \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -G Ninja \
             -DJUCE_DIR=/tmp/JUCE \
             -DCMAKE_BUILD_TYPE=Release \
             -DNEONSYNTH_BUILD_TESTS=ON \
-            -DNEONSYNTH_WARNINGS_AS_ERRORS=ON
+            -DNEONSYNTH_WARNINGS_AS_ERRORS=ON \
+            -DNEONSYNTH_LTO=OFF   # the Windows job tests the shipped (LTO) build
 
       - name: Build VST3 and unit tests
         run: cmake --build build --target NeonSynth_VST3 unit_tests
+
+      - name: Compile cache statistics
+        run: ccache --show-stats || true
 
       - name: Unit tests (GCC)
         run: xvfb-run -a ctest --test-dir build --output-on-failure   # EditorTests needs an X display
@@ -72,7 +89,7 @@ jobs:
           APT='-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20'
           sudo apt-get $APT update -q
           sudo apt-get $APT install -y \
-            cmake ninja-build \
+            cmake ninja-build ccache \
             libasound2-dev \
             libx11-dev libxcomposite-dev libxcursor-dev \
             libxext-dev libxinerama-dev libxrandr-dev libxrender-dev \
@@ -90,9 +107,22 @@ jobs:
         if: steps.cache-juce.outputs.cache-hit != 'true'
         run: git clone --depth=1 --branch 9.0.0 https://github.com/juce-framework/JUCE.git /tmp/JUCE
 
+      # v1.11.1: a compile cache. JUCE and most sources do not change between runs, so a run
+      # only compiles what a pull request touched. Restored from the newest cache of this job.
+      - name: Limit the compile cache (500 MB; GitHub keeps 10 GB per repository)
+        run: echo "CCACHE_MAXSIZE=500M" >> "$GITHUB_ENV"
+
+      - name: Cache compiled objects (ccache)
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830        # v4.3.0
+        with:
+          path: ~/.cache/ccache
+          key: ccache-sanitizers-${{ runner.os }}-juce-9.0.0-${{ github.sha }}
+          restore-keys: ccache-sanitizers-${{ runner.os }}-juce-9.0.0-
+
       - name: Configure
         run: |
           cmake -S . -B build \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -G Ninja \
             -DJUCE_DIR=/tmp/JUCE \
             -DCMAKE_BUILD_TYPE=Debug \

@@ -17,7 +17,7 @@
 namespace SampleLoader
 {
     /** Samples whose FLAC encoding is larger than this are saved by path only. */
-    constexpr size_t maxEmbeddedBytes = 10 * 1024 * 1024;
+    constexpr size_t maxEmbeddedBytes = size_t { 10 } * 1024 * 1024;
 
     /** Result of a load: the sample, or why there isn't one. */
     struct Result
@@ -25,6 +25,9 @@ namespace SampleLoader
         std::unique_ptr<SampleData> sample;
         juce::String error;
     };
+
+    /** The FLAC's bit depth: the 24-bit grid SampleData rounds every sample to. */
+    constexpr int flacBitsPerSample = 24;
 
     /** Encodes level 0 of a sample as mono 24-bit FLAC. Returns an empty block on failure. */
     inline juce::MemoryBlock encodeFlac (const SampleData& sample)
@@ -36,7 +39,7 @@ namespace SampleLoader
         auto writer = flac.createWriterFor (stream, juce::AudioFormatWriterOptions{}
                                                         .withSampleRate (sample.getSampleRate())
                                                         .withNumChannels (1)
-                                                        .withBitsPerSample (24));
+                                                        .withBitsPerSample (flacBitsPerSample));
         if (writer == nullptr)
             return {};
 
@@ -127,6 +130,17 @@ namespace SampleLoader
     constexpr double defaultSampleSeconds = 4.0;
     constexpr int    defaultRootNote      = 60;   // C4
 
+    // The pad's recipe (see above). Frozen: the pad must sound the same in every version.
+    constexpr float  padDetuneCents  = 7.0f;     // the outer saws, either side of the middle one
+    constexpr float  padSawLevel     = 0.7f;     // the three saws' mix ...
+    constexpr float  padSineLevel    = 0.3f;     // ... and the sine an octave down
+    constexpr float  padCutoffHz     = 1800.0f;  // the two-pole low-pass
+    constexpr float  padQ            = 0.7f;
+    constexpr double padAttackSeconds = 0.25;
+    constexpr double padFadeSeconds   = 0.5;     // at the end
+    constexpr int    padWarmUpSamples = 200;     // each oscillator runs this long first, plus ...
+    constexpr int    padWarmUpStagger = 61;      // ... this many more per oscillator, so the saws don't start in phase
+
     /**
         The oscillator the pad is rendered with: a frozen copy of PolyBlepOscillator as
         it was in v1.5.0 (sine and a 2-point PolyBLEP sawtooth). The pad must stay the
@@ -176,7 +190,7 @@ namespace SampleLoader
         const auto root = (float) juce::MidiMessage::getMidiNoteInHertz (defaultRootNote);
 
         std::array<PadOscillator, 4> oscillators;
-        const float detuneCents[] = { -7.0f, 0.0f, 7.0f };
+        const float detuneCents[] = { -padDetuneCents, 0.0f, padDetuneCents };
         for (size_t i = 0; i < 3; ++i)
         {
             oscillators[i].setWaveform (PadOscillator::sawtooth);
@@ -188,17 +202,17 @@ namespace SampleLoader
         // Waveform changes wait for a cycle boundary: run each oscillator into its shape,
         // staggered so the three saws don't start in phase.
         for (size_t i = 0; i < oscillators.size(); ++i)
-            for (int s = 0, n = 200 + 61 * (int) i; s < n || oscillators[i].getWaveform() != (i < 3 ? PadOscillator::sawtooth : PadOscillator::sine); ++s)
+            for (int s = 0, n = padWarmUpSamples + padWarmUpStagger * (int) i; s < n || oscillators[i].getWaveform() != (i < 3 ? PadOscillator::sawtooth : PadOscillator::sine); ++s)
                 oscillators[i].nextSample();
 
         // Two-pole low-pass (state-variable, cutoff 1.8 kHz, Q 0.7).
-        const float g = std::tan (juce::MathConstants<float>::pi * 1800.0f / (float) defaultSampleRate);
-        const float k = 1.0f / 0.7f;
+        const float g = std::tan (juce::MathConstants<float>::pi * padCutoffHz / (float) defaultSampleRate);
+        const float k = 1.0f / padQ;
         const float a1 = 1.0f / (1.0f + g * (g + k)), a2 = g * a1, a3 = g * a2;
         float ic1 = 0.0f, ic2 = 0.0f;
 
-        const int attack = (int) (0.25 * defaultSampleRate);
-        const int fade   = (int) (0.5 * defaultSampleRate);
+        const int attack = (int) (padAttackSeconds * defaultSampleRate);
+        const int fade   = (int) (padFadeSeconds * defaultSampleRate);
 
         juce::AudioBuffer<float> buffer (1, length);
         auto* out = buffer.getWritePointer (0);
@@ -206,7 +220,7 @@ namespace SampleLoader
         for (int i = 0; i < length; ++i)
         {
             const float saws = (oscillators[0].nextSample() + oscillators[1].nextSample() + oscillators[2].nextSample()) / 3.0f;
-            const float x = 0.7f * saws + 0.3f * oscillators[3].nextSample();
+            const float x = padSawLevel * saws + padSineLevel * oscillators[3].nextSample();
 
             const float v3 = x - ic2;
             const float v1 = a1 * ic1 + a2 * v3;

@@ -5,8 +5,7 @@
 Code statistics for the plugin's own source, as a Markdown report.
 
 Counts lines per part of the repository and measures the cyclomatic complexity of
-every function in the plugin (the headers in the repository root and
-src/plugin/NeonSynthProcessor.cpp) with lizard. Cyclomatic complexity is the number of
+every function in the plugin (every .h and .cpp file under src/) with lizard. Cyclomatic complexity is the number of
 independent paths through a function: under 10 is easy to test, over 20 is hard.
 
     pip install lizard

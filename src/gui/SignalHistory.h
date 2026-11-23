@@ -12,6 +12,9 @@
 */
 
 //==============================================================================
+/** The largest displayRateFactor() (192 kHz): the views size their buffers for it. */
+constexpr int maxDisplayRateFactor = 4;
+
 /**
     How much longer the displays' windows are at this sample rate than at 48 kHz:
     1 up to 48 kHz, 2 at 88.2 and 96 kHz, 4 at 176.4 and 192 kHz. Scaling by it
@@ -20,7 +23,9 @@
 */
 inline int displayRateFactor (double sampleRate) noexcept
 {
-    return sampleRate > 120000.0 ? 4 : sampleRate > 60000.0 ? 2 : 1;
+    // Between the standard rates, so 88.2 and 96 kHz double the windows and 176.4 and 192 kHz quadruple them.
+    constexpr double doubleAbove = 60000.0, quadrupleAbove = 120000.0;
+    return sampleRate > quadrupleAbove ? maxDisplayRateFactor : sampleRate > doubleAbove ? 2 : 1;
 }
 
 /** Rolling copy of the most recent output samples, filled from the scope FIFO. */

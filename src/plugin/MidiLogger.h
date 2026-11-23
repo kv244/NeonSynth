@@ -41,10 +41,25 @@ public:
     void stop()
     {
         enabled.store (false);
-        stopThread (1000);
+        stopThread (stopTimeoutMs);
         drain();
         stream.reset();
     }
+
+    /**
+        Log path from NEONSYNTH_MIDILOG, or (Standalone only) from "--midilog <file>"; empty
+        when neither is given and nothing is logged. BASICSYNTH_MIDILOG, the name before v1.4,
+        still works.
+    */
+    static juce::String findMidiLogPath (juce::AudioProcessor::WrapperType wrapper);
+
+    /**
+        Each plugin instance that logs gets its own file, so instances never
+        delete or overwrite each other's log: the first uses the path as given
+        (relative to the working directory), later ones in the same process add
+        "-2", "-3", ... before the extension (midi.log, midi-2.log, ...).
+    */
+    static juce::File midiLogFileForNewInstance (const juce::String& path);
 
     /** Called from prepareToPlay(). */
     void setSampleRate (double newRate) noexcept    { sampleRate.store (newRate); }
@@ -72,10 +87,14 @@ public:
     }
 
 private:
+    static constexpr int stopTimeoutMs   = 1000;   // stop() waits this long for the writer thread to finish
+    static constexpr int drainIntervalMs = 50;     // the writer wakes this often: the log is at most this far behind
+    static constexpr size_t maxRecordBytes = 16;   // bytes of a message kept; longer ones (SysEx) are cut and marked
+
     struct Record
     {
         juce::int64 samplePos = 0;
-        std::array<juce::uint8, 16> bytes {};
+        std::array<juce::uint8, maxRecordBytes> bytes {};
         juce::uint8 numBytes = 0;
         bool truncated = false;
     };
@@ -85,7 +104,7 @@ private:
         while (! threadShouldExit())
         {
             drain();
-            wait (50);
+            wait (drainIntervalMs);
         }
     }
 

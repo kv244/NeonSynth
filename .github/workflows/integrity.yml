@@ -79,7 +79,7 @@ jobs:
           APT='-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20'
           sudo apt-get $APT update -q
           sudo apt-get $APT install -y \
-            cmake ninja-build clang clang-tidy \
+            cmake ninja-build ccache clang clang-tidy \
             libasound2-dev \
             libx11-dev libxcomposite-dev libxcursor-dev \
             libxext-dev libxinerama-dev libxrandr-dev libxrender-dev \
@@ -96,9 +96,22 @@ jobs:
         if: steps.cache-juce.outputs.cache-hit != 'true'
         run: git clone --depth=1 --branch 9.0.0 https://github.com/juce-framework/JUCE.git /tmp/JUCE
 
+      # v1.11.1: a compile cache. JUCE and most sources do not change between runs, so a run
+      # only compiles what a pull request touched. Restored from the newest cache of this job.
+      - name: Limit the compile cache (500 MB; GitHub keeps 10 GB per repository)
+        run: echo "CCACHE_MAXSIZE=500M" >> "$GITHUB_ENV"
+
+      - name: Cache compiled objects (ccache)
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830        # v4.3.0
+        with:
+          path: ~/.cache/ccache
+          key: ccache-clang-${{ runner.os }}-juce-9.0.0-${{ github.sha }}
+          restore-keys: ccache-clang-${{ runner.os }}-juce-9.0.0-
+
       - name: Configure (Clang, integrity warnings as errors)
         run: |
           cmake -S . -B build \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -G Ninja \
             -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
             -DJUCE_DIR=/tmp/JUCE \

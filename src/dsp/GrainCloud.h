@@ -5,7 +5,11 @@
 #pragma once
 #include "state/SampleData.h"
 #include "dsp/SampleReader.h"
+#include <algorithm>
 #include <array>
+#include <atomic>
+#include <cmath>
+#include <cstdint>
 #include <cstring>
 
 // SIMD paths for the grain loop. x86-64 always has SSE2; AVX2 is compiled in too
@@ -26,7 +30,7 @@
 #endif
 
 #ifndef NEONSYNTH_GRAINS_AVX2_GATHER
- #define NEONSYNTH_GRAINS_AVX2_GATHER 1   // AVX2 reads with vgatherdps (1) or with scalar loads (0)
+ #define NEONSYNTH_GRAINS_AVX2_GATHER 1   // automatic AVX2 reads with vgatherdps (1) or with scalar loads (0)
 #endif
 
 /**
@@ -44,8 +48,9 @@
       - a length: Size (5 - 500 ms of output);
       - a pitch: the note's ratio to the root, as in SampleReader, +- Pitch
         jitter (up to 100 cents);
-      - a window: (4x(1-x))^2, a Hann-shaped bell (within 0.06 of sin^2),
-        smooth with zero slope at both ends, computed in four multiplies.
+      - a window: (4x(1-x))^2, a Hann-shaped bell (it differs from
+        sin^2(pi x) by at most 0.065, near x = 0.22 and 0.78; by 0.0625 at
+        x = 0.25), smooth with zero slope at both ends, computed in four multiplies.
     Later knob changes affect the next grains, never one that is playing, so
     turning a knob can't click.
 
@@ -66,6 +71,13 @@
     loop, so the scalar and SIMD loops stay bit-identical; and at ratio 1
     every step is exactly what it was before v1.9.0.
 
+    A grain bent up so far that it would read past the end of its copy ends
+    there (v1.11.1): it stops before the first sample whose read position
+    reaches the end. Until v1.11.0 its step shrank to fit the rest of each render() call
+    instead (frozen at 0 once it got there), which made the result depend on
+    the block size. A grain that stays inside its copy is unchanged: without
+    pitch modulation none ever reaches the end (each is sized to fit).
+
     Voices. Up to 32 grains at once; an onset is skipped while all 32 are
     busy (stealing one would click). Notes pitched well above the root read
     the sample's band-limited copies, as in SampleReader.
@@ -76,11 +88,27 @@
 
     Holds a reference on the sample from begin() to end(). Audio thread only:
     no allocation, no locks.
+
+    Non-finite inputs (v1.11.1). begin(), setPitchRatio() and setSettings()
+    ignore a NaN or infinite value (begin() refuses a non-finite sample rate;
+    a non-finite pitch ratio or setting keeps the value it replaces). Only a
+    bug could send one, but a NaN in a grain's step or window would silence
+    the voice for good. Finite values pass through untouched.
 */
 class GrainCloud
 {
 public:
     static constexpr int maxGrains = 32;
+
+    // The ranges the grain settings are held to (the parameters' ranges): Density in grains per
+    // second, Size in seconds. Size is clamped in float for the level and in double (the same
+    // decimal values, not the floats widened) where it sets a grain's length; both kept as they were.
+    static constexpr float  minDensity = 1.0f;
+    static constexpr float  maxDensity = 200.0f;
+    static constexpr float  minSizeSeconds = 0.005f;
+    static constexpr float  maxSizeSeconds = 0.5f;
+    static constexpr double minSizeSecondsDouble = 0.005;
+    static constexpr double maxSizeSecondsDouble = 0.5;
 
     /** Per-block settings from the Grain parameters. */
     struct Settings
@@ -107,7 +135,7 @@ public:
     bool begin (const SampleData* newSample, int midiNote, int rootNote, double hostSampleRate,
                 const Settings& newSettings, juce::uint32 seed) noexcept
     {
-        if (newSample == nullptr || newSample->getLength() <= 0 || hostSampleRate <= 0.0)
+        if (newSample == nullptr || newSample->getLength() <= 0 || ! (hostSampleRate > 0.0) || ! std::isfinite (hostSampleRate))
         {
             end();
             return false;
@@ -121,7 +149,7 @@ public:
         }
 
         hostRate = hostSampleRate;
-        rng = seed != 0 ? seed : 0x9e3779b9u;
+        rng = seed != 0 ? seed : fallbackSeed;
 
         const double ratio = std::pow (2.0, (midiNote - rootNote) / 12.0) * sample->getSampleRate() / hostRate;
         level = 0;
@@ -130,7 +158,7 @@ public:
         noteIncrement = ratio / (double) (1 << level);
         noteRatio = ratio;
 
-        settings = newSettings;
+        settings = finiteOr (newSettings, settings);
         scanOffset = 0.0;
         samplesToNextGrain = 0;   // the first grain starts at once
         spawning = true;
@@ -147,10 +175,14 @@ public:
         The pitch multiplier for the next render() calls (v1.9.0): new grains
         start at it, sounding ones follow it. 1 = the note's own pitch.
     */
-    void setPitchRatio (float ratio) noexcept   { pitchRatio = ratio; }
+    void setPitchRatio (float ratio) noexcept
+    {
+        if (std::isfinite (ratio))   // a NaN or infinite ratio has no whole-number step
+            pitchRatio = ratio;
+    }
 
     /** Settings for the grains that start from now on (Position and Scan act immediately). */
-    void setSettings (const Settings& newSettings) noexcept   { settings = newSettings; }
+    void setSettings (const Settings& newSettings) noexcept   { settings = finiteOr (newSettings, settings); }
 
     /** The settings set last: begin() takes them for a new note. */
     const Settings& getSettings() const noexcept   { return settings; }
@@ -173,9 +205,12 @@ public:
     /** Read position (0..1) of up to `max` sounding grains, for display; returns how many. */
     int getGrainPositions (float* dest, int max) const noexcept
     {
+        if (dest == nullptr)
+            return 0;
+
         const int n = juce::jmin (max, numActive);
         for (int i = 0; i < n; ++i)
-            dest[i] = (float) ((double) grains[(size_t) i].position * (1.0 / 4294967296.0)) * grains[(size_t) i].lengthScale;
+            dest[i] = (float) ((double) grains[(size_t) i].position * (1.0 / fixedPointOne)) * grains[(size_t) i].lengthScale;
         return n;
     }
 
@@ -186,9 +221,16 @@ public:
     */
     void render (float* out, int numSamples) noexcept
     {
+        if (numSamples <= 0)
+            return;
+
         std::fill (out, out + numSamples, 0.0f);
         if (sample == nullptr)
             return;
+
+        // One path for the whole block: forceSimdPath() from another thread can't switch it
+        // halfway, and the atomic is read once rather than once per grain and segment.
+        const SimdPath path = activeSimdPath();
 
         int pos = 0;
         while (pos < numSamples)
@@ -196,15 +238,15 @@ public:
             if (spawning && samplesToNextGrain <= 0)
             {
                 startGrain();
-                const double interval = hostRate / (double) juce::jlimit (1.0f, 200.0f, settings.density);
-                samplesToNextGrain = juce::jmax (1, (int) (interval * (0.7 + 0.6 * random01())));
+                const double interval = hostRate / (double) juce::jlimit (minDensity, maxDensity, settings.density);
+                samplesToNextGrain = juce::jmax (1, (int) (interval * (minOnsetScale + onsetScaleRange * random01())));
             }
 
             const int segment = spawning ? juce::jmin (numSamples - pos, samplesToNextGrain) : numSamples - pos;
 
             for (int i = 0; i < numActive;)
             {
-                if (renderGrain (grains[(size_t) i], out + pos, segment))
+                if (renderGrain (grains[(size_t) i], out + pos, segment, path))
                     ++i;
                 else
                     grains[(size_t) i] = grains[(size_t) --numActive];   // finished: swap in the last one
@@ -218,7 +260,7 @@ public:
             pos += segment;
         }
 
-        const float overlap = juce::jlimit (0.005f, 0.5f, settings.sizeSeconds) * juce::jlimit (1.0f, 200.0f, settings.density);
+        const float overlap = juce::jlimit (minSizeSeconds, maxSizeSeconds, settings.sizeSeconds) * juce::jlimit (minDensity, maxDensity, settings.density);
         const float gain = 1.0f / std::sqrt (juce::jmax (1.0f, overlap));
         for (int i = 0; i < numSamples; ++i)
             out[i] *= gain;
@@ -233,6 +275,22 @@ public:
     }
 
 private:
+    /** 1.0 in the grains' 32.32 fixed-point positions and steps: 2^32. */
+    static constexpr double fixedPointOne = 4294967296.0;
+
+    /** Onsets are spaced by the interval times 0.7 .. 1.3 (+-30%), so dense clouds don't buzz at the density rate. */
+    static constexpr double minOnsetScale = 0.7;
+    static constexpr double onsetScaleRange = 0.6;
+
+    /** A grain is at least this many samples long (its window needs a start and an end). */
+    static constexpr int minGrainSamples = 2;
+
+    /** Source samples kept clear at the end of a copy: the cubic reads up to x[2] past a position. */
+    static constexpr double interpolationMargin = 3.0;
+
+    /** The seed used for a seed of 0 (xorshift would stay at 0 for ever): 2^32 / golden ratio. */
+    static constexpr juce::uint32 fallbackSeed = 0x9e3779b9u;
+
     /**
         A grain's read position is 32.32 fixed point (sample index in the top
         32 bits): stepping it is one integer add, so nothing slow sits on the
@@ -272,7 +330,8 @@ private:
     //==========================================================================
     // The grain loop. Three versions of the same arithmetic, picked per call:
     //
-    //   AVX2   8 samples per step, when the CPU has it (most x86 PCs since 2013)
+    //   AVX2   8 samples per step, when the CPU has it (most x86 PCs since 2013);
+    //          its reads use the gather instruction, or scalar loads (avx2Loads)
     //   SSE2   4 samples per step (every x86-64 CPU)
     //   scalar 1 sample per step (the last few samples, and non-x86 CPUs)
     //
@@ -282,13 +341,23 @@ private:
     // the same on every machine, and the tests can compare the paths directly.
     // "No FMA" needs the compiler's help too: GCC and Clang fuse a*b+c on their
     // own when the target has FMA, so CMakeLists.txt builds with -ffp-contract=off.
+    // MSVC needs /fp:precise, its default: /fp:fast may fuse and reorder, and
+    // /fp:contract fuses. (MSVC before Visual Studio 2022 could also fuse under
+    // /fp:precise when building for AVX2; 2022 and later don't unless asked.)
     //
     // What makes this loop expensive is not the arithmetic but the four reads
     // per sample from four different positions; the SIMD versions do the maths
     // for several samples at once and overlap those reads.
 
 public:
-    enum class SimdPath { automatic, scalar, sse2, avx2 };
+    /**
+        avx2 and avx2Loads differ only in how they read the sample: with the gather
+        instruction or with scalar loads (the same values, so the same audio). Which
+        is faster depends on the CPU (gather is slow on some AMD and older Intel
+        cores); NEONSYNTH_GRAINS_AVX2_GATHER picks the one automatic uses, and the
+        render benchmark's --grains mode times both (v1.11.1).
+    */
+    enum class SimdPath { automatic, scalar, sse2, avx2, avx2Loads };
 
     /** Forces one path (tests and benchmarks); automatic picks the best the CPU has. */
     static void forceSimdPath (SimdPath path) noexcept   { forcedPath().store (path); }
@@ -298,9 +367,9 @@ public:
     {
         const auto forced = forcedPath().load();
         if (forced != SimdPath::automatic)
-            return forced == SimdPath::avx2 && ! cpuHasAVX2() ? SimdPath::sse2 : forced;
+            return (forced == SimdPath::avx2 || forced == SimdPath::avx2Loads) && ! cpuHasAVX2() ? SimdPath::sse2 : forced;
        #if NEONSYNTH_GRAINS_AVX2
-        if (cpuHasAVX2()) return SimdPath::avx2;
+        if (cpuHasAVX2()) return NEONSYNTH_GRAINS_AVX2_GATHER ? SimdPath::avx2 : SimdPath::avx2Loads;
        #endif
         return NEONSYNTH_GRAINS_SSE2 ? SimdPath::sse2 : SimdPath::scalar;
     }
@@ -338,19 +407,36 @@ private:
     /**
         Adds up to `count` samples of the grain to `out`; returns false once it
         has ended. The window is (4x(1-x))^2, a parabola-squared Hann shape
-        (within 0.06 of sin^2(pi x), smooth, zero slope at both ends): four
+        (within about 0.065 of sin^2(pi x), smooth, zero slope at both ends): four
         multiplies, no table.
     */
-    bool renderGrain (Grain& g, float* __restrict out, int count) noexcept
+    bool renderGrain (Grain& g, float* __restrict out, int count, SimdPath path) noexcept
     {
-        const int n = juce::jmin (count, g.remaining);
-        int s = 0;
-        const juce::uint64 step = stepNow (g, n);
+        const juce::uint64 step = stepNow (g);
 
-        switch (activeSimdPath())
+        // Bent up past the end of its copy (v1.11.1): render the samples whose position is
+        // still inside it, then end. Which sample that is depends only on the grain's own
+        // positions, never on where the block boundaries fall.
+        int n = juce::jmin (count, g.remaining);
+        bool runsOut = false;
+        if (n > 0 && g.position + (juce::uint64) n * step > g.end)
+        {
+            const juce::uint64 inside = g.position >= g.end ? juce::uint64 (0)
+                                      : step == 0           ? (juce::uint64) n
+                                                            : (g.end - g.position + step - 1) / step;   // positions below the end
+            if (inside < (juce::uint64) n)
+            {
+                n = (int) inside;
+                runsOut = true;
+            }
+        }
+
+        int s = 0;
+        switch (path)
         {
            #if NEONSYNTH_GRAINS_AVX2
-            case SimdPath::avx2:  s = renderGrainAVX2 (g, out, n, step); break;
+            case SimdPath::avx2:       s = renderGrainAVX2<true>  (g, out, n, step); break;
+            case SimdPath::avx2Loads:  s = renderGrainAVX2<false> (g, out, n, step); break;
            #endif
            #if NEONSYNTH_GRAINS_SSE2
             case SimdPath::sse2:  s = renderGrainSSE2 (g, out, n, step); break;
@@ -370,25 +456,21 @@ private:
             ++g.age;
         }
 
-        g.remaining -= n;
+        g.remaining = runsOut ? 0 : g.remaining - n;
         return g.remaining > 0;
     }
 
     /**
-        The grain's step for the next n samples. At the ratio it started at (always,
+        The grain's step for this render() call. At the ratio it started at (always,
         without pitch modulation) that is its own step, untouched; otherwise the step
-        scaled by the ratio's change since. Either way the n samples must stay inside
-        its copy (a grain was sized to fit at its starting pitch, and a bend up makes
-        it read further): if they wouldn't, the step shrinks to fit.
+        scaled by the ratio's change since. A bend up makes it read further than it was
+        sized for; renderGrain() ends it at the end of its copy.
     */
-    juce::uint64 stepNow (const Grain& g, int n) const noexcept
+    juce::uint64 stepNow (const Grain& g) const noexcept
     {
         juce::uint64 step = g.step;
         if (pitchRatio != g.pitch)
             step = (juce::uint64) ((double) g.step * ((double) pitchRatio / (double) g.pitch));
-
-        if (n > 0 && g.position + (juce::uint64) n * step > g.end)
-            step = g.position < g.end ? (g.end - g.position) / (juce::uint64) n : 0;
         return step;
     }
 
@@ -448,10 +530,11 @@ private:
    #if NEONSYNTH_GRAINS_AVX2
     /**
         8 samples per step; returns how many it rendered (a multiple of 8).
-        The reads use the AVX2 gather instruction (vgatherdps): one instruction
-        fetches the 8 lanes' values from 8 addresses, instead of 8 scalar
-        loads and 7 inserts.
+        With `gather`, the reads use the AVX2 gather instruction (vgatherdps): one
+        instruction fetches the 8 lanes' values from 8 addresses, instead of 8
+        scalar loads and 7 inserts. Without it, those scalar loads (see SimdPath).
     */
+    template <bool gather>
     NEONSYNTH_TARGET_AVX2 static int renderGrainAVX2 (Grain& g, float* __restrict out, int n, juce::uint64 step) noexcept
     {
         const float* __restrict const data = g.data;
@@ -478,22 +561,26 @@ private:
                                                     (int) ((juce::uint32) p2 >> 9), (int) ((juce::uint32) p3 >> 9),
                                                     (int) ((juce::uint32) p4 >> 9), (int) ((juce::uint32) p5 >> 9),
                                                     (int) ((juce::uint32) p6 >> 9), (int) ((juce::uint32) p7 >> 9));
-           #if NEONSYNTH_GRAINS_AVX2_GATHER
-            const __m256 xm1 = _mm256_i32gather_ps (data - 1, idx, 4);
-            const __m256 x0  = _mm256_i32gather_ps (data,     idx, 4);
-            const __m256 x1  = _mm256_i32gather_ps (data + 1, idx, 4);
-            const __m256 x2  = _mm256_i32gather_ps (data + 2, idx, 4);
-           #else
-            juce::ignoreUnused (idx);
-            const float* d0 = data + (int) (p0 >> 32); const float* d1 = data + (int) (p1 >> 32);
-            const float* d2 = data + (int) (p2 >> 32); const float* d3 = data + (int) (p3 >> 32);
-            const float* d4 = data + (int) (p4 >> 32); const float* d5 = data + (int) (p5 >> 32);
-            const float* d6 = data + (int) (p6 >> 32); const float* d7 = data + (int) (p7 >> 32);
-            const __m256 xm1 = _mm256_setr_ps (d0[-1], d1[-1], d2[-1], d3[-1], d4[-1], d5[-1], d6[-1], d7[-1]);
-            const __m256 x0  = _mm256_setr_ps (d0[0],  d1[0],  d2[0],  d3[0],  d4[0],  d5[0],  d6[0],  d7[0]);
-            const __m256 x1  = _mm256_setr_ps (d0[1],  d1[1],  d2[1],  d3[1],  d4[1],  d5[1],  d6[1],  d7[1]);
-            const __m256 x2  = _mm256_setr_ps (d0[2],  d1[2],  d2[2],  d3[2],  d4[2],  d5[2],  d6[2],  d7[2]);
-           #endif
+            __m256 xm1, x0, x1, x2;
+            if constexpr (gather)
+            {
+                xm1 = _mm256_i32gather_ps (data - 1, idx, 4);
+                x0  = _mm256_i32gather_ps (data,     idx, 4);
+                x1  = _mm256_i32gather_ps (data + 1, idx, 4);
+                x2  = _mm256_i32gather_ps (data + 2, idx, 4);
+            }
+            else
+            {
+                juce::ignoreUnused (idx);
+                const float* d0 = data + (int) (p0 >> 32); const float* d1 = data + (int) (p1 >> 32);
+                const float* d2 = data + (int) (p2 >> 32); const float* d3 = data + (int) (p3 >> 32);
+                const float* d4 = data + (int) (p4 >> 32); const float* d5 = data + (int) (p5 >> 32);
+                const float* d6 = data + (int) (p6 >> 32); const float* d7 = data + (int) (p7 >> 32);
+                xm1 = _mm256_setr_ps (d0[-1], d1[-1], d2[-1], d3[-1], d4[-1], d5[-1], d6[-1], d7[-1]);
+                x0  = _mm256_setr_ps (d0[0],  d1[0],  d2[0],  d3[0],  d4[0],  d5[0],  d6[0],  d7[0]);
+                x1  = _mm256_setr_ps (d0[1],  d1[1],  d2[1],  d3[1],  d4[1],  d5[1],  d6[1],  d7[1]);
+                x2  = _mm256_setr_ps (d0[2],  d1[2],  d2[2],  d3[2],  d4[2],  d5[2],  d6[2],  d7[2]);
+            }
             const juce::uint64 p = p7 + step;
 
             const __m256i bits = _mm256_or_si256 (exponent, frac);
@@ -542,24 +629,24 @@ private:
         }
 
         const int length = sample->getLength (grainLevel);
-        const int sizeSamples = juce::jmax (2, (int) (juce::jlimit (0.005, 0.5, (double) settings.sizeSeconds) * hostRate));
+        const int sizeSamples = juce::jmax (minGrainSamples, (int) (juce::jlimit (minSizeSecondsDouble, maxSizeSecondsDouble, (double) settings.sizeSeconds) * hostRate));
 
         double increment = grainIncrement * std::pow (2.0, (double) (settings.jitterCents * (2.0f * random01() - 1.0f)) / 1200.0);
         const double span = (double) sizeSamples * increment;   // source samples the grain will read
-        if (span >= (double) length - 3.0)
-            increment = juce::jmax (0.0, ((double) length - 3.0) / (double) sizeSamples);   // longer than the file: slow it to fit
+        if (span >= (double) length - interpolationMargin)
+            increment = juce::jmax (0.0, ((double) length - interpolationMargin) / (double) sizeSamples);   // longer than the file: slow it to fit
 
         // Centre of the cloud, then the spray around it; the grain must fit inside the file.
         double centre = (double) juce::jlimit (0.0f, 1.0f, settings.position) + scanOffset;
         centre -= std::floor (centre);
         const double spread = 0.5 * (double) juce::jlimit (0.0f, 1.0f, settings.spray) * (2.0 * random01() - 1.0);
-        const double lastStart = juce::jmax (0.0, (double) length - (double) sizeSamples * increment - 3.0);
+        const double lastStart = juce::jmax (0.0, (double) length - (double) sizeSamples * increment - interpolationMargin);
         const double start = juce::jlimit (0.0, lastStart, (centre + spread) * (double) length);
 
         Grain g;
         g.data        = sample->getData (grainLevel);
-        g.position    = (juce::uint64) (start * 4294967296.0);
-        g.step        = (juce::uint64) (increment * 4294967296.0);
+        g.position    = (juce::uint64) (start * fixedPointOne);
+        g.step        = (juce::uint64) (increment * fixedPointOne);
         g.age         = 0;
         g.windowStep  = 1.0f / (float) sizeSamples;
         g.remaining   = sizeSamples;
@@ -569,6 +656,20 @@ private:
 
         grains[(size_t) numActive++] = g;
         ++grainsStarted;
+    }
+
+    /** `s`, with each setting that is not a finite number taken from `previous` instead. */
+    static Settings finiteOr (const Settings& s, const Settings& previous) noexcept
+    {
+        const auto pick = [] (float x, float old) noexcept { return std::isfinite (x) ? x : old; };
+        Settings r;
+        r.position    = pick (s.position,    previous.position);
+        r.scan        = pick (s.scan,        previous.scan);
+        r.sizeSeconds = pick (s.sizeSeconds, previous.sizeSeconds);
+        r.density     = pick (s.density,     previous.density);
+        r.spray       = pick (s.spray,       previous.spray);
+        r.jitterCents = pick (s.jitterCents, previous.jitterCents);
+        return r;
     }
 
     /** xorshift32 in [0, 1). */

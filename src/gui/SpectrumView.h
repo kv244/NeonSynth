@@ -4,6 +4,7 @@
 
 #pragma once
 #include <JuceHeader.h>
+#include "dsp/CytomicSvf.h"
 #include "gui/NeonStyle.h"
 #include "gui/SignalHistory.h"
 
@@ -32,13 +33,13 @@ public:
     {
         const bool filterChanged = newCutoffHz != cutoffHz || newFilterOn != filterOn || newSampleRate != sampleRate
                                 || newMode != filterMode || newResonance != resonance;
-        const double rate = newSampleRate > 0.0 ? newSampleRate : 44100.0;
+        const double rate = newSampleRate > 0.0 ? newSampleRate : defaultSampleRate;
         if (! juce::approximatelyEqual (rate, sampleRate))
             backdrop.invalidate();   // the frequency axis ends at the new Nyquist
         sampleRate = rate;
         cutoffHz   = newCutoffHz;
         filterOn   = newFilterOn;
-        filterMode = juce::jlimit (0, 3, newMode);
+        filterMode = juce::jlimit ((int) CytomicSvf::Mode::lowpass, (int) CytomicSvf::Mode::notch, newMode);
         resonance  = newResonance;
 
         const int order = baseFftOrder + (displayRateFactor (sampleRate) == 4 ? 2 : displayRateFactor (sampleRate) == 2 ? 1 : 0);
@@ -168,9 +169,9 @@ public:
             if (filterOn)
             {
                 // At 98% and above the linear response has no finite peak (the filter
-                // rings on its own); 30 dB stands in for it.
+                // rings on its own); maxResponseDb (30 dB) stands in for it.
                 const double magnitude = svf.magnitudeAt (frequencyAt ((double) i / numPoints), (CytomicSvf::Mode) filterMode);
-                db = juce::jmin (juce::Decibels::gainToDecibels ((float) magnitude, minDb), 30.0f);
+                db = juce::jmin (juce::Decibels::gainToDecibels ((float) magnitude, minDb), maxResponseDb);
             }
             curve[(size_t) i] = db;
             peakDb = juce::jmax (peakDb, db);
@@ -240,8 +241,11 @@ private:
     }
     static constexpr float minDb     = -96.0f;
     static constexpr float minHz     = 20.0f;
+    static constexpr double topHz    = 20000.0;   // the axis ends here, or at Nyquist below 40 kHz
+    static constexpr float maxResponseDb = 30.0f; // the filter curve's ceiling (self-oscillation has no finite peak)
+    static constexpr double defaultSampleRate = 44100.0;   // until update() gives a rate (or when it gives none)
 
-    double maxHz() const noexcept { return juce::jmin (20000.0, 0.5 * sampleRate); }
+    double maxHz() const noexcept { return juce::jmin (topHz, 0.5 * sampleRate); }
 
     double frequencyAt (double proportion) const noexcept
     {
@@ -261,12 +265,12 @@ private:
 
     std::array<juce::dsp::FFT, 3> ffts { juce::dsp::FFT (baseFftOrder), juce::dsp::FFT (baseFftOrder + 1), juce::dsp::FFT (baseFftOrder + 2) };
     int fftOrder = baseFftOrder;
-    std::array<float, 2 * maxFftSize> fftData {};
+    std::array<float, 2 * static_cast<std::size_t> (maxFftSize)> fftData {};
     std::array<float, maxFftSize> window {};
     float windowSum = 0.0f;
     std::array<float, numPoints> levels {};
 
-    double sampleRate = 44100.0;
+    double sampleRate = defaultSampleRate;
     float  cutoffHz = 2000.0f;
     bool   filterOn = true;
     int    filterMode = 0;          // CytomicSvf::Mode

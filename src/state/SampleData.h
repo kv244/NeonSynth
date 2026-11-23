@@ -40,6 +40,7 @@ public:
     static constexpr int    numLevels  = 3;        ///< full, 1/2 and 1/4 rate
     static constexpr int    padding    = 4;        ///< zero samples before and after each level
     static constexpr float  peakGain   = 0.89125094f;   // -1 dBFS
+    static constexpr float  silenceThreshold = 1.0e-6f; ///< a file whose peak is below this (-120 dBFS) is refused as silent
 
     /** Where the audio came from, for the editor and the saved state. */
     struct Origin
@@ -80,7 +81,7 @@ public:
         const auto extremes = juce::FloatVectorOperations::findMinAndMax (samples, length);
         const float peak = juce::jmax (-extremes.getStart(), extremes.getEnd(), 0.0f);
 
-        if (peak < 1.0e-6f)
+        if (peak < silenceThreshold)
         {
             error = "the file is silent";
             return nullptr;
@@ -164,11 +165,12 @@ public:
     }
 
     static constexpr float fullScale24 = 8388608.0f;   // 2^23
+    static constexpr float maxInt24    = 8388607.0f;   // 2^23 - 1, the largest 24-bit sample
 
     /** The 24-bit integer a sample on the grid stands for (-2^23 .. 2^23 - 1). */
     static juce::int32 toInt24 (float x) noexcept
     {
-        return (juce::int32) juce::jlimit (-8388608.0f, 8388607.0f, std::round (x * fullScale24));
+        return (juce::int32) juce::jlimit (-fullScale24, maxInt24, std::round (x * fullScale24));
     }
 
     /** Rounds to the nearest 24-bit sample value, k / 2^23; a float holds every such value exactly. */
@@ -200,7 +202,7 @@ private:
                 if (i >= 0 && i < inputLength)
                     acc += (double) taps[(size_t) k] * in[i];
             }
-            out[(size_t) (padding + n)] = (float) acc;
+            out[(size_t) padding + (size_t) n] = (float) acc;
         }
         return out;
     }
@@ -232,16 +234,20 @@ private:
         return taps;
     }
 
+    // 64-bit FNV-1a, over the three bytes of each 24-bit sample.
+    static constexpr juce::uint64 fnvOffsetBasis = 14695981039346656037ull;
+    static constexpr juce::uint64 fnvPrime       = 1099511628211ull;
+
     static juce::String hashOf (const float* samples, int length)
     {
-        juce::uint64 h = 14695981039346656037ull;
+        juce::uint64 h = fnvOffsetBasis;
         for (int i = 0; i < length; ++i)
         {
             const auto v = (juce::uint32) toInt24 (samples[i]);
             for (int b = 0; b < 3; ++b)
             {
                 h ^= (v >> (8 * b)) & 0xffu;
-                h *= 1099511628211ull;
+                h *= fnvPrime;
             }
         }
         return juce::String::toHexString ((juce::int64) h).paddedLeft ('0', 16);

@@ -39,6 +39,11 @@ public:
     Real-time safe: no allocation, no std::function, renders straight into the
     output buffer (no scratch buffer to overrun), and every parameter that can
     click is smoothed or latched at a phase wrap.
+
+    The render path (renderNextBlock() and what its loop runs every sample) is
+    here, where every file that uses it sees it inline. Preparing, starting and
+    stopping notes, the per-block parameters and the telemetry are in
+    NeonSynthVoice.cpp (v1.11.1).
 */
 class NeonSynthVoice : public juce::SynthesiserVoice
 {
@@ -51,6 +56,30 @@ public:
         another copy of the sample), short enough not to smear an attack. */
     static constexpr double sampleCrossfadeSeconds = 0.002;
 
+    /** A note's velocity level glides this long when a sounding voice is retriggered or stolen. */
+    static constexpr double levelGlideSeconds = 0.002;
+
+    /** Cutoff, resonance, drive, the filter's modulation amounts and the pan glide this long (20 ms). */
+    static constexpr double controlGlideSeconds = 0.02;
+
+    /** Switching the filter on or off, or its mode, crossfades this long (10 ms). */
+    static constexpr double filterSwitchSeconds = 0.01;
+
+    /** The cutoff before the parameters arrive (the Cutoff parameter's default). */
+    static constexpr float defaultCutoffHz = 2000.0f;
+
+    /** The cutoff stays inside 20 Hz .. 0.45 x the sample rate: well below Nyquist, where the filter's tan() blows up. */
+    static constexpr float minCutoffHz = 20.0f;
+    static constexpr float maxCutoffFraction = 0.45f;
+
+    /** The filter envelope's range in octaves (Filter Env, -5..+5) and velocity's (Filter Vel, 0..+4). */
+    static constexpr float maxFilterEnvOctaves = 5.0f;
+    static constexpr float maxFilterVelOctaves = 4.0f;
+
+    /** Pan by pitch: C4 (note 60) in the centre, the edges two octaves either side. */
+    static constexpr int   panCentreNote = 60;
+    static constexpr float panSpreadSemitones = 24.0f;
+
     /** Where a note's sound comes from (the Source parameter's order). */
     enum class Source { oscillator = 0, sample = 1, granular = 2, random = 3 };
 
@@ -58,7 +87,7 @@ public:
     struct Params
     {
         int   waveform = 0;            // PolyBlepOscillator::Waveform: 0 Sine, 1 Square, 2 Triangle, 3 Sawtooth
-        float cutoffHz = 2000.0f;
+        float cutoffHz = defaultCutoffHz;
         bool  filterOn = true;
 
         // Filter character (v1.8.0); the defaults are the v1.7.1 filter.
@@ -100,22 +129,7 @@ public:
         std::array<float, RandomStepOscillator::numSteps> randomLevels {};   // its current 16 levels (for the shape view)
     };
 
-    Telemetry getTelemetry() const noexcept
-    {
-        Telemetry t;
-        t.active          = adsr.isActive();
-        t.level           = t.active ? lastEnvelope : 0.0f;
-        t.frequencyHz     = frequencyHz * shownPitchRatio;   // with bend, vibrato and LFO pitch: display only
-        t.secondsSinceOn  = (float) ((double) samplesSinceOn / sampleRate);
-        t.secondsSinceOff = samplesSinceOff < 0 ? -1.0f : (float) ((double) samplesSinceOff / sampleRate);
-        t.samplePosition  = t.active && source == Source::sample && reader.isActive() && ! reader.hasFinished()
-                              ? reader.getPosition() : -1.0f;
-        t.numGrains       = t.active && cloud.isActive() ? cloud.getGrainPositions (t.grainPositions.data(), Telemetry::maxShownGrains) : 0;
-        t.playingRandom   = t.active && source == Source::random;
-        if (t.playingRandom)
-            t.randomLevels = randomOscillator.getLevels();
-        return t;
-    }
+    Telemetry getTelemetry() const noexcept;
 
     // -12 dB per voice. A full-velocity 8-note square chord would peak at about
     // +5 dBFS; the processor's output soft clipper keeps the output under -1 dBFS.
@@ -126,82 +140,10 @@ public:
         return dynamic_cast<NeonSynthSound*> (s) != nullptr;
     }
 
-    void prepare (double newSampleRate, int maxBlockSize)
-    {
-        // Audio is stopped while preparing: let go of any sample still held.
-        reader.end();
-        fadingReader.end();
-        fadingSamplesLeft = 0;
-        fadingCopy = false;
-        cloud.end();
-        resetSeeds();
-
-        sampleRate = newSampleRate;   // (resetSeeds() above also forgets any glide, v1.11.0: its step is per sample)
-        adsr.setSampleRate (newSampleRate);
-        adsr.reset();
-        filterEnvelope.setSampleRate (newSampleRate);
-        filterEnvelope.reset();
-        oscillator.prepare (newSampleRate);        // CHOP's Overtone glide
-        randomOscillator.prepare (newSampleRate);
-        sculpt.prepare (newSampleRate);
-
-        filter.prepare (newSampleRate);
-        cloudBuffer.assign ((size_t) juce::jmax (1, maxBlockSize), 0.0f);   // the granular source renders a block at a time
-
-        level.reset (newSampleRate, 0.002);       // 2 ms: a retriggered or stolen voice changes velocity without a click
-        level.setCurrentAndTargetValue (level.getTargetValue());
-
-        cutoff.reset (newSampleRate, 0.02);       // 20 ms, multiplicative (even in octaves)
-        cutoff.setCurrentAndTargetValue (clampCutoff (cutoff.getTargetValue()));
-        resonance.reset (newSampleRate, 0.02);    // 20 ms, as the cutoff
-        resonance.setCurrentAndTargetValue (resonance.getTargetValue());
-        drive.reset (newSampleRate, 0.02);
-        drive.setCurrentAndTargetValue (drive.getTargetValue());
-        for (auto* amount : { &filterEnvOctaves, &filterVelOctaves })   // 20 ms: automating them doesn't step the cutoff
-        {
-            amount->reset (newSampleRate, 0.02);
-            amount->setCurrentAndTargetValue (amount->getTargetValue());
-        }
-        modeFade.reset (newSampleRate, 0.01);     // 10 ms crossfade when the mode changes
-        modeFade.setCurrentAndTargetValue (1.0f);
-        setFilterCoefficients();
-
-        filterMix.reset (newSampleRate, 0.01);    // 10 ms crossfade for the on/off toggle
-
-        pan.reset (newSampleRate, 0.02);          // 20 ms so Width changes don't zipper
-        pan.setCurrentAndTargetValue (notePan * width);
-        updatePanGains (pan.getCurrentValue());
-    }
+    void prepare (double newSampleRate, int maxBlockSize);
 
     /** Audio thread, once per block before rendering. */
-    void setParameters (const Params& p) noexcept
-    {
-        adsrParams = p.adsr;
-        if (! hardStopping)
-            adsr.setParameters (adsrParams);
-
-        oscillator.setWaveform (p.waveform);              // applied at the next cycle boundary
-        oscillator.setChop (p.chop);
-        randomOscillator.setChop (p.chop);
-        sculpt.set (p.sculpt);
-        cutoff.setTargetValue (clampCutoff (p.cutoffHz));
-        filterMix.setTargetValue (p.filterOn ? 1.0f : 0.0f);
-        resonance.setTargetValue (juce::jlimit (0.0f, 1.0f, p.filterResonance));
-        drive.setTargetValue (juce::jlimit (0.0f, 1.0f, p.filterDrive));
-        setFilterMode (juce::jlimit (0, 3, p.filterMode));
-        filterEnvelope.setParameters (p.filterEnv);
-        filterEnvOctaves.setTargetValue (juce::jlimit (-5.0f, 5.0f, p.filterEnvOctaves));
-        filterVelOctaves.setTargetValue (juce::jlimit (0.0f, 4.0f, p.filterVelOctaves));
-
-        width = p.width;
-        pan.setTargetValue (notePan * width);
-
-        pendingSource  = p.source;
-        blockSample    = p.sample;
-        sampleSettings = p.sampleSettings;
-        cloud.setSettings (p.grainSettings);
-        glideSeconds = juce::jmax (0.0f, p.glideSeconds);   // v1.11.0: latched by each note that glides
-    }
+    void setParameters (const Params& p) noexcept;
 
     /** Audio thread, once per block after setParameters(): this block's modulation buffers (v1.9.0).
         Indexed like the block, so renderNextBlock()'s startSample is the index of its first sample.
@@ -227,119 +169,9 @@ public:
     */
     void setKeyboardGlideFrom (int note) noexcept   { keyboardGlideFrom = note; }
 
-    void startNote (int midiNote, float velocity, juce::SynthesiserSound*, int) override
-    {
-        // v1.11.0: a legato step keeps everything sounding and only moves the pitch.
-        if (legatoStepPending)
-        {
-            legatoStepPending = false;
-            if (adsr.isActive() && ! hardStopping)
-            {
-                glideToNote (midiNote);
-                return;
-            }
-        }
+    void startNote (int midiNote, float velocity, juce::SynthesiserSound*, int) override;
 
-        // v1.11.0, GLIDE: where the pitch was (the note playing, or the one this voice last played),
-        // as an offset in octaves from the new note; the glide starts there. With GLIDE at 0, or on
-        // a voice's first note, it is 0 and the note starts exactly at its pitch, as in v1.10.1.
-        // The sequencer's notes never glide here: like a 303, a step glides only when the step
-        // before it is marked SLIDE (the legato step above), so the other steps keep their attack
-        // whatever GLIDE is set to (Julian, 22 Nov 2026). Keyboard notes glide whenever GLIDE > 0.
-        // A keyboard note glides from the last keyboard note played: from where this voice's pitch
-        // is now if it played that note (so a glide still moving carries on smoothly), otherwise
-        // from that note. The first keyboard note has nothing to glide from.
-        const bool sequencerNote = isPlayingChannel (StepSequencer::midiChannel);
-        float glideFrom = 0.0f;
-        if (glideSeconds > 0.0f && ! sequencerNote && keyboardGlideFrom >= 0)
-        {
-            const float fromNote = hasGlidePitch && glideBaseNote == keyboardGlideFrom ? currentPitchNote()
-                                                                                     : (float) keyboardGlideFrom;
-            glideFrom = (fromNote - (float) midiNote) / 12.0f;
-        }
-        glideBaseNote = midiNote;
-        hasGlidePitch = true;
-        beginGlide (glideFrom, 0.0f);
-
-        // The note's own pitch; a glide (above) multiplies it towards 1 from where it was.
-        frequencyHz     = (float) juce::MidiMessage::getMidiNoteInHertz (midiNote);
-        oscillator.setFrequency (frequencyHz, sampleRate);
-        randomOscillator.setFrequency (frequencyHz, sampleRate);
-        startSource (midiNote);
-        samplesSinceOn  = 0;
-        samplesSinceOff = -1;
-
-        // A sounding voice (retrigger or steal) glides to its new velocity and
-        // pan. A silent voice starts exactly at the current settings: its
-        // smoothers stopped advancing when it went quiet, so without the snap a
-        // cutoff or filter-toggle change made while it was idle would sweep
-        // audibly over the first 10-20 ms of the note.
-        notePan = juce::jlimit (-1.0f, 1.0f, (float) (midiNote - 60) / 24.0f);
-        const float newLevel = velocity * voiceGain;
-
-        // The filter envelope attacks from its current level, like the amp envelope. Both it and
-        // the velocity enter modulatedCutoffHz(): a silent voice sets its coefficients from them
-        // below, at once; a sounding one picks them up at the next 16-sample update.
-        noteVelocity = juce::jlimit (0.0f, 1.0f, velocity);
-        filterEnvelope.noteOn();
-
-        if (adsr.isActive())
-        {
-            level.setTargetValue (newLevel);
-            pan.setTargetValue (notePan * width);
-        }
-        else
-        {
-            level.setCurrentAndTargetValue (newLevel);
-            pan.setCurrentAndTargetValue (notePan * width);
-            updatePanGains (pan.getCurrentValue());
-            cutoff.setCurrentAndTargetValue (cutoff.getTargetValue());
-            resonance.setCurrentAndTargetValue (resonance.getTargetValue());
-            drive.setCurrentAndTargetValue (drive.getTargetValue());
-            filterEnvOctaves.setCurrentAndTargetValue (filterEnvOctaves.getTargetValue());
-            filterVelOctaves.setCurrentAndTargetValue (filterVelOctaves.getTargetValue());
-            modeFade.setCurrentAndTargetValue (1.0f);
-            setFilterCoefficients();   // at once, not at the next 16-sample boundary
-            filterMix.setCurrentAndTargetValue (filterMix.getTargetValue());
-        }
-
-        if (hardStopping)
-        {
-            hardStopping = false;
-            adsr.setParameters (adsrParams);
-        }
-
-        // The envelope attacks from its current level, and the phase and filter state
-        // are kept, so retriggering or stealing a sounding voice doesn't click.
-        adsr.noteOn();
-    }
-
-    void stopNote (float, bool allowTailOff) override
-    {
-        // v1.11.0: the hard stop juce::Synthesiser::startVoice() sends ahead of a legato step.
-        if (legatoStepPending && ! allowTailOff)
-            return;
-
-        samplesSinceOff = 0;
-
-        if (allowTailOff)
-        {
-            reader.keyReleased();   // Loop until release: play on to the end
-            adsr.noteOff();
-            filterEnvelope.noteOff();
-            return;
-        }
-
-        // Hard stop (voice stolen, all sound off): 5 ms fade instead of a cut.
-        // juce::Synthesiser keeps calling renderNextBlock() on free voices, so the fade still plays.
-        // The filter envelope is left as it is: a sweep during a 5 ms fade would only be heard as
-        // a click, a stolen voice's next note retriggers it from where it is, and when the fade
-        // ends the voice resets it.
-        hardStopping = true;
-        adsr.setParameters ({ 0.001f, 0.001f, 1.0f, (float) hardStopFadeSeconds });
-        adsr.noteOff();
-        clearCurrentNote();
-    }
+    void stopNote (float, bool allowTailOff) override;
 
     void pitchWheelMoved (int) override {}
     void controllerMoved (int, int) override {}
@@ -565,7 +397,7 @@ private:
 
     float clampCutoff (float hz) const noexcept
     {
-        return juce::jlimit (20.0f, 0.45f * (float) sampleRate, hz);   // stay well below Nyquist
+        return juce::jlimit (minCutoffHz, maxCutoffFraction * (float) sampleRate, hz);   // stay well below Nyquist
     }
 
     //==============================================================================
@@ -637,16 +469,7 @@ private:
 
     /** A new Filter Mode: crossfades from the old mode's output over 10 ms.
         Both come from the same filter state, so the old one costs nothing to keep. */
-    void setFilterMode (int newMode) noexcept
-    {
-        const auto m = (CytomicSvf::Mode) newMode;
-        if (m == mode)
-            return;
-        previousMode = mode;
-        mode = m;
-        modeFade.setCurrentAndTargetValue (0.0f);
-        modeFade.setTargetValue (1.0f);
-    }
+    void setFilterMode (int newMode) noexcept;
 
     /** One sample through the drive and the filter, with the current coefficients.
         gain is the velocity level times the amp envelope: the limiter's ceiling
@@ -657,7 +480,8 @@ private:
     float filterStep (float dry, float gain) noexcept
     {
         // The floor keeps the ceiling above zero when the envelope is; below -120 dB nothing is heard.
-        const float ceiling = std::max (gain, 1.0e-6f);
+        constexpr float minCeiling = 1.0e-6f;
+        const float ceiling = std::max (gain, minCeiling);
 
         float x = dry;
         if (coefficientDrive > 0.0f)
@@ -680,41 +504,7 @@ private:
     }
 
     /** Picks the note's source and starts it. */
-    void startSource (int midiNote) noexcept
-    {
-        auto newSource = pendingSource;
-        if (blockSample == nullptr && (newSource == Source::sample || newSource == Source::granular))
-            newSource = Source::oscillator;
-
-        // Retrigger or steal while the sample sounds: fade the old read position out over
-        // 2 ms instead of jumping (whatever the new note plays).
-        if (source == Source::sample && reader.isActive() && ! reader.hasFinished() && adsr.isActive())
-        {
-            reader.swapWith (fadingReader);   // fadingReader now holds the old note and its sample reference
-            fadingSamplesLeft = fadingSamplesTotal = juce::jmax (1, (int) (sampleCrossfadeSeconds * sampleRate));
-        }
-        fadingCopy = false;   // the new note starts at full level, whatever was fading
-
-        source = newSource;
-        ++noteCounter;
-
-        if (source == Source::sample)
-            reader.begin (blockSample, midiNote, sampleRate, sampleSettings);
-        else
-            reader.end();
-        sampleNoteFresh = true;
-
-        if (source == Source::granular)
-        {
-            const auto seed = (juce::uint32) midiNote * 2654435761u ^ (juce::uint32) (voiceIndex + 1) * 40503u
-                            ^ (juce::uint32) noteCounter * 2246822519u;
-            cloud.begin (blockSample, midiNote, sampleSettings.rootNote, sampleRate, cloud.getSettings(), seed);
-        }
-        else
-        {
-            cloud.stopSpawning();   // grains still sounding play out
-        }
-    }
+    void startSource (int midiNote) noexcept;
 
     /**
         Renders the cloud into cloudBuffer, in chunks if the host's block is larger than
@@ -799,29 +589,10 @@ private:
     float currentPitchNote() const noexcept   { return (float) glideBaseNote + 12.0f * glideOctaves; }
 
     /** Starts a glide of the offset from `fromOctaves` to `toOctaves` in glideSeconds (0 = jump). */
-    void beginGlide (float fromOctaves, float toOctaves) noexcept
-    {
-        glideTargetOctaves = toOctaves;
-        if (glideSeconds > 0.0f && fromOctaves != toOctaves)
-        {
-            glideOctaves = fromOctaves;
-            glideStepOctaves = std::abs (toOctaves - fromOctaves) / juce::jmax (1.0f, glideSeconds * (float) sampleRate);
-        }
-        else
-        {
-            glideOctaves = toOctaves;
-        }
-        glideRatio = glideOctaves == 0.0f ? 1.0f : std::exp2 (glideOctaves);
-    }
+    void beginGlide (float fromOctaves, float toOctaves) noexcept;
 
     /** A legato step: the sounding note glides to midiNote, nothing restarts. */
-    void glideToNote (int midiNote) noexcept
-    {
-        beginGlide (glideOctaves, (float) (midiNote - glideBaseNote) / 12.0f);
-        notePan = juce::jlimit (-1.0f, 1.0f, (float) (midiNote - 60) / 24.0f);   // the pan follows (20 ms smoothing)
-        pan.setTargetValue (notePan * width);
-        samplesSinceOff = -1;   // a key holds it again (a return to a held key)
-    }
+    void glideToNote (int midiNote) noexcept;
 
     /** One sample along the glide. */
     void advanceGlide() noexcept
@@ -946,7 +717,8 @@ private:
 
     // Granular source
     GrainCloud cloud;
-    std::vector<float> cloudBuffer = std::vector<float> (512, 0.0f);   // sized in prepare()
+    static constexpr size_t unpreparedCloudSize = 512;   // until prepare() sizes it for the host's block
+    std::vector<float> cloudBuffer = std::vector<float> (unpreparedCloudSize, 0.0f);   // sized in prepare()
     int cloudSamples = 0, cloudRead = 0;
     static constexpr int cloudChunk = 32;   // samples per cloud render under pitch modulation
     int voiceIndex = 0, noteCounter = 0;   // seed the grains, so the same MIDI renders the same audio
@@ -956,25 +728,15 @@ public:
     void setVoiceIndex (int index) noexcept   { voiceIndex = index; resetSeeds(); }
 
     /** Restarts the grain seeds and the Random source (the processor's reset()), so a render can be repeated exactly. */
-    void resetSeeds() noexcept
-    {
-        noteCounter = 0;
-        randomOscillator.reseed ((juce::uint32) (voiceIndex + 1) * 2654435761u);
-        sculpt.reseed ((juce::uint32) (voiceIndex + 1) * 2246822519u);
-
-        // v1.11.0: forget the last pitch too, so a repeated render's first notes don't glide.
-        hasGlidePitch = false;
-        glideBaseNote = 60;
-        glideOctaves = glideTargetOctaves = 0.0f;
-        glideRatio = 1.0f;
-    }
+    void resetSeeds() noexcept;
 
 private:
     bool   hardStopping = false;
 
     // GLIDE and legato (v1.11.0); see beginGlide().
     float glideSeconds = 0.0f;                      // from the GLIDE parameter
-    int   glideBaseNote = 60;                       // the note the source was started on
+    static constexpr int firstGlideBaseNote = 60;   // before a voice's first note, and after resetSeeds(): unused until then
+    int   glideBaseNote = firstGlideBaseNote;       // the note the source was started on
     bool  hasGlidePitch = false;                    // the voice has played a note to glide from
     float glideOctaves = 0.0f, glideTargetOctaves = 0.0f;   // offset from glideBaseNote, now and where it goes
     float glideStepOctaves = 0.0f;                  // per sample
@@ -998,7 +760,7 @@ private:
     CytomicSvf::Drive driveSettings;                                  // for coefficientDrive
     CytomicSvf::Mode mode = CytomicSvf::Mode::lowpass, previousMode = CytomicSvf::Mode::lowpass;
     juce::SmoothedValue<float> modeFade { 1.0f };                     // 0 -> 1 from previousMode to mode
-    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Multiplicative> cutoff { 2000.0f };
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Multiplicative> cutoff { defaultCutoffHz };
     static constexpr int coefficientInterval = 16;   // samples between coefficient updates while the cutoff moves
     int   coefficientCountdown = coefficientInterval;  // samples until the next one, 1..16; runs on across calls
     float coefficientCutoffHz = 0.0f;                  // the cutoff the coefficients were last set for

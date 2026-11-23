@@ -11,29 +11,29 @@ Paths in this file are relative to the repository root.
 
 | Tool | Version |
 |---|---|
-| CMake | 3.21+ |
-| JUCE | 9.0.0 (download separately) |
+| CMake | 3.22+ (JUCE 9.0.0 needs it) |
+| JUCE | 9.0.0: fetched by CMake when no `JUCE_DIR` is given (v1.11.1), or a checkout of your own |
+| git | any recent version (CMake uses it to fetch JUCE) |
 | C++ compiler | MSVC 2022 / Clang / GCC with C++17 |
 
 ### Steps
 
 ```bash
-cmake -S . -B build \
-      -DJUCE_DIR="/path/to/JUCE" \
-      -DCMAKE_BUILD_TYPE=Release
-
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release
 ```
 
-On Windows (PowerShell):
+The same two commands work in PowerShell on Windows.
 
-```powershell
-cmake -S . -B build `
-      -DJUCE_DIR="C:/path/to/JUCE" `
-      -DCMAKE_BUILD_TYPE=Release
+CMake finds JUCE in one of three ways, the first that applies:
 
-cmake --build build --config Release
-```
+| How | When |
+|---|---|
+| `-DJUCE_DIR="/path/to/JUCE"` | A checkout of your own: offline, shared between several build folders, or CI's cached copy |
+| `./JUCE` | A checkout inside the project folder (it is not in `.gitignore`, so keep it out of your commits) |
+| Fetched (FetchContent) | Neither of the above: the first configure clones JUCE into `build/_deps/`, pinned to the commit of the 9.0.0 release (`f8f8864`) rather than the tag, so what NeonSynth builds against cannot move. Later configures reuse it |
+
+With your own checkout, use JUCE 9.0.0 (`git clone --depth=1 --branch 9.0.0 https://github.com/juce-framework/JUCE.git`).
 
 ### Build outputs
 
@@ -41,6 +41,25 @@ cmake --build build --config Release
 |---|---|
 | Standalone | `build/NeonSynth_artefacts/Release/Standalone/NeonSynth.exe` |
 | VST3 | `build/NeonSynth_artefacts/Release/VST3/NeonSynth.vst3/` |
+
+### Build structure and speed
+
+v1.11.1 rebuilt the CMake file for speed; nothing that ships changed.
+
+- **Two libraries for the tests.** With `-DNEONSYNTH_BUILD_TESTS=ON`, JUCE and the engine are compiled once and linked by every test program, instead of once per program: `neonsynth_test_juce` (the JUCE modules the tests use, configured as a console application would be) and `neonsynth_engine` (`NeonSynthProcessor.cpp`, `Parameters.cpp`, `MidiRouter.cpp`, `MidiLogger.cpp`, `NeonSynthVoice.cpp`, `SessionState.cpp` and `NeonSynthEditor.cpp`, with the fonts). Before, each of the 23 programs compiled the JUCE modules it used, and 12 of them the processor too. A new test now costs only its own file. The plugin keeps its own copy of both, because its JUCE is configured as a plugin, which a test program must not be.
+- **The numbers.** A cold build of the plugin and every test (2 cores, no compile cache) took 32 min 10 s at v1.11.0 and 6 min (359 s) at v1.11.1, measured on 23 November 2026: about 5× faster.
+- **`NEONSYNTH_LTO`** (on by default): link-time optimisation for the plugin's Release build. It is the slowest step of the plugin's build and changes nothing you hear (`-ffp-contract=off` and no fast-math keep the arithmetic exact either way). It stays on for releases and for the Windows CI job that runs the compare test and pluginval, so what ships is what is tested; the Linux build job turns it off (`-DNEONSYNTH_LTO=OFF`), and so can you for local work. With GCC the final step runs on every core (`-flto=auto`).
+- **ccache.** The Linux CI jobs (the GCC build, the sanitizers and the Clang integrity build) compile through ccache (`-DCMAKE_CXX_COMPILER_LAUNCHER=ccache`), cached between runs, so a run recompiles only what changed. The same flags work locally.
+- **JUCE by FetchContent** when no `JUCE_DIR` is given (see [Steps](#steps)).
+- **Python dependencies with hashes.** Each `requirements*.txt` (`requirements-test.txt`, `docs/requirements-manual.txt`, `docs/figures/requirements.txt`) is compiled by pip-compile (pip-tools) from the `.in` file beside it, which lists only the top-level packages; every package in the `.txt`, dependencies included, is pinned with its hashes, so `pip install -r` refuses a file that differs. To change a version, edit the `.in` and recompile the `.txt`; the command is in the `.in` file's header, for example:
+
+  ```bash
+  pip install pip-tools
+  pip-compile --generate-hashes --allow-unsafe --strip-extras --no-emit-index-url \
+              --output-file requirements-test.txt requirements-test.in
+  ```
+
+- **Dependabot** (`.github/dependabot.yml`) proposes updates to the three Python requirement sets as pull requests once a month, at most three open per set; CI checks each like any other change.
 
 ---
 
@@ -63,25 +82,25 @@ cmake --build build --config Release
 Configure with `-DNEONSYNTH_BUILD_TESTS=ON` to add the unit tests and the benchmark. `ctest` runs every unit test:
 
 ```bash
-cmake -S . -B build -DJUCE_DIR="/path/to/JUCE" -DNEONSYNTH_BUILD_TESTS=ON
+cmake -S . -B build -DNEONSYNTH_BUILD_TESTS=ON
 cmake --build build --config Release --target unit_tests RenderBenchmark
 ctest --test-dir build -C Release --output-on-failure
 ```
 
-`ctest` knows 22 programs: the 11 engine tests built from `NEONSYNTH_UNIT_TESTS` and the 11 that drive the whole processor (every program in the table below except `RenderBenchmark`).
+There are 24 programs. `ctest` knows 23 of them: the 11 unit tests in `NEONSYNTH_UNIT_TESTS`, which link only JUCE, and the 12 in `NEONSYNTH_ENGINE_TESTS`, which link the engine (every program in the table below except `RenderBenchmark`, which is run by hand). A new test needs only its name in one of the two lists.
 
 CI also configures with `-DNEONSYNTH_WARNINGS_AS_ERRORS=ON`, so a compiler warning in NeonSynth's own code fails the build. It is off by default, so a newer compiler cannot stop anyone from building locally. One warning is switched off for the project, `-Wfloat-equal` (GCC and Clang), because the code compares floats exactly on purpose; the CMake file says why.
 
 | Program | What it checks |
 |---|---|
-| `StepSequencerTests` | Sequencer timing, gate, swing, rates, block-size independence, stop and loop handling, tolerance of small transport drift, triggers disabled, retriggering, step packing |
+| `StepSequencerTests` | Sequencer timing, gate, swing, rates, block-size independence, stop and loop handling, tolerance of small transport drift, triggers disabled, retriggering, step packing; a swung odd step with a long gate overlapping the next (the gate is a fraction of the nominal step) |
 | `VoiceEnvelopeTests` | The voice envelope: identical to `juce::ADSR` with fixed settings, releases that survive parameter updates, sustain slew, retriggering, release-time changes |
 | `OscillatorTests` | The oscillators: pitch and DC offset of every waveform, level at high pitch, band-limited saw step, waveform changes waiting for the cycle boundary, phase kept across pitch changes; the Random source's repeatability, range, step statistics (one level replaced per cycle), pitch, and band-limited steps; aliasing of square, saw and triangle against v1.5.0 at C7 and C8, harmonic levels, the phase-step limit |
 | `ChopTests` | CHOP: Overtone 0% bit-identical to no CHOP, 100% silences and 200% inverts the chopped steps, Comb 1 / 2 / 8, band-limited edges, fading out as steps get too short, the Random source |
 | `SculptTests` | Noise and Fold: bit-identical when neutral, repeatable noise at a steady level across the knob, fold aliasing against a plain fold, peak, DC, a flat response at partial mix |
 | `SampleDataTests` | The sample: mono mix, −1 dBFS normalisation, 24-bit grid, 60 s cap, decimated copies (pitch kept, aliasing removed), exact FLAC round trip, file loading, the built-in pad, and the lock-free hand-off freeing replaced samples only when safe, including 2000 swaps under load |
 | `SampleReaderTests` | Sample playback: pitch tracking (and across sample rates), which band-limited copy each pitch reads, no aliasing at +24 semitones, steady level through crossfaded loops, smooth off-cycle loops, One-shot ends, Loop until release, start offset, the sample reference count |
-| `GranularTests` | The granular source: bit-identical renders from the same seed, grain counts at 5 / 50 / 200 per second, steady level across size and density, pitch, the 32-grain cap, scan speed and freeze, retrigger without cutting grains, stopping, the sample reference |
+| `GranularTests` | The granular source: bit-identical renders from the same seed, grain counts at 5 / 50 / 200 per second, steady level across size and density, pitch, the 32-grain cap, scan speed and freeze, retrigger without cutting grains, stopping, the sample reference; a grain bent up past the end of a short sample renders identically for blocks of 32, 128, 512 and 1024 on every SIMD path and ends at the end of the file (v1.11.1) |
 | `LfoTests` | The LFO: each shape's values, rate accuracy from 0.02 to 20 Hz at three sample rates, synced phase from a song position and across loop jumps, continuity across block sizes, Random's repeatability and steps, the 2 ms slew and the 10 ms shape crossfade |
 | `ModulationTests` | Pitch bend, mod wheel and the modulation buffers: bend ranges, the 5 ms glide, events landing on their sample, controller 121, the 14-bit wheel, vibrato depth and rate, no buffers while idle (so old sessions stay bit-identical), the tremolo never above unity, depth smoothing, repeatability, blocks larger than the buffers |
 | `PitchTests` | Pitch modulation in every source through whole voices: Oscillator, Random, Sample and Granular at +12 and −7 semitones, an all-1.0 buffer bit-identical to none, a 0 to +24 semitone sweep across the Sample source's copies without a click, moving a note between copies |
@@ -94,8 +113,9 @@ CI also configures with `-DNEONSYNTH_WARNINGS_AS_ERRORS=ON`, so a compiler warni
 | `PlayingTests` | GLIDE, LEGATO, HOLD and the voice side of SLIDE: the glide reaches its pitch in the set time, evenly in octaves, for intervals up and down, in every source; LEGATO keeps the envelope through overlapping keys and returns to the key still held, and does nothing above one voice; HOLD keeps keyboard notes, releases them when switched off, passes sequencer notes and latches Transpose; the slide MIDI glides the held voice, also to the same pitch, while unmarked overlaps retrigger as before; at the defaults the renders are identical to ones that never touch these controls; no clicks when switching them while notes sound |
 | `PresetTests` | The factory data (16 presets, unique names, known categories, real parameter IDs and values in range, valid patterns and CHOP text); every factory preset loads, renders finite under −6 dBFS and ends in silence (it prints each one's peak); save and load round trips (parameters, ties and slides, CHOP, the embedded sample) and keep the window's view settings; the user folder, sorting and wrap-around stepping; the program list and the host's program notifications, and a restored session reporting its program; broken preset files refused; the preset bar's controls, menu and painting |
 | `VoiceStealingTests` | Which voice a new note takes below 16 voices: a free voice, else the oldest on the same note, else the oldest released (key up and not held by the pedal), else the oldest; hand-written cases at 1, 4 and 15 voices, then seeded random sequences with repeated pitches and pedal moves checked against a reference `juce::Synthesiser`; at 16 voices JUCE's own choice is unchanged |
+| `RouterTests` | The MIDI router on its own (v1.11.1), with no processor, host or parameters (28 checks): keyboard input moved to channel 1; HOLD keeping note-offs back and sending them at the block's first sample when it goes off, never touching the sequencer's notes, and latching the key in Transpose; the ENTER queue (note-ons with their velocities, in order, also in Replace mode; no note-offs; a full queue drops notes; nothing while disarmed); the internal clock putting steps on their exact samples whatever the block size, carrying on from the beat reached after a tempo change, restarting at beat 0, and following or ignoring a host transport with SYNC on or off |
 | `SweepTests` | Every source and the sequencer at 44.1, 48, 88.2, 96 and 192 kHz with blocks of 1, 31, 64, 512 and 4096 samples and a changing sequence: finite output under the soft clipper's ceiling, the note at its pitch, audio identical sample for sample whatever the block sizes, sequencer steps on their exact sample on the internal clock and a host transport, and glide, tie, slide and LENGTH identical for every block plan |
-| `RenderBenchmark` | Times `processBlock` directly (no host) for idle, one note, 16 voices, 16 voices on each of the Sample, Random and Granular sources, 16 sculpted voices (CHOP, Noise and Fold all on), the LFO on the cutoff, the mod wheel's vibrato and a moving bend on the granular source (all on 16 voices), and a dense sequencer + chords load |
+| `RenderBenchmark` | Times `processBlock` directly (no host) for idle, one note, 16 voices, 16 voices on each of the Sample, Random and Granular sources, 16 sculpted voices (CHOP, Noise and Fold all on), the LFO on the cutoff, the mod wheel's vibrato and a moving bend on the granular source (all on 16 voices), and a dense sequencer + chords load. `RenderBenchmark --grains [rounds]` (v1.11.1) times only the granular loads on each grain loop (see [Performance](#performance)) |
 
 ### The integrity job
 
@@ -109,7 +129,7 @@ python tests/integrity.py --cppcheck # cppcheck, filtered (cppcheck 2.13 or newe
 
 | Check | What it requires |
 |---|---|
-| version | The same x.y.z in `CMakeLists.txt` (project and plugin), `installer.nsi`, the manual's "Applies to" line, the cover (`docs/images/cover.json`, written by `docs/figures/cover.py`) and the newest CHANGELOG row |
+| version | The same x.y.z in `CMakeLists.txt` (project and plugin), `installer.nsi`, the manual's "Applies to" line and its newest "What's new in this version" entry, the cover (`docs/images/cover.json`, written by `docs/figures/cover.py`) and the newest CHANGELOG row |
 | parameters | Every parameter in `tests/parameter-layout.txt` is named in the manual and on the help page (the text in `HelpOverlay.h`'s `buildColumns()`) by its label in the window; `PARAMETER_TERMS` in the script lists the words that count, so a new parameter needs a line there |
 | links | Every local path the manual, the README, this file and the companion books link to or quote in backticks exists, and so do links into this repository on GitHub that point at master, main or the version being released |
 | constants | Each tuning constant several places depend on (the soft clipper's knee and ceiling, the voice count, the 5 ms hard-stop fade and others) is defined once |
@@ -125,7 +145,7 @@ as the `sanitizers` job on Ubuntu.
 
 ### Performance
 
-`RenderBenchmark` on the development machine, 48 kHz with 512-sample blocks (share of one CPU core in real time):
+`RenderBenchmark` on the development machine, 48 kHz with 512-sample blocks (share of one CPU core in real time). Since v1.11.1 the test programs, RenderBenchmark included, are built without link-time optimisation (the plugin keeps it), and the voice and editor have .cpp files, so these figures are not directly comparable with those of earlier releases:
 
 | Load | CPU |
 |---|---|
@@ -139,6 +159,12 @@ as the `sanitizers` job on Ubuntu.
 | Sequencer at 1/32, 240 BPM, plus an 8-note chord every 250 ms | 1.3% |
 
 The grain loop has three versions of the same arithmetic, picked at run time: AVX2 (8 samples per step, when the CPU has it), SSE2 (4 per step, every x86-64 CPU) and scalar. They render bit-identical audio, so a session sounds the same on every machine; `GranularTests` checks this. Per grain and output sample on the development machine (Core Ultra 9 185H): scalar 4.7 ns, SSE2 2.3 ns, AVX2 2.2 ns. The loop is bound by its four reads per sample, which is why the wider AVX2 registers gain little.
+
+AVX2 can read those samples with the gather instruction or with scalar loads; both render bit-identical audio. `RenderBenchmark --grains [rounds]` (v1.11.1) times the two granular loads once per loop (AVX2 with gather, AVX2 with scalar loads, SSE2, scalar), taking turns `rounds` times (default 3) and keeping each loop's fastest round, so a busy moment on the machine does not decide it. On the development machine gather was about 6% faster, so it stays the default (`NEONSYNTH_GRAINS_AVX2_GATHER` in `GrainCloud.h`); run it on your own CPU before proposing a change:
+
+```bash
+build/RenderBenchmark_artefacts/Release/RenderBenchmark --grains 5
+```
 
 Timing the plugin through pedalboard is not a reliable CPU measure: render times there varied several-fold with the output level alone.
 
@@ -357,10 +383,10 @@ How to read it, top to bottom, with the code that does each part:
 
 | Stage | What happens | Code |
 |---|---|---|
-| Notes in | Keyboard MIDI, filtered by the sequencer mode and by HOLD (which keeps note-offs back while it is on), is merged with the sequencer's own notes into one MIDI buffer for the block | `NeonSynthProcessor::buildPlayMidi`, `StepSequencer.h` |
-| Voice allocation | `LimitedSynthesiser` (the Voices limit and the stealing order) on `PlayingSynthesiser`, which moves a sounding voice to a new note for LEGATO and the sequencer's slides | `NeonSynthProcessor.h`, `PlayingSynthesiser.h` |
+| Notes in | Keyboard MIDI, filtered by the sequencer mode and by HOLD (which keeps note-offs back while it is on), is merged with the sequencer's own notes into one MIDI buffer for the block | `MidiRouter::buildPlayMidi` (`MidiRouter.cpp`), `StepSequencer.h` |
+| Voice allocation | `LimitedSynthesiser` (the Voices limit and the stealing order) on `PlayingSynthesiser`, which moves a sounding voice to a new note for LEGATO and the sequencer's slides | `VoiceAllocator.h`, `PlayingSynthesiser.h` |
 | Modulation | The LFO, pitch bend and the mod wheel are worked out once per block for all voices: a pitch ratio, a cutoff offset and a tremolo | `Modulation.h`, `Lfo.h` |
-| Voices | Up to 16 voices (the VOICES limit). Each runs its source, at the note's pitch times the glide and the modulation's pitch ratio; Oscillator and Random then pass through CHOP, Noise and Fold. Then velocity times the amp envelope, drive and the filter (one stage, bypassed together by the filter's ON switch), and a pan set by pitch | `NeonSynthVoice.h`, `Oscillator.h`, `Sculpt.h`, `SampleReader.h`, `GrainCloud.h`, `VoiceEnvelope.h`, `CytomicSvf.h` |
+| Voices | Up to 16 voices (the VOICES limit). Each runs its source, at the note's pitch times the glide and the modulation's pitch ratio; Oscillator and Random then pass through CHOP, Noise and Fold. Then velocity times the amp envelope, drive and the filter (one stage, bypassed together by the filter's ON switch), and a pan set by pitch | `NeonSynthVoice.h` / `.cpp`, `Oscillator.h`, `Chop.h`, `Sculpt.h`, `SampleReader.h`, `GrainCloud.h`, `VoiceEnvelope.h`, `CytomicSvf.h` |
 | Output | The voices are summed, then tremolo, output gain and the soft clipper (under −1 dBFS, untouched below −6 dBFS) | `NeonSynthProcessor::processBlock`, `softClip` |
 | Displays | The finished block is copied to the scope FIFO and each voice's state to the voice views | `pushScope`, `publishVoiceViews` |
 
@@ -374,7 +400,7 @@ NeonSynth runs on three kinds of thread. The rule is that the audio thread never
 | Message thread | The editor and its views; the 30 Hz timer that drains the scope, reads the voice and modulation views and frees replaced samples; step edits in the sequencer grid (`setSequencerStep`), the pattern row's tools, undo and ENTER (`setSequencerPattern`); presets (`PresetManager`: loading, saving, the host's program calls, which some hosts make on another thread under the manager's lock); starting a sample load; telling the host the state changed (`updateHostDisplay`) | Block for long: it is the host's GUI thread too |
 | Background threads | The sample loader (a one-thread `juce::ThreadPool`, "NeonSynth sample loader") reads and prepares a file; the MIDI log writer (a `juce::Thread`, "NeonSynth MIDI log", only when `NEONSYNTH_MIDILOG` is set) formats and writes the log | Touch the editor or call the host |
 
-The host calls `getStateInformation` and `setStateInformation` on a thread of its choosing, usually the message thread. They use `sampleInfoLock`, which the audio thread never takes.
+The host calls `getStateInformation` and `setStateInformation` on a thread of its choosing, usually the message thread; they hand over to `SessionState` (`save()` and `load()`), which uses `sampleInfoLock`, a lock the audio thread never takes.
 
 How data crosses between them:
 
@@ -386,9 +412,9 @@ How data crosses between them:
 | MIDI log | Audio thread → log writer | A lock-free `juce::AbstractFifo` of fixed-size records in `MidiLogger.h`; when it is full, events are counted as dropped instead of waiting |
 | Sequencer pattern | Message thread ↔ audio thread | One `std::atomic<uint32>` per step in `StepSequencer.h`; the playing step is an atomic too |
 | CHOP pattern | Message thread → audio thread | One `std::atomic<uint16>`, bit k = step k |
-| Notes for ENTER | Audio thread → pattern row's timer | While ENTER is armed (an atomic flag), each keyboard note-on is pushed into a small lock-free `juce::AbstractFifo` (`pushEnteredNote` / `popEnteredNote`) |
+| Notes for ENTER | Audio thread → pattern row's timer | While ENTER is armed (an atomic flag), each keyboard note-on is pushed into a small lock-free `juce::AbstractFifo` (`MidiRouter::pushEnteredNote` / `popEnteredNote`) |
 | Voice and modulation views | Audio thread → editor timer | Relaxed atomic stores once per block (`VoiceView`, `Modulation`'s LFO phase and value, bend and wheel positions, the sequencer's tempo); values may come from neighbouring blocks, which is fine for display |
-| "Sample loaded" host notification | Loader thread → message thread | The loader triggers an `AsyncUpdater` member (`HostNotifier`), which calls `updateHostDisplay` on the message thread; a notification still pending when the processor is destroyed is cancelled |
+| "Sample loaded" host notification | Loader thread → message thread | The loader triggers an `AsyncUpdater` member (`SessionState::HostNotifier`), which calls `updateHostDisplay` on the message thread; a notification still pending when the processor is destroyed is cancelled |
 
 The source files are listed in [Project Structure](#project-structure).
 
@@ -396,22 +422,24 @@ The source files are listed in [Project Structure](#project-structure).
 
 ## Project Structure
 
-The plugin's sources are grouped by job under `src/` (v1.11.0); includes name the folder, as in `#include "dsp/Oscillator.h"`:
+The plugin's sources are grouped by job under `src/` (v1.11.0); includes name the folder, as in `#include "dsp/Oscillator.h"`. Code that runs for every sample is header-only, so the compiler sees it inline; setup, per-note work and the GUI are in `.cpp` files (v1.11.1): `NeonSynthProcessor.cpp`, `Parameters.cpp`, `MidiRouter.cpp`, `MidiLogger.cpp`, `NeonSynthVoice.cpp`, `SessionState.cpp` and `NeonSynthEditor.cpp`.
 
 | Folder | What lives there |
 |---|---|
 | `src/dsp` | Signal processing: oscillators, CHOP and the sculpt stages, sample playback, grains, the filter, the envelope, the LFO and modulation |
 | `src/sequencer` | The step sequencer engine |
-| `src/state` | Samples (loading, the prepared sample and its hand-off to the audio thread) and presets |
+| `src/state` | Samples (loading, the prepared sample and its hand-off to the audio thread), presets and the saved session |
 | `src/gui` | The editor, the CRT theme and look-and-feel, and every view |
-| `src/plugin` | The processor (parameters, sessions, MIDI routing, HOLD), the synthesiser (LEGATO and slides), the voice and the MIDI log |
+| `src/plugin` | The processor, its parameters, the MIDI router (HOLD, ENTER, the internal clock), the voice allocator and synthesiser (the voice limit, LEGATO and slides), the voice and the MIDI log |
 
 | File | Purpose |
 |---|---|
-| `src/dsp/Oscillator.h` | The band-limited oscillators (sine, square, triangle, sawtooth) with 4-point band-limited steps and corners, the Random source's step wave, and CHOP |
+| `src/dsp/Oscillator.h` | The band-limited oscillators (sine, square, triangle, sawtooth) with 4-point band-limited steps and corners, and the Random source's step wave; it includes `Chop.h` and `Blep4.h`, so code that includes it sees all three |
+| `src/dsp/Blep4.h` | The 4-point band-limited step and corner residuals the oscillators and CHOP share (v1.11.1, moved from `Oscillator.h`) |
+| `src/dsp/Chop.h` | CHOP (`ChopSettings`, `Chop`): the 16-step chopper with OVERTONE and COMB (v1.11.1, moved from `Oscillator.h`) |
 | `src/dsp/Sculpt.h` | Noise and Fold: white-noise crossfade and a 2× oversampled sine wavefolder |
 | `src/dsp/SampleReader.h` | Plays a note from the sample: pitch, cubic interpolation, band-limited copies, crossfaded loops |
-| `src/dsp/GrainCloud.h` | The granular source: grain scheduler, 32-grain pool, Hann window, scan, spray and jitter |
+| `src/dsp/GrainCloud.h` | The granular source: grain scheduler, 32-grain pool, a Hann-shaped (4x(1−x))² window (within about 0.065 of sin²), scan, spray and jitter |
 | `src/dsp/CytomicSvf.h` | The state-variable filter (low-pass, high-pass, band-pass, notch) with drive |
 | `src/dsp/Lfo.h` / `src/dsp/Modulation.h` | The LFO and the shared per-block modulation buffers (pitch, cutoff, tremolo), pitch bend and the mod wheel |
 | `src/dsp/VoiceEnvelope.h` | The voice's ADSR envelope (slewed sustain, release rate fixed at note-off) |
@@ -420,10 +448,11 @@ The plugin's sources are grouped by job under `src/` (v1.11.0); includes name th
 | `src/state/SampleSlot.h` | Lock-free hand-off of the current sample to the audio thread; frees replaced samples only when safe |
 | `src/state/SampleLoader.h` | Loads WAV, AIFF and FLAC files and embedded FLAC; renders the built-in pad |
 | `src/state/PresetManager.h` | Presets (v1.11.0): `.neonpreset` files (the session's XML with a category and a name), the user folder, the bank order, the host's program list, and what a session remembers of its preset |
+| `src/state/SessionState.h`, `.cpp` | The saved session (v1.11.1, moved from the processor): writing and reading the state the host stores (its layout is in `StateFormat.h`), the embedded sample and its status, CHOP's pattern string, the nesting check |
 | `src/state/FactoryPresets.h` | The 16 factory presets, written as data in each parameter's own units, with their patterns and CHOP steps |
 | `src/gui/ShapeView.h` | The SHAPE strip's drawing of one cycle, with CHOP step editing |
 | `src/gui/SampleView.h` | The sample's waveform in the editor, with draggable markers and live playheads |
-| `src/gui/NeonSynthEditor.h` | The editor — layout, controls, resizing, the 30 Hz timer that feeds the visualisers, the SCANLINES switch |
+| `src/gui/NeonSynthEditor.h`, `.cpp` | The editor — layout, controls, resizing, the 30 Hz timer that feeds the visualisers, the SCANLINES switch; the `.cpp` also defines `NeonSynthProcessor::createEditor()`, so the processor does not include the GUI |
 | `src/gui/CrtTheme.h` | The retro CRT look's shared pieces (v1.10.0): palette, the embedded VT323 and IBM Plex Mono fonts, glow text, `CachedPainter` (draw once at the screen's pixel scale, then copy) and the scanline overlay |
 | `src/gui/CrtFrame.h` | The CRT frame: bezel, tube glass, panels and their titles, the GAIN fader's groove and dB marks |
 | `src/gui/CrtLookAndFeel.h` | How every stock control is drawn in the CRT look: knobs, sliders, buttons, combo boxes and pop-up menus |
@@ -439,10 +468,13 @@ The plugin's sources are grouped by job under `src/` (v1.11.0); includes name th
 | `src/gui/LevelMeter.h` | The block L/R meter with peak hold and the clip light |
 | `src/gui/AdsrView.h` | The envelope graph with its draggable points and the voices' positions |
 | `src/gui/VoiceLights.h` | The 16 voice lights; clicking one sets the voice limit |
-| `src/plugin/NeonSynthProcessor.h`, `.cpp` | `AudioProcessor` — parameter management, MIDI, HOLD, the internal clock, the voice limit and stealing order, state, programs |
+| `src/plugin/NeonSynthProcessor.h`, `.cpp` | `AudioProcessor` — `processBlock` (modulation, the voices, output gain, the soft clipper), the voice views, the scope FIFO, programs, and the glue between the parts below |
+| `src/plugin/Parameters.h`, `.cpp` | The host parameters (v1.11.1): `createParameterLayout()`, every range and default, and the typed parameter pointers the processor reads each block |
+| `src/plugin/MidiRouter.h`, `.cpp` | The MIDI the synth plays each block (v1.11.1): the keyboard's channel, the sequencer modes, HOLD, Transpose, the ENTER queue and the internal clock |
+| `src/plugin/VoiceAllocator.h` | `LimitedSynthesiser`: the voice limit and the stealing order below 16 voices (v1.11.1, moved from the processor's header, unchanged) |
 | `src/plugin/PlayingSynthesiser.h` | `juce::Synthesiser` with LEGATO (mono, overlapping keys) and the sequencer's slides (v1.11.0) |
-| `src/plugin/NeonSynthVoice.h` | Voice and sound classes — sound source, glide, filter, envelope, pan |
-| `src/plugin/MidiLogger.h` | Real-time-safe MIDI logging (lock-free FIFO + background writer thread) |
+| `src/plugin/NeonSynthVoice.h`, `.cpp` | Voice and sound classes — sound source, glide, filter, envelope, pan; the per-sample render loop in the header, preparation, note start and stop and parameter plumbing in the `.cpp` (v1.11.1) |
+| `src/plugin/MidiLogger.h`, `.cpp` | Real-time-safe MIDI logging (lock-free FIFO + background writer thread); the `.cpp` finds the log path and names each instance's file |
 | `fonts/` | VT323 and IBM Plex Mono (SIL Open Font Licence, `OFL-*.txt`), compiled into the plugin as binary data |
 | `tests/StepSequencerTests.cpp` | Unit tests for the sequencer engine (`-DNEONSYNTH_BUILD_TESTS=ON`) |
 | `tests/VoiceEnvelopeTests.cpp` | Unit tests for the voice envelope |
@@ -463,10 +495,11 @@ The plugin's sources are grouped by job under `src/` (v1.11.0); includes name th
 | `tests/PresetTests.cpp` | Presets, the factory bank, programs and the preset bar |
 | `tests/VoiceStealingTests.cpp` | The stealing order below 16 voices, against a reference synthesiser |
 | `tests/SweepTests.cpp` | Sample rates and block sizes: identical audio and exact step timing |
+| `tests/RouterTests.cpp` | The MIDI router alone: HOLD, the ENTER queue and the internal clock |
 | `tests/integrity.py` | Versions, parameters described in the manual and help page, links, constants defined once, and filtered cppcheck |
 | `tests/complexity_report.py` | Lines of code and the cyclomatic complexity of every plugin function, as Markdown (`pip install lizard`); CI runs it on every push and pull request |
 | `tests/compare_versions.py` | Renders a set of sessions through two VST3 builds and requires identical audio (CI compares against the v1.6.0 release) |
-| `CMakeLists.txt` | Build config — Standalone + VST3, JUCE path, the test programs |
+| `CMakeLists.txt` | Build config — Standalone + VST3, where JUCE comes from, `NEONSYNTH_LTO`, the two test libraries and the test programs |
 | `icon.png` | Application / plugin icon |
 | `test_midi.py` | Automated Python test suite |
 | `log_to_midi.py` | Converts a captured `midi.log` into a Standard MIDI File |
@@ -476,15 +509,16 @@ The plugin's sources are grouped by job under `src/` (v1.11.0); includes name th
 | `docs/build_manual.py` | Checks the manual against the release (version, cover, links) and prints it to PDF |
 | `docs/figures/` | Scripts that draw the manual's figures and cover, with a README on remaking them |
 | `docs/images/` | The manual's figures and cover (SVG and PNG), and the raw application captures |
-| `docs/requirements-manual.txt` | Pinned Python dependencies for the PDF build |
+| `docs/requirements-manual.in`, `.txt` | Python dependencies for the PDF build: the top-level list and the hash-pinned file compiled from it |
 | `pyproject.toml` | Ruff lint configuration |
 | `.github/workflows/test.yml` | CI on every PR — Windows build, unit tests, Python suite, the comparison with the reference release, pluginval (strictness 10, as at release), CPU benchmark |
-| `.github/workflows/build.yml` | CI — CMake build and unit tests on Ubuntu (GCC) |
+| `.github/workflows/build.yml` | CI — CMake build and unit tests on Ubuntu (GCC, without LTO, through ccache), and the sanitizer build |
 | `.github/workflows/lint.yml` | CI — ruff lint of every Python file, and the code statistics report (lines of code, cyclomatic complexity per function) on the run's Summary page |
 | `.github/workflows/manual.yml` | CI — checks the manual against the version and builds its PDF |
 | `.github/workflows/integrity.yml` | CI — `tests/integrity.py`, cppcheck, and a Clang build with the integrity warnings plus clang-tidy on a pull request's changed files, on every push and pull request |
 | `.github/workflows/release.yml` | Release on a version tag — manual check, all tests, pluginval (strictness 10), installer, GitHub Release with the manual PDF |
-| `requirements-test.txt` | Pinned Python dependencies for `test_midi.py` |
+| `requirements-test.in`, `.txt` | Python dependencies for `test_midi.py` and the compare test: the top-level list and the hash-pinned file compiled from it |
+| `.github/dependabot.yml` | Monthly update proposals for the three Python requirement sets |
 | `installer.nsi` | NSIS installer script (VST3 + Standalone) |
 | `LICENSE` | GNU Affero General Public License v3 |
 

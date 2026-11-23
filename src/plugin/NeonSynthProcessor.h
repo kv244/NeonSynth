@@ -6,12 +6,22 @@
 #include <JuceHeader.h>
 #include <array>
 #include "plugin/NeonSynthVoice.h"
-#include "plugin/PlayingSynthesiser.h"
+#include "plugin/VoiceAllocator.h"
+#include "plugin/MidiRouter.h"
 #include "plugin/MidiLogger.h"
+#include "plugin/Parameters.h"
 #include "sequencer/StepSequencer.h"
-#include "state/SampleSlot.h"
-#include "state/SampleLoader.h"
+#include "state/SessionState.h"
 #include "state/PresetManager.h"
+
+/*
+    The plugin's processor. v1.11.1 split it by job; it keeps processBlock, the voice views, the
+    scope FIFO and the glue between the parts:
+      plugin/Parameters       the parameter layout and the typed pointers into the APVTS
+      plugin/MidiRouter       the MIDI the synth plays: keyboard, sequencer modes, HOLD, ENTER, the clocks
+      plugin/VoiceAllocator   LimitedSynthesiser, the Voices limit and voice stealing
+      state/SessionState      saving and restoring the session, and the sample it carries
+*/
 
 class NeonSynthProcessor : public juce::AudioProcessor
 {
@@ -27,7 +37,7 @@ public:
 
     bool isBusesLayoutSupported (const BusesLayout& layouts) const override;
 
-    juce::AudioProcessorEditor* createEditor() override;
+    juce::AudioProcessorEditor* createEditor() override;   // in gui/NeonSynthEditor.cpp: the processor does not include the editor
     bool hasEditor() const override { return true; }
 
     const juce::String getName() const override { return "NeonSynth"; }
@@ -36,7 +46,7 @@ public:
     bool isMidiEffect() const override { return false; }
 
     /** Release time plus the 5 ms hard-stop fade (the envelope's release is linear and exact). */
-    double getTailLengthSeconds() const override { return (double) releaseParameter->get() + NeonSynthVoice::hardStopFadeSeconds; }
+    double getTailLengthSeconds() const override { return (double) parameters.release->get() + NeonSynthVoice::hardStopFadeSeconds; }
 
     // v1.11.0, region C (presets): the 16 factory presets are the host's program list. The current
     // program is the factory preset loaded last, remembered with the session (PresetManager.h); 0
@@ -49,13 +59,13 @@ public:
 
     /** Counts the sessions and presets loaded (v1.11.0): the pattern row clears its undo
         history when it changes, so UNDO never writes an old sound's pattern onto a new one. */
-    int getStateLoadCount() const noexcept                { return stateLoads.load (std::memory_order_acquire); }
+    int getStateLoadCount() const noexcept                { return session.getLoadCount(); }
 
     /** Presets: the factory bank, the user folder, loading and saving (message thread). */
     PresetManager& getPresetManager() noexcept            { return presetManager; }
 
-    void getStateInformation (juce::MemoryBlock& destData) override;
-    void setStateInformation (const void* data, int sizeInBytes) override;
+    void getStateInformation (juce::MemoryBlock& destData) override        { session.save (destData); }
+    void setStateInformation (const void* data, int sizeInBytes) override  { session.load (data, sizeInBytes); }
 
     juce::AudioProcessorValueTreeState& getAPVTS() { return apvts; }
 
@@ -115,12 +125,7 @@ public:
     // Step sequencer (see StepSequencer.h for the engine and its timing model)
 
     /** How the keyboard and the sequencer share the synth (the Sequencer Mode parameter). */
-    enum class SequencerMode
-    {
-        layer,      ///< sequencer and keyboard both play
-        replace,    ///< sequencer plays, keyboard notes are ignored
-        transpose   ///< the pattern plays only while a key is held, shifted by (key - C4)
-    };
+    using SequencerMode = MidiRouter::SequencerMode;
 
     /** Reads a step of the pattern. Any thread. */
     StepSequencer::Step getSequencerStep (int index) const noexcept   { return sequencer.getStep (index); }
@@ -141,8 +146,8 @@ public:
         writes it into the step being entered. Message thread arms and reads; the audio thread
         only pushes (lock-free, dropped when the queue is full).
     */
-    void setNoteEntryArmed (bool armed) noexcept     { noteEntryArmed.store (armed, std::memory_order_relaxed); }
-    bool popEnteredNote (int& note, int& velocity) noexcept;
+    void setNoteEntryArmed (bool armed) noexcept     { router.setNoteEntryArmed (armed); }
+    bool popEnteredNote (int& note, int& velocity) noexcept   { return router.popEnteredNote (note, velocity); }
 
     /** Step that most recently started, or -1 while the sequencer is stopped. Any thread. */
     int getSequencerPlayhead() const noexcept   { return sequencer.getCurrentStep(); }
@@ -151,10 +156,10 @@ public:
     const Modulation& getModulation() const noexcept   { return modulation; }
 
     /** Tempo the sequencer followed in the last block (host or internal), for display. */
-    float getSequencerTempo() const noexcept    { return sequencerTempo.load (std::memory_order_relaxed); }
+    float getSequencerTempo() const noexcept    { return router.getSequencerTempo(); }
 
     /** True when the last block was clocked by the host transport rather than the internal tempo. */
-    bool isSequencerFollowingHost() const noexcept   { return sequencerFollowsHost.load (std::memory_order_relaxed); }
+    bool isSequencerFollowingHost() const noexcept   { return router.isSequencerFollowingHost(); }
 
     //==========================================================================
     // Sample (played by the Sample and Granular sources, v1.5.0). One sample
@@ -162,48 +167,40 @@ public:
     // for how a file is prepared and SampleSlot.h for the lock-free hand-off.
 
     /** What the editor shows about the sample. */
-    struct SampleStatus
-    {
-        juce::String name;       ///< file name, or "Default pad"
-        juce::String problem;    ///< why the last load failed, "sample missing: <name>" or "sample changed"; empty when fine
-        bool loading = false;    ///< a background load is in progress
-        double seconds = 0.0;
-        double sampleRate = 0.0; ///< the file's own sample rate (playback converts to the host's)
-        juce::String path;       ///< full path of the file; empty for the built-in pad
-    };
+    using SampleStatus = SessionState::SampleStatus;
 
     /**
         Message thread. Starts loading a WAV, AIFF or FLAC file in the
         background; the sample switches once it's ready. A newer request
         supersedes an older one that hasn't finished.
     */
-    void loadSampleFileAsync (const juce::File& file);
+    void loadSampleFileAsync (const juce::File& file)   { session.loadSampleFileAsync (file); }
 
     /** Any thread except the audio thread. Loads now; on failure the current sample stays and `error` says why. */
-    bool loadSampleFile (const juce::File& file, juce::String& error);
+    bool loadSampleFile (const juce::File& file, juce::String& error)   { return session.loadSampleFile (file, error); }
 
     /** Any thread except the audio thread. Goes back to the built-in pad. */
-    void useDefaultSample();
+    void useDefaultSample()                       { session.useDefaultSample(); }
 
     /** Message thread (or any thread except the audio thread). */
-    SampleStatus getSampleStatus() const;
+    SampleStatus getSampleStatus() const          { return session.getSampleStatus(); }
 
     /**
         Message thread. Frees samples that were replaced while notes still played them, once
         those notes have ended. A load and stopping the audio do this too; the editor's timer
         calls it so that memory comes back without waiting for either.
     */
-    void freeReplacedSamples()                    { sampleSlot.collectGarbage(); }
+    void freeReplacedSamples()                    { session.getSampleSlot().collectGarbage(); }
 
     /** Replaced samples still waiting to be freed (for tests). */
-    int getNumRetiredSamples() const              { return sampleSlot.getNumRetired(); }
+    int getNumRetiredSamples() const              { return session.getSampleSlot().getNumRetired(); }
 
     /** Calls `fn (const SampleData*)` with the current sample, safely against a concurrent load. Not for the audio thread. */
     template <typename Fn>
-    auto withCurrentSample (Fn&& fn) const   { return sampleSlot.withCurrent (std::forward<Fn> (fn)); }
+    auto withCurrentSample (Fn&& fn) const   { return session.getSampleSlot().withCurrent (std::forward<Fn> (fn)); }
 
     /** How many times getStateInformation() has had to base64-encode an embedded sample (for tests). */
-    int getNumEmbeddedSampleEncodes() const noexcept   { return numEmbeddedSampleEncodes.load(); }
+    int getNumEmbeddedSampleEncodes() const noexcept   { return session.getNumEmbeddedSampleEncodes(); }
 
     //==========================================================================
     // CHOP's pattern (v1.6.0): 16 steps, saved with the session, not host parameters.
@@ -231,178 +228,24 @@ private:
     MidiLogger  midiLogger;
     juce::int64 samplesProcessed = 0;
 
-    /**
-        juce::Synthesiser limited to the first N voices (the Voices parameter, v1.9.0): 1 is mono,
-        16 is the full pool. At 16 it defers to juce::Synthesiser's own voice choice, so sessions
-        saved before v1.9.0 allocate and steal voices exactly as before. Lowering N lets the voices
-        above it finish their notes; new notes only go to the first N.
-        v1.11.0 (region B): built on PlayingSynthesiser, which adds LEGATO and the sequencer's SLIDE.
-    */
-    class LimitedSynthesiser : public PlayingSynthesiser
-    {
-    public:
-        void setVoiceLimit (int newLimit) noexcept   { voiceLimit = newLimit; }
-
-    protected:
-        int getVoiceLimit() const noexcept override   { return voiceLimit; }
-
-        juce::SynthesiserVoice* findFreeVoice (juce::SynthesiserSound* sound, int midiChannel,
-                                               int midiNoteNumber, bool stealIfNoneAvailable) const override
-        {
-            const int limit = juce::jlimit (1, getNumVoices(), voiceLimit);
-            if (limit >= getNumVoices())
-                return juce::Synthesiser::findFreeVoice (sound, midiChannel, midiNoteNumber, stealIfNoneAvailable);
-
-            for (int i = 0; i < limit; ++i)
-                if (auto* v = getVoice (i); ! v->isVoiceActive() && v->canPlaySound (sound))
-                    return v;
-
-            if (! stealIfNoneAvailable)
-                return nullptr;
-
-            // Steal within the first N: the oldest voice already playing this note, else the oldest
-            // released voice, else the oldest of all. Released means in its release: key up and
-            // not held by the sustain pedal (v1.11.0 fix: a pedal-held note counted as released,
-            // and of two voices on the same note the lower one was taken, not the older;
-            // VoiceStealingTests).
-            juce::SynthesiserVoice* oldestSameNote = nullptr;
-            juce::SynthesiserVoice* oldestReleased = nullptr;
-            juce::SynthesiserVoice* oldest = nullptr;
-            for (int i = 0; i < limit; ++i)
-            {
-                auto* v = getVoice (i);
-                if (! v->canPlaySound (sound))
-                    continue;
-                if (v->getCurrentlyPlayingNote() == midiNoteNumber && (oldestSameNote == nullptr || v->wasStartedBefore (*oldestSameNote)))
-                    oldestSameNote = v;
-                if (v->isPlayingButReleased() && (oldestReleased == nullptr || v->wasStartedBefore (*oldestReleased)))
-                    oldestReleased = v;
-                if (oldest == nullptr || v->wasStartedBefore (*oldest))
-                    oldest = v;
-            }
-            return oldestSameNote != nullptr ? oldestSameNote : oldestReleased != nullptr ? oldestReleased : oldest;
-        }
-
-    private:
-        int voiceLimit = 16;
-    };
-
     LimitedSynthesiser synth;
     std::vector<NeonSynthVoice*> voices;    // owned by synth; cached to avoid dynamic_cast per block
     std::array<VoiceView, numVoices> voiceViews;
 
     void publishVoiceViews() noexcept;
 
-    /**
-        Builds the MIDI the synth will play this block: keyboard input filtered
-        by the sequencer mode, plus the sequencer's own events. Audio thread.
-    */
-    void buildPlayMidi (const juce::MidiBuffer& input, int numSamples) noexcept;
+    StepSequencer sequencer;
+    MidiRouter    router { sequencer, synth };
 
-    /** Keeps the list of held keys up to date (Transpose mode). */
-    void trackHeldKey (int note, bool isDown) noexcept;
+    /** The sequencer's and HOLD's parameters for the router, read once per block. Audio thread. */
+    MidiRouter::Controls routerControls() const noexcept;
 
-    // v1.11.0 (region B), HOLD: keyboard note-offs kept back while it is on, sent when it goes off.
-    std::array<bool, 128> notesHeldByHold {};   // keyboard notes whose note-off HOLD is keeping back
-    bool wasHolding = false;
-    void releaseHeldNotes (SequencerMode mode) noexcept;
-
-    /** Fills the pattern with the default bassline (used until a session supplies one). */
-    void loadDefaultPattern() noexcept;
-
-    StepSequencer    sequencer;
-    juce::MidiBuffer playMidi;                 // keyboard + sequencer events for the synth; capacity reserved in prepareToPlay
-    // The internal clock (v1.11.0): the beat at the last tempo change or restart, the samples
-    // since then and the tempo in force, so the position is one multiplication, not a running sum.
-    double       internalBeatOrigin = 0.0;
-    juce::int64  internalSamples    = 0;
-    double       internalTempo      = 0.0;
-    double internalBeatAt (juce::int64 samples) const noexcept
-    {
-        return internalBeatOrigin + (double) samples * internalTempo / (60.0 * getSampleRate());
-    }
-    void restartInternalClock() noexcept   { internalBeatOrigin = 0.0; internalSamples = 0; internalTempo = 0.0; }
-    bool   wasSequencerOn = false;
-    std::array<int, 16> heldKeys {};           // Transpose mode: keys currently down, most recent last
-    int    numHeldKeys = 0;
-
-    // ENTER's queue of keyboard notes (note in the low byte, velocity in the next).
-    std::atomic<bool> noteEntryArmed { false };
-    std::atomic<int>  stateLoads { 0 };   // see getStateLoadCount()
-    juce::AbstractFifo enteredNotesFifo { 64 };
-    std::array<juce::uint16, 64> enteredNotes {};
-    void pushEnteredNote (int note, int velocity) noexcept;
-    std::atomic<float> sequencerTempo { 120.0f };
-    std::atomic<bool>  sequencerFollowsHost { false };
+    /** CHOP's pattern, bit k = step k chopped. Written by the editor, read once per block; lock-free. */
+    std::atomic<juce::uint16> chopPattern { ChopSettings().pattern };
 
     juce::AudioProcessorValueTreeState apvts;
+    Parameters    parameters { apvts };            // after apvts, whose parameters it looks up
     PresetManager presetManager { *this, apvts };   // v1.11.0, region C; after apvts, whose state it listens to
-
-    juce::AudioParameterChoice* waveformParameter      = nullptr;
-    juce::AudioParameterFloat*  cutoffParameter        = nullptr;
-    juce::AudioParameterBool*   filterEnabledParameter = nullptr;
-    juce::AudioParameterFloat*  attackParameter        = nullptr;
-    juce::AudioParameterFloat*  decayParameter         = nullptr;
-    juce::AudioParameterFloat*  sustainParameter       = nullptr;
-    juce::AudioParameterFloat*  releaseParameter       = nullptr;
-    juce::AudioParameterFloat*  gainParameter          = nullptr;
-    juce::AudioParameterFloat*  widthParameter         = nullptr;
-
-    juce::AudioParameterBool*   seqOnParameter         = nullptr;
-    juce::AudioParameterBool*   seqSyncParameter       = nullptr;
-    juce::AudioParameterFloat*  seqTempoParameter      = nullptr;
-    juce::AudioParameterChoice* seqRateParameter       = nullptr;
-    juce::AudioParameterFloat*  seqSwingParameter      = nullptr;
-    juce::AudioParameterFloat*  seqGateParameter       = nullptr;
-    juce::AudioParameterChoice* seqModeParameter       = nullptr;
-
-    juce::AudioParameterChoice* sourceParameter        = nullptr;
-    juce::AudioParameterInt*    smpRootParameter       = nullptr;
-    juce::AudioParameterFloat*  smpStartParameter      = nullptr;
-    juce::AudioParameterChoice* smpLoopParameter       = nullptr;
-    juce::AudioParameterFloat*  smpLoopStartParameter  = nullptr;
-    juce::AudioParameterFloat*  smpLoopEndParameter    = nullptr;
-    juce::AudioParameterFloat*  smpXfadeParameter      = nullptr;
-
-    juce::AudioParameterFloat*  grPosParameter         = nullptr;
-    juce::AudioParameterFloat*  grScanParameter        = nullptr;
-    juce::AudioParameterFloat*  grSizeParameter        = nullptr;
-    juce::AudioParameterFloat*  grDensityParameter     = nullptr;
-    juce::AudioParameterFloat*  grSprayParameter       = nullptr;
-    juce::AudioParameterFloat*  grJitterParameter      = nullptr;
-    juce::AudioParameterFloat*  chopOvertoneParameter  = nullptr;
-    juce::AudioParameterInt*    chopCombParameter      = nullptr;
-    juce::AudioParameterFloat*  noiseLevelParameter    = nullptr;
-    juce::AudioParameterFloat*  foldDriveParameter     = nullptr;
-    juce::AudioParameterFloat*  foldMixParameter       = nullptr;
-    juce::AudioParameterChoice* filterModeParameter    = nullptr;
-    juce::AudioParameterFloat*  filterResParameter     = nullptr;
-    juce::AudioParameterFloat*  filterDriveParameter   = nullptr;
-    juce::AudioParameterFloat*  filterEnvAmtParameter  = nullptr;
-    juce::AudioParameterFloat*  filterAttackParameter  = nullptr;
-    juce::AudioParameterFloat*  filterDecayParameter   = nullptr;
-    juce::AudioParameterFloat*  filterSustainParameter = nullptr;
-    juce::AudioParameterFloat*  filterReleaseParameter = nullptr;
-    juce::AudioParameterFloat*  filterVelParameter     = nullptr;
-    juce::AudioParameterChoice* lfoShapeParameter      = nullptr;
-    juce::AudioParameterFloat*  lfoRateParameter       = nullptr;
-    juce::AudioParameterBool*   lfoSyncParameter       = nullptr;
-    juce::AudioParameterChoice* lfoDivisionParameter   = nullptr;
-    juce::AudioParameterFloat*  lfoPitchParameter      = nullptr;
-    juce::AudioParameterFloat*  lfoCutoffParameter     = nullptr;
-    juce::AudioParameterFloat*  lfoAmpParameter        = nullptr;
-    juce::AudioParameterInt*    bendRangeParameter     = nullptr;
-    juce::AudioParameterFloat*  vibratoParameter       = nullptr;
-    juce::AudioParameterInt*    voiceCountParameter    = nullptr;
-
-    // v1.11.0. Shared base: the parameters exist and are read here; agent B (hold, glide,
-    // legato) and agent A (length, key, scale) give them their behaviour.
-    juce::AudioParameterBool*   holdParameter          = nullptr;
-    juce::AudioParameterFloat*  glideParameter         = nullptr;
-    juce::AudioParameterBool*   legatoParameter        = nullptr;
-    juce::AudioParameterInt*    seqLengthParameter     = nullptr;
-    juce::AudioParameterChoice* seqKeyParameter        = nullptr;
-    juce::AudioParameterChoice* seqScaleParameter      = nullptr;
 
     /** The LFO, pitch bend and mod wheel (v1.9.0), shared by all voices. */
     Modulation modulation;
@@ -410,62 +253,12 @@ private:
     /** The musical time the LFO follows this block (host song position, or free-running). Audio thread. */
     Lfo::Transport lfoTransport() const;
 
-    /** CHOP's pattern, bit k = step k chopped. Written by the editor, read once per block; lock-free. */
-    std::atomic<juce::uint16> chopPattern { ChopSettings().pattern };
-
     juce::SmoothedValue<float> outputGain { 1.0f };
+    static constexpr double outputGainGlideSeconds = 0.02;   // GAIN glides over 20 ms, so automating it doesn't zipper
 
-    // Sample. sampleSlot must outlive sampleLoader (whose jobs publish into it), so it is declared first.
-    SampleSlot sampleSlot;
+    // The session and its sample; after apvts, the sequencer and chopPattern, which it saves and restores.
+    SessionState session { *this, apvts, sequencer, chopPattern };
     const SampleData* blockSample = nullptr;   // audio thread: the sample for the current block
-    void publishSample (std::unique_ptr<SampleData> sample, const SampleData::Origin* missing = nullptr, bool changedSinceSaved = false);
-    void restoreSample (const juce::ValueTree& sampleTree);   // setStateInformation()
-
-    mutable juce::CriticalSection sampleInfoLock;   // guards the fields below; never taken by the audio thread
-    SampleData::Origin missingSample;          // a session's sample that couldn't be found (kept so saving doesn't lose it)
-    juce::String missingSampleHash;
-    juce::String sampleProblem;
-
-    // The current sample's embedded FLAC as base64 text, exactly as it goes into the saved state
-    // (up to about 13 MB). Kept from the session it was loaded from, or from the first save, so
-    // later saves don't encode it again. It belongs to the sample with this hash and sample rate.
-    struct EmbeddedSampleText
-    {
-        juce::String text, hash;
-        double sampleRate = 0.0;
-
-        bool isFor (const SampleData& sample) const noexcept
-        {
-            // An identity check, not arithmetic: both rates come from the same file header.
-            return text.isNotEmpty() && hash == sample.getHash() && juce::exactlyEqual (sampleRate, sample.getSampleRate());
-        }
-    };
-    EmbeddedSampleText embeddedSampleText;
-    std::atomic<int> numEmbeddedSampleEncodes { 0 };
-
-    // Every request to change the sample (a load, PAD, a session) takes the next generation,
-    // and only the newest may publish. backgroundLoadGeneration is the generation of the
-    // background load still running, or 0: the status shows "loading..." only while that load
-    // is also the newest request, so one that was overtaken can't leave the status stuck.
-    std::atomic<int> sampleLoadGeneration { 0 };
-    std::atomic<int> backgroundLoadGeneration { 0 };
-    /** Tells the host the session changed (a sample loaded in the background), on the message
-        thread: the loader's thread posts it here instead of calling updateHostDisplay itself. */
-    struct HostNotifier : juce::AsyncUpdater
-    {
-        explicit HostNotifier (juce::AudioProcessor& p) : processor (p) {}
-        ~HostNotifier() override { cancelPendingUpdate(); }
-        void handleAsyncUpdate() override
-        {
-            processor.updateHostDisplay (juce::AudioProcessor::ChangeDetails().withNonParameterStateChanged (true));
-        }
-        juce::AudioProcessor& processor;
-    };
-    HostNotifier hostNotifier { *this };   // before sampleLoader, so it outlives the jobs that trigger it
-
-    juce::ThreadPool  sampleLoader { juce::ThreadPoolOptions{}.withThreadName ("NeonSynth sample loader").withNumberOfThreads (1) };
-
-    static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (NeonSynthProcessor)
 };

@@ -73,7 +73,8 @@ jobs:
           path: build/theory/*.pdf
           retention-days: 30
 
-  # The Mathematical Compendium is LaTeX; its build script fails if the .tex names another version.
+  # The Mathematical Compendium is LaTeX; its build script fails if the .tex names another minor
+  # version (an edition for v1.11.0 holds for v1.11.x, like the book; see build_book.py).
   compendium:
     runs-on: ubuntu-latest
     timeout-minutes: 15

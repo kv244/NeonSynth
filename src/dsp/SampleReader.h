@@ -65,6 +65,10 @@ public:
     /** Under pitch modulation, a larger copy is taken back only below this increment: one semitone of hysteresis. */
     static constexpr double returnIncrement = 1.122462048;        // 2^(2/12)
 
+    /** The shortest loop (and the shortest sample that loops): a crossfade needs a few samples to work in. */
+    static constexpr int    minLoopSamples = 4;
+    static constexpr double minLoopLength  = (double) minLoopSamples;   // the same, for the read positions
+
     SampleReader() = default;
     SampleReader (const SampleReader&) = delete;
     SampleReader& operator= (const SampleReader&) = delete;
@@ -97,16 +101,16 @@ public:
         const double len = (double) length;
         loopStartPos = juce::jlimit (0.0, len, (double) settings.loopStart * len);
         loopEndPos   = juce::jlimit (0.0, len, (double) settings.loopEnd   * len);
-        if (loopEndPos - loopStartPos < 4.0)
+        if (loopEndPos - loopStartPos < minLoopLength)
         {
-            loopEndPos   = juce::jmin (len, loopStartPos + 4.0);
-            loopStartPos = juce::jmax (0.0, loopEndPos - 4.0);
+            loopEndPos   = juce::jmin (len, loopStartPos + minLoopLength);
+            loopStartPos = juce::jmax (0.0, loopEndPos - minLoopLength);
         }
         crossfade = juce::jlimit (0.0, (loopEndPos - loopStartPos) / 2.0, (double) settings.crossfadeSeconds * levelRate);
         fadeStart = loopEndPos - crossfade;
 
-        mode = (LoopMode) juce::jlimit (0, 2, settings.loopMode);
-        looping = mode != oneShot && length >= 4;
+        mode = (LoopMode) juce::jlimit ((int) oneShot, (int) loopUntilRelease, settings.loopMode);
+        looping = mode != oneShot && length >= minLoopSamples;
         stopLoopingAtJump = false;
 
         position = juce::jlimit (0.0, len, (double) settings.start * len);
@@ -205,7 +209,7 @@ public:
         loopStartPos = juce::jmin (loopEndPos, loopStartPos * scale);
         crossfade    = juce::jmin ((loopEndPos - loopStartPos) / 2.0, crossfade * scale);
         fadeStart    = loopEndPos - crossfade;
-        looping      = looping && length >= 4;
+        looping      = looping && length >= minLoopSamples;
         position     = juce::jlimit (0.0, len, position * scale);
         if (! looping && position >= len)
             finished = true;

@@ -3,7 +3,7 @@
 // Licensed under the GNU Affero General Public License v3; see LICENSE.
 
 /*
-    Unit tests for CHOP (Oscillator.h): Overtone 0 changes nothing, chopped steps
+    Unit tests for CHOP (Chop.h): Overtone 0 changes nothing, chopped steps
     are silenced at 100% and inverted at 200%, Comb repeats the pattern, the
     edges are band-limited, and CHOP fades out where steps get too short.
 
@@ -89,7 +89,8 @@ int main()
         for (int c = 0; c < cycles; ++c)
             for (int i = 2; i < stepLength - 2; ++i)
             {
-                const float v = x[(size_t) (c * cycle + step * stepLength + i)];
+                const int index = c * cycle + step * stepLength + i;
+                const float v = x[(size_t) index];
                 sum += (double) v * v;
                 ++n;
             }
@@ -128,7 +129,8 @@ int main()
             for (int step = 1; step < 16; step += 2)
                 for (int i = 2; i < stepLength - 2; ++i)
                 {
-                    const size_t k = (size_t) (cyc * cycle + step * stepLength + i);
+                    const int index = cyc * cycle + step * stepLength + i;
+                    const size_t k = (size_t) index;
                     residual += std::pow ((double) a[k] + c[k], 2.0);
                     reference += (double) a[k] * a[k];
                 }

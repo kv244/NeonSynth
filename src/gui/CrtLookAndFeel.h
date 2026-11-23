@@ -249,7 +249,7 @@ public:
         const auto font = fitted (getTextButtonFont (button, button.getHeight()), text, area.getWidth());
 
         drawGlowing (g, text, area, colour, font, juce::Justification::centred,
-                     ! enabled ? 0.0f : on ? 0.55f : highlighted ? 0.3f : 0.0f);
+                     ! enabled ? 0.0f : on ? onGlow : highlighted ? hoverGlow : 0.0f);
     }
 
     /** The filter switch: a terminal tick box, "[■] ON" lit, "[ ] ON" dim. */
@@ -273,7 +273,7 @@ public:
         const auto colour = on ? textColour : textColour.withMultipliedAlpha (0.55f);
 
         drawGlowing (g, text, area, colour.withMultipliedAlpha (enabled ? 1.0f : 0.5f), font, juce::Justification::centred,
-                     enabled && on ? 0.55f : enabled && highlighted ? 0.3f : 0.0f);
+                     enabled && on ? onGlow : enabled && highlighted ? hoverGlow : 0.0f);
 
         if (on)
         {
@@ -437,6 +437,10 @@ public:
     }
 
 private:
+    // How strongly a button's text glows: switched on, and under the mouse (text and toggle buttons alike).
+    static constexpr float onGlow    = 0.55f;
+    static constexpr float hoverGlow = 0.3f;
+
     /** Where a combo box's arrow sits: a square-ish zone at its right. */
     static juce::Rectangle<int> arrowZone (const juce::ComboBox& box)
     {

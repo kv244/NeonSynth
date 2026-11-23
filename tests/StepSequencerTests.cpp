@@ -177,6 +177,22 @@ int main()
         };
         check (changingSwing (0.0f, 0.9f, 6000 + 512) == 16, "swing raised just after an odd step fired: 16 notes in the bar, none twice");
         check (changingSwing (0.9f, 0.0f, 6000 + 512) == 16, "swing lowered before an odd step fired: 16 notes in the bar, none lost");
+
+        // The gate is a fraction of the nominal step, so a swung odd step with a long gate
+        // overlaps the next step (documented in StepSequencer.h, "Gate and swing", v1.11.1).
+        StepSequencer overlap; makeAllOn (overlap);
+        auto longSwung = settings;
+        longSwung.swing = 1.0f;   // odd steps 3000 samples late
+        longSwung.gate  = 1.0f;   // each note a whole step (6000 samples) long
+        juce::int64 oddOn = -1, oddOff = -1, nextOn = -1;
+        for (const auto& e : run (overlap, (juce::int64) testSamplesPerBeat, longSwung))
+        {
+            if (e.note == 61 && e.on)  oddOn  = e.sample;
+            if (e.note == 61 && ! e.on && e.controller < 0) oddOff = e.sample;
+            if (e.note == 62 && e.on)  nextOn = e.sample;
+        }
+        check (oddOn == 9000 && nextOn == 12000 && oddOff == 15000,
+               "gate 100% and swing 100%: the odd step's note runs half a step into the next step");
     }
 
     std::printf ("Rates\n");

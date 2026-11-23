@@ -59,6 +59,22 @@
     loop, a locate, the sequencer being switched off), every pending note is
     released immediately so nothing hangs.
 
+    Gate and swing
+    --------------
+    The gate is a fraction of the nominal step (stepLength), not of the time
+    until the next step actually starts. Swing moves only where odd steps
+    start, so an odd step's note still lasts gate x stepLength: with a long
+    gate it runs on past the start of the following (even, unswung) step, by
+    up to (gate + swingDelay / stepLength - 1) x stepLength. At gate 1 and
+    full swing that is half a step of overlap. On different pitches both notes
+    sound together for that time (two voices); on the same pitch the new
+    note-on first ends the old note (releaseSamePitch), since
+    juce::Synthesiser would otherwise end the new note with the old one's
+    note-off. Even steps are never delayed, so they never overlap the next
+    (odd) step, and with no swing gate 1 is legato (to within a sample of
+    rounding). Ties and slides are separate: their notes are held until the
+    next step fires, whatever the gate.
+
     Tie and slide (v1.11.0; the contract between the sequencer and the voices)
     ------------------------------------------------------------------------
     Each step carries two more flags, stored in the same atomic word as the rest. A tied step
@@ -94,6 +110,19 @@
     edit steps (setStep) while the audio thread reads them (getStep). The
     current playhead position is published the same way for the editor.
 
+    The contract, member by member (v1.11.1):
+      - prepare(), process(), releaseAll(): the audio thread only (prepare()
+        from prepareToPlay(), which a host never runs at the same time as
+        processBlock()). They share the note-off queue and the timing state,
+        which are plain members: never call them from two threads.
+      - setStep(), getStep(), getCurrentStep(): any thread, at any time. Each
+        step is one atomic word, so a reader sees a step either before or after
+        an edit, never half of one; edits to several steps are not one atomic
+        change (the audio thread may play a mix of old and new steps for one
+        block). Relaxed ordering is enough: a step carries no other data.
+      - The static helpers (stepLengthInBeats, the scale functions) touch no
+        state and are safe anywhere.
+
     Notes are sent on MIDI channel 16 so they can never cancel a note of the
     same pitch played on the keyboard (juce::Synthesiser matches note-offs by
     channel as well as note number). The processor moves all keyboard input to
@@ -108,6 +137,17 @@ public:
 
     /** Transport drift up to this much (either way) is not treated as a jump. */
     static constexpr double jumpToleranceSeconds = 0.002;
+
+    /** MIDI's note numbers are 0..127, and so are velocities and controller values. */
+    static constexpr int numMidiNotes = 128;
+    static constexpr int maxMidiValue = 127;
+
+    /** The gate's range is 5%..100% of a step; 50% is the default, and what a broken value falls back to. */
+    static constexpr float minGate = 0.05f;
+    static constexpr float defaultGate = 0.5f;
+
+    /** The rate assumed until prepare() gives the real one (or when it gives none). */
+    static constexpr double defaultSampleRate = 44100.0;
 
     //==========================================================================
     /** One step of the pattern. */
@@ -156,7 +196,7 @@ public:
     {
         Rate  rate      = Rate::sixteenth;
         float swing     = 0.0f;    ///< 0..1: delays odd steps by up to half a step (about 0.67 is a triplet feel)
-        float gate      = 0.5f;    ///< 0.05..1: note length as a fraction of one step
+        float gate      = defaultGate;    ///< 0.05..1: note length as a fraction of one nominal step (see "Gate and swing")
         int   transpose = 0;       ///< semitones added to every step's note
         bool  triggersEnabled = true;  ///< false = keep time but start no new notes (Transpose mode, no key held)
         int   length    = numSteps;  ///< v1.11.0: 1..16, the pattern repeats after this many steps (16 = as before)
@@ -172,7 +212,7 @@ public:
     /** Call from prepareToPlay(). Clears any pending notes without emitting them. */
     void prepare (double newSampleRate) noexcept
     {
-        sampleRate = newSampleRate > 0.0 ? newSampleRate : 44100.0;
+        sampleRate = newSampleRate > 0.0 ? newSampleRate : defaultSampleRate;
         numPending = 0;
         carry = Carry::none;
         wasPlaying = false;
@@ -261,7 +301,7 @@ public:
         // back to the defaults rather than turn positions into NaN. The gate is worked out in
         // doubles and capped, so a very slow host tempo cannot overflow an int (v1.11.0).
         const float  swing       = std::isfinite (settings.swing) ? juce::jlimit (0.0f, 1.0f, settings.swing) : 0.0f;
-        const float  gate        = std::isfinite (settings.gate)  ? juce::jlimit (0.05f, 1.0f, settings.gate) : 0.5f;
+        const float  gate        = std::isfinite (settings.gate)  ? juce::jlimit (minGate, 1.0f, settings.gate) : defaultGate;
         const double swingDelay  = (double) swing * 0.5 * stepLength;
         const int    gateSamples = (int) juce::jlimit (1.0, (double) maxGateSamples, std::round ((double) gate * stepLength * samplesPerBeat));
 
@@ -275,6 +315,7 @@ public:
         // the same absolute sample whatever the block sizes are; the small epsilon
         // absorbs floating-point error such as 5999.9999999 for 6000.
         constexpr double epsilon = 1.0e-6;
+        constexpr double sameSampleTolerance = 0.5;   // samples: a swung step this close to its grid place was the one that fired
 
         const double firstCandidate = blockStart - (continuous ? toleranceSamples / samplesPerBeat : 0.0);
 
@@ -301,7 +342,7 @@ public:
                 // before it was the last to fire: it is late, but it must not be lost.
                 if (offset < 0)
                 {
-                    const bool movedBackBySwing = odd && std::abs (lastFiredBeat - (gridBeat - stepLength)) * samplesPerBeat < 0.5;
+                    const bool movedBackBySwing = odd && std::abs (lastFiredBeat - (gridBeat - stepLength)) * samplesPerBeat < sameSampleTolerance;
                     if ((double) -offset > toleranceSamples && ! movedBackBySwing)
                         continue;
                     offset = 0;
@@ -327,7 +368,7 @@ public:
             if (carry != Carry::none && continueCarry (midi, step, note, settings.triggersEnabled, (int) offset, gateSamples))
                 continue;
 
-            if (step.on && settings.triggersEnabled && juce::isPositiveAndBelow (note, 128))
+            if (step.on && settings.triggersEnabled && juce::isPositiveAndBelow (note, numMidiNotes))
             {
                 startNote (midi, note, step.velocity, (int) offset, gateSamples);
                 if (step.tie || step.slide)
@@ -397,11 +438,11 @@ public:
         the lock. If there is none that way inside 0..127, the search turns round. */
     static int snapToScale (int note, int key, Scale scale, int direction = 0) noexcept
     {
-        note = juce::jlimit (0, 127, note);
+        note = juce::jlimit (0, maxMidiValue, note);
         if (isInScale (note, key, scale))
             return note;
 
-        const auto fits = [key, scale] (int n) { return juce::isPositiveAndBelow (n, 128) && isInScale (n, key, scale); };
+        const auto fits = [key, scale] (int n) { return juce::isPositiveAndBelow (n, numMidiNotes) && isInScale (n, key, scale); };
 
         for (int d = 1; d < 12; ++d)
         {
@@ -436,24 +477,31 @@ public:
         unused), bit 16 = on, bit 17 = tie, bit 18 = slide (the last two since v1.11.0). */
     static juce::uint32 pack (const Step& s) noexcept
     {
-        return (s.on ? 0x10000u : 0u)
-             | (s.tie   ? 0x20000u : 0u)
-             | (s.slide ? 0x40000u : 0u)
-             | ((juce::uint32) juce::jlimit (1, 127, s.velocity) << 8)
-             |  (juce::uint32) juce::jlimit (0, 127, s.note);
+        return (s.on ? onBit : 0u)
+             | (s.tie   ? tieBit : 0u)
+             | (s.slide ? slideBit : 0u)
+             | ((juce::uint32) juce::jlimit (1, maxMidiValue, s.velocity) << velocityShift)
+             |  (juce::uint32) juce::jlimit (0, maxMidiValue, s.note);
     }
 
     /** Inverse of pack(). */
     static Step unpack (juce::uint32 bits) noexcept
     {
         Step s;
-        s.on       = (bits & 0x10000u) != 0;
-        s.tie      = (bits & 0x20000u) != 0;
-        s.slide    = (bits & 0x40000u) != 0;
-        s.velocity = (int) ((bits >> 8) & 0x7fu);
-        s.note     = (int) (bits & 0x7fu);
+        s.on       = (bits & onBit) != 0;
+        s.tie      = (bits & tieBit) != 0;
+        s.slide    = (bits & slideBit) != 0;
+        s.velocity = (int) ((bits >> velocityShift) & sevenBits);
+        s.note     = (int) (bits & sevenBits);
         return s;
     }
+
+    // The packed step's layout (see pack()).
+    static constexpr juce::uint32 onBit     = 0x10000u;   // bit 16
+    static constexpr juce::uint32 tieBit    = 0x20000u;   // bit 17
+    static constexpr juce::uint32 slideBit  = 0x40000u;   // bit 18
+    static constexpr juce::uint32 sevenBits = 0x7fu;      // a note or a velocity
+    static constexpr int velocityShift = 8;               // the velocity's lowest bit
 
 private:
     /** A note-off that is due `samplesLeft` samples after the start of the current block. */
@@ -510,7 +558,7 @@ private:
             return true;
         }
 
-        const bool sounds = step.on && juce::isPositiveAndBelow (note, 128);
+        const bool sounds = step.on && juce::isPositiveAndBelow (note, numMidiNotes);
         const bool tiesOn = previous == Carry::tie || (sounds && note == carryNote);   // a slide to the same pitch is a tie
 
         if (tiesOn)
@@ -540,7 +588,7 @@ private:
         const int oldNote = pending[(size_t) held].note;
         removePending (held);
         releaseSamePitch (midi, note, offset);   // before the mark: nothing may come between its four events
-        midi.addEvent (juce::MidiMessage::controllerEvent (midiChannel, slideController, 127), offset);
+        midi.addEvent (juce::MidiMessage::controllerEvent (midiChannel, slideController, maxMidiValue), offset);
         startNote (midi, note, step.velocity, offset, gateSamples);
         midi.addEvent (juce::MidiMessage::noteOff (midiChannel, oldNote), offset);
         midi.addEvent (juce::MidiMessage::controllerEvent (midiChannel, slideController, 0), offset);
@@ -577,7 +625,7 @@ private:
             removePending (0);
         }
 
-        midi.addEvent (juce::MidiMessage::noteOn (midiChannel, note, (juce::uint8) juce::jlimit (1, 127, velocity)), offset);
+        midi.addEvent (juce::MidiMessage::noteOn (midiChannel, note, (juce::uint8) juce::jlimit (1, maxMidiValue, velocity)), offset);
         pending[(size_t) numPending++] = { note, offset + gateSamples };
     }
 
@@ -613,11 +661,12 @@ private:
     std::array<std::atomic<juce::uint32>, numSteps> steps;
     std::atomic<int> currentStep { -1 };
 
-    std::array<PendingNoteOff, 32> pending {};
+    static constexpr size_t maxPendingNotes = 32;   ///< note-offs waiting at once; a 33rd ends the oldest early
+    std::array<PendingNoteOff, maxPendingNotes> pending {};
     int    numPending   = 0;
     Carry  carry        = Carry::none;   ///< v1.11.0: a tie or slide from the last step that fired
     int    carryNote    = 0;             ///< ...and the note it holds
-    double sampleRate   = 44100.0;
+    double sampleRate   = defaultSampleRate;
     double expectedBeat = 0.0;
     bool   wasPlaying   = false;
 
@@ -668,7 +717,7 @@ namespace PatternTools
     {
         length = clampLength (length);
         for (int i = 0; i < length; ++i)
-            if (! juce::isPositiveAndBelow (p[(size_t) i].note + semitones, 128))
+            if (! juce::isPositiveAndBelow (p[(size_t) i].note + semitones, StepSequencer::numMidiNotes))
                 return p;
         for (int i = 0; i < length; ++i)
             p[(size_t) i].note += semitones;
@@ -713,8 +762,13 @@ namespace PatternTools
         key = juce::jlimit (0, 11, key);
         juce::Random random (seed);
 
-        const int lowest = 48 + key;
-        int notes[13] = {};
+        constexpr int lowestC = 48;      // C3: the notes start in this octave
+        constexpr int onOdds = 4;        // a step is off one time in this many
+        constexpr int minVelocity = 64;  // velocities are minVelocity .. minVelocity + velocityRange - 1
+        constexpr int velocityRange = 64;
+
+        const int lowest = lowestC + key;
+        int notes[13] = {};   // at most every note of the octave, both ends included
         int numNotes = 0;
         for (int n = lowest; n <= lowest + 12; ++n)
             if (StepSequencer::isInScale (n, key, scale))
@@ -723,9 +777,9 @@ namespace PatternTools
         for (int i = 0; i < length; ++i)
         {
             auto& s    = p[(size_t) i];
-            s.on       = random.nextInt (4) != 0;
+            s.on       = random.nextInt (onOdds) != 0;
             s.note     = notes[random.nextInt (numNotes)];
-            s.velocity = 64 + random.nextInt (64);
+            s.velocity = minVelocity + random.nextInt (velocityRange);
             s.tie = s.slide = false;
         }
         return p;
@@ -830,7 +884,7 @@ public:
         auto& s    = pattern[(size_t) cursor];
         s.on       = true;
         s.note     = StepSequencer::snapToScale (note, key, scale);
-        s.velocity = juce::jlimit (1, 127, velocity);
+        s.velocity = juce::jlimit (1, StepSequencer::maxMidiValue, velocity);
 
         if (++cursor >= length)
         {

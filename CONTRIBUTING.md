@@ -30,12 +30,16 @@ are only roughly comparable.
 
 - C++17, in the JUCE style the code already uses: a space before the parentheses of a call, braces on
   their own line, 4 spaces, no tabs. Match the file you are in.
-- Header-only modules, grouped by job under `src/`: `src/dsp` (signal processing), `src/sequencer`,
-  `src/state`, `src/gui` and `src/plugin`. Each part of the plugin is one `.h` file
-  (`dsp/Oscillator.h`, `sequencer/StepSequencer.h`, `state/SampleSlot.h`, ...); only
-  `plugin/NeonSynthProcessor.cpp` is a source file. Includes name the folder
-  (`#include "dsp/Oscillator.h"`). A new module is a new header in the folder of its job, added to
-  the [Project Structure](docs/DEVELOPMENT.md#project-structure) table.
+- Modules grouped by job under `src/`: `src/dsp` (signal processing), `src/sequencer`, `src/state`,
+  `src/gui` and `src/plugin`. Code that runs for every sample (the oscillators, CHOP, the filter, the
+  grain loop, the voice's render loop) stays header-only, so the compiler sees it inline; setup,
+  per-note work and the GUI go in `.cpp` files. Those are `plugin/NeonSynthProcessor.cpp`,
+  `plugin/Parameters.cpp`, `plugin/MidiRouter.cpp`, `plugin/MidiLogger.cpp`,
+  `plugin/NeonSynthVoice.cpp`, `state/SessionState.cpp` and `gui/NeonSynthEditor.cpp` (v1.11.1); a
+  new one goes in the plugin's `target_sources` and, if the tests need it, in `neonsynth_engine`'s
+  sources in `CMakeLists.txt`. Includes name the folder (`#include "dsp/Oscillator.h"`). A new module
+  goes in the folder of its job and in the [Project Structure](docs/DEVELOPMENT.md#project-structure)
+  table.
 - Comments explain why, not what: the reason for a constant, a choice or an ordering. Say in a
   function's comment which thread may call it, as the existing headers do ("Audio thread", "Message
   thread", "Any thread").
@@ -66,6 +70,7 @@ request which thread new code runs on.
 | New parameters are appended at the end of the layout, with a neutral default (the value that leaves the sound as it was). Hosts store sessions by parameter ID and normalised value, so nothing may be renamed, moved or re-ranged. | `ParameterLayoutTests` compares every parameter with `tests/parameter-layout.txt`; after appending one, update the reference with `ParameterLayoutTests --write` and commit it |
 | Every feature is visible in the GUI: every parameter has a control, each source shows its own controls with nothing overlapping, and every view paints at 75%, 100% and 150%. | `EditorTests` |
 | The user manual describes every change, and its cover and "Applies to" name the release. | `docs/build_manual.py --check` in CI (`manual.yml`, and again at release); redraw the cover with `python docs/figures/cover.py --date "<release date>"` |
+| The manual's "What's new in this version" section opens with an entry for the release (`### vX.Y.Z`): what a player notices, new, changed or fixed, with links to the chapters; the CHANGELOG keeps the full history. | `tests/integrity.py` (the integrity job) fails until the newest entry names the CMake version |
 | The plugin passes pluginval at strictness 10. | `test.yml` on every pull request, and `release.yml` before a release |
 
 A release also bumps the version in `CMakeLists.txt` (both places) and `installer.nsi`, and adds a row

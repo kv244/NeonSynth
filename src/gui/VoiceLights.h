@@ -5,6 +5,7 @@
 #pragma once
 #include <JuceHeader.h>
 #include "plugin/NeonSynthProcessor.h"
+#include "gui/AdsrView.h"
 #include "gui/NeonStyle.h"
 
 //==============================================================================
@@ -50,8 +51,8 @@ public:
         {
             const float target = voices[i].active.load (std::memory_order_relaxed)
                                ? voices[i].level.load (std::memory_order_relaxed) : 0.0f;
-            const float next = juce::jmax (target, glow[i] * 0.75f);
-            if (std::abs (next - glow[i]) > 0.002f) { glow[i] = next; changed = true; }
+            const float next = juce::jmax (target, glow[i] * glowDecay);
+            if (std::abs (next - glow[i]) > repaintThreshold) { glow[i] = next; changed = true; }
         }
         if (changed)
             repaint();
@@ -72,7 +73,7 @@ public:
             const float level = glow[i];
             const auto dot = juce::Rectangle<float> (radius * 2.0f, radius * 2.0f).withCentre (c);
 
-            if (level > 0.01f)
+            if (level > litThreshold)
             {
                 g.setColour (neon::crt::phosphorGlow.withAlpha (0.40f * level));
                 g.fillEllipse (dot.expanded (radius * 1.2f));
@@ -94,6 +95,10 @@ public:
     }
 
 private:
+    static constexpr float glowDecay        = 0.75f;   // per timer tick, so a light fades in a few frames rather than blinking out
+    static constexpr float repaintThreshold = 0.002f;  // changes smaller than this are not worth a repaint
+    static constexpr float litThreshold     = 0.01f;   // a voice glows above this level; below it, it is drawn idle
+
     std::array<float, NeonSynthProcessor::numVoices> glow {};
     int limit = NeonSynthProcessor::numVoices;
 };
