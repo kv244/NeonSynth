@@ -3,7 +3,6 @@
 // Licensed under the GNU Affero General Public License v3; see LICENSE.
 
 #include "plugin/NeonSynthProcessor.h"
-#include "gui/NeonSynthEditor.h"
 
 NeonSynthProcessor::NeonSynthProcessor()
     : AudioProcessor (BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true)),

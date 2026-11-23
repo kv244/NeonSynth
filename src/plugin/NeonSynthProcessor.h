@@ -37,7 +37,7 @@ public:
 
     bool isBusesLayoutSupported (const BusesLayout& layouts) const override;
 
-    juce::AudioProcessorEditor* createEditor() override;
+    juce::AudioProcessorEditor* createEditor() override;   // in gui/NeonSynthEditor.cpp: the processor does not include the editor
     bool hasEditor() const override { return true; }
 
     const juce::String getName() const override { return "NeonSynth"; }
