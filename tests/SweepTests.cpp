@@ -44,7 +44,21 @@ namespace
             ++failures;
     }
 
-    const double sampleRates[] = { 44100.0, 48000.0, 88200.0, 96000.0, 192000.0 };
+    // Under AddressSanitizer (the sanitizers CI job, a Debug build) the full sweep takes longer
+    // than the job may run, so it covers the extremes: two rates and three block plans, still
+    // including one-sample blocks and the varying plan. The normal build sweeps everything.
+   #if defined (__SANITIZE_ADDRESS__)
+    #define NEONSYNTH_QUICK_SWEEP 1
+   #elif defined (__has_feature)
+    #if __has_feature (address_sanitizer)
+     #define NEONSYNTH_QUICK_SWEEP 1
+    #endif
+   #endif
+   #if defined (NEONSYNTH_QUICK_SWEEP)
+    const std::vector<double> sampleRates { 44100.0, 192000.0 };
+   #else
+    const std::vector<double> sampleRates { 44100.0, 48000.0, 88200.0, 96000.0, 192000.0 };
+   #endif
 
     /** Host block sizes: fixed ones, or (empty sizes) the changing sequence. */
     struct BlockPlan
@@ -59,7 +73,12 @@ namespace
             { "1",    { 1 } },    { "31",   { 31 } },   { "64",   { 64 } },
             { "512",  { 512 } },  { "4096", { 4096 } },
             { "varying", { 1, 7, 512, 33, 4096, 128, 2, 999, 64, 31, 3000, 5 } } };
+       #if defined (NEONSYNTH_QUICK_SWEEP)
+        static const std::vector<BlockPlan> quick { plans[0], plans[4], plans[5] };   // 1, 4096, varying
+        return quick;
+       #else
         return plans;
+       #endif
     }
 
     constexpr int maxBlockSize = 4096;
