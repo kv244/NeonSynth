@@ -393,6 +393,7 @@ endif()
 if(NEONSYNTH_INTEGRITY)
     file(GLOB neonsynth_test_sources CONFIGURE_DEPENDS ${CMAKE_CURRENT_LIST_DIR}/tests/*.cpp)
     set_source_files_properties(src/plugin/NeonSynthProcessor.cpp src/plugin/Parameters.cpp src/plugin/MidiRouter.cpp
-                                src/plugin/MidiLogger.cpp src/state/SessionState.cpp ${neonsynth_test_sources}
+                                src/plugin/MidiLogger.cpp src/plugin/NeonSynthVoice.cpp src/state/SessionState.cpp
+                                src/gui/NeonSynthEditor.cpp ${neonsynth_test_sources}
         PROPERTIES COMPILE_OPTIONS "${neonsynth_integrity_flags}")
 endif()

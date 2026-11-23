@@ -3,7 +3,7 @@
 // Licensed under the GNU Affero General Public License v3; see LICENSE.
 
 #include "state/SessionState.h"
-#include "dsp/Oscillator.h"   // CHOP's pattern: Chop::stepsPerPattern and the default (ChopSettings)
+#include "dsp/Chop.h"   // CHOP's pattern: Chop::stepsPerPattern and the default (ChopSettings)
 #include <cmath>
 
 namespace
