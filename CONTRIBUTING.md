@@ -66,6 +66,7 @@ request which thread new code runs on.
 | New parameters are appended at the end of the layout, with a neutral default (the value that leaves the sound as it was). Hosts store sessions by parameter ID and normalised value, so nothing may be renamed, moved or re-ranged. | `ParameterLayoutTests` compares every parameter with `tests/parameter-layout.txt`; after appending one, update the reference with `ParameterLayoutTests --write` and commit it |
 | Every feature is visible in the GUI: every parameter has a control, each source shows its own controls with nothing overlapping, and every view paints at 75%, 100% and 150%. | `EditorTests` |
 | The user manual describes every change, and its cover and "Applies to" name the release. | `docs/build_manual.py --check` in CI (`manual.yml`, and again at release); redraw the cover with `python docs/figures/cover.py --date "<release date>"` |
+| The manual's "What's new in this version" section opens with an entry for the release (`### vX.Y.Z`): what a player notices, new, changed or fixed, with links to the chapters; the CHANGELOG keeps the full history. | `tests/integrity.py` (the integrity job) fails until the newest entry names the CMake version |
 | The plugin passes pluginval at strictness 10. | `test.yml` on every pull request, and `release.yml` before a release |
 
 A release also bumps the version in `CMakeLists.txt` (both places) and `installer.nsi`, and adds a row

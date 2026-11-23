@@ -21,10 +21,25 @@ Each figure is labelled by how it was made: **Actual application capture** (a sc
 
 The sound-design settings are starting points to set by hand; most of them are also in the factory bank (see [Presets](#presets)). Begin at a low listening level and adjust by ear.
 
-Edition 2.0 adds the chapters [Playing: HOLD, GLIDE and LEGATO](#playing-hold-glide-and-legato) and [Presets](#presets), and the step sequencer chapter now covers pattern length, ties and slides, the scale lock, step entry, the pattern tools and undo. Figures 1 and 8 show the v1.11.0 window.
+## What's new in this version
+
+Each release adds its entry at the top of this section; the full history, fixes and internal changes included, is in the [CHANGELOG](https://github.com/kv244/NeonSynth/blob/master/CHANGELOG.md).
+
+### v1.11.0 "Playing"
+
+- **HOLD** keeps keyboard notes sounding after you let go, until you switch it off; in Transpose mode it latches the key, so the pattern plays on. See [Playing: HOLD, GLIDE and LEGATO](#playing-hold-glide-and-legato).
+- **GLIDE** slides each new note from the last one in a set time, and **LEGATO**, with one voice, makes overlapping keys glide without a new attack.
+- **The step sequencer** gains a pattern LENGTH of 1 to 16 steps, TIE and SLD (slide) on each step, a KEY and SCALE lock, note entry from the keyboard (ENTER), pattern TOOLS, and UNDO. The velocity bar of each step can be dragged: velocity is the accent. See [Step sequencer](#step-sequencer).
+- **Presets:** a preset bar in the header, your own presets in Documents/NeonSynth/Presets, and 16 factory presets, which are also the DAW's program list. See [Presets](#presets).
+- **Changed:** a synced LFO set in bars follows the DAW's time signature (in 3/4 a bar is three beats), so such a session in a project that is not in 4/4 sounds different from v1.10. With fewer than 16 voices, the voice taken when all are busy is now the right one (a note held by the sustain pedal is no longer taken first).
+- **Fixed:** Esc closes the help page in DAWs that keep the key to themselves; the internal clock no longer drifts by a sample with very small audio blocks.
+- **The window:** the header, the MODULATION panel and the sequencer gained controls (Figures 1 and 8 show the v1.11.0 window); every other panel is where it was.
+
+Earlier versions: [CHANGELOG](https://github.com/kv244/NeonSynth/blob/master/CHANGELOG.md).
 
 ## Contents
 
+- [What's new in this version](#whats-new-in-this-version)
 - [Getting started](#getting-started)
 - [Learning by listening](#learning-by-listening)
 - [Finding your way around](#finding-your-way-around)

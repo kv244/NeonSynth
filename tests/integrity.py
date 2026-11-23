@@ -184,6 +184,11 @@ def check_version():
     m = re.search(r"^\|\s*\[v(\d+\.\d+\.\d+)\]", read(ROOT / "CHANGELOG.md"), flags=re.M)
     found["CHANGELOG newest row"] = m.group(1) if m else None
 
+    # The manual's "What's new in this version" section opens with the current release (Julian,
+    # 23 Nov 2026: every release adds its entry there).
+    m = re.search(r"^## What's new in this version\s*$.*?^### v(\d+\.\d+\.\d+)", read(MANUAL), flags=re.M | re.S)
+    found["manual, newest What's new entry"] = m.group(1) if m else None
+
     expected = found["CMakeLists.txt project()"]
     for where, version in found.items():
         note(f"{where}: {version}")
