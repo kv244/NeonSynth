@@ -162,6 +162,10 @@ jobs:
             libfreetype6-dev libglib2.0-dev libgl1-mesa-dev libgtk-3-dev \
             xvfb
 
+      # The sanitizer runtime is a separate package for the installed Clang version.
+      - name: Clang's sanitizer runtime
+        run: sudo apt-get install -y "libclang-rt-$(clang -dumpversion | cut -d. -f1)-dev"
+
       # TSan's shadow memory needs the older address-space randomisation range on newer kernels.
       - name: Address-space randomisation for ThreadSanitizer
         run: sudo sysctl vm.mmap_rnd_bits=28
@@ -227,6 +231,10 @@ jobs:
             libxext-dev libxinerama-dev libxrandr-dev libxrender-dev \
             libfreetype6-dev libglib2.0-dev libgl1-mesa-dev libgtk-3-dev \
             xvfb
+
+      # The profile runtime is a separate package for the installed Clang version.
+      - name: Clang's profile runtime
+        run: sudo apt-get install -y "libclang-rt-$(clang -dumpversion | cut -d. -f1)-dev"
 
       - name: Cache JUCE
         id: cache-juce
