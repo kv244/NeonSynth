@@ -196,7 +196,12 @@ int main (int argc, char* argv[])
         setParameter (p, "smpRoot", 57.0f);
         setParameter (p, "chopOvertone", 50.0f);
         for (int i = 0; i < StepSequencer::numSteps; ++i)
-            p.setSequencerStep (i, { i % 3 != 2, 45 + i, 60 + 4 * i });
+            p.setSequencerStep (i, { i % 3 != 2, 45 + i, 60 + 4 * i, i == 3, i == 6 });   // v1.11.0: a tie and a slide
+        setParameter (p, "glide", 120.0f);       // v1.11.0's playing and pattern parameters
+        setParameter (p, "legato", 1.0f);
+        setParameter (p, "seqLength", 12.0f);
+        setParameter (p, "seqKey", 9.0f);        // A
+        setParameter (p, "seqScale", 10.0f);     // Minor pentatonic
         p.setChopStep (0, true);
         p.setChopStep (1, false);
         const auto state = save (p);
@@ -332,19 +337,21 @@ int main (int argc, char* argv[])
             for (int i = 0; i < StepSequencer::numSteps; ++i)
             {
                 const auto x = a.getSequencerStep (i), y = expected (i);
-                if (x.on != y.on || x.note != y.note || x.velocity != y.velocity)
+                if (x.on != y.on || x.note != y.note || x.velocity != y.velocity || x.tie != y.tie || x.slide != y.slide)
                     return false;
             }
             return true;
         };
         auto defaultPattern = [&fresh] (int i) { return fresh.getSequencerStep (i); };
         auto savedPattern = [] (int i) { return StepSequencer::Step { i % 3 != 2, 45 + i, 60 + 4 * i }; };
+        auto savedPatternV111 = [] (int i) { return StepSequencer::Step { i % 3 != 2, 45 + i, 60 + 4 * i, i == 3, i == 6 }; };
 
-        struct Case { const char* file; const char* release; bool hasPattern, hasSample, hasChop; };
+        struct Case { const char* file; const char* release; bool hasPattern, hasSample, hasChop, hasV111 = false; };
         for (const auto& c : { Case { "v1.2.0.xml",  "v1.2 (no version, no pattern)",       false, false, false },
                                Case { "v1.4.0.xml",  "v1.4 (stateVersion 2, pattern)",       true,  false, false },
                                Case { "v1.5.0.xml",  "v1.5 (stateVersion 3, embedded sample)", true, true,  false },
-                               Case { "v1.10.0.xml", "v1.10 (stateVersion 4, CHOP and all)", true,  true,  true } })
+                               Case { "v1.10.0.xml", "v1.10 (stateVersion 4, CHOP and all)", true,  true,  true },
+                               Case { "v1.11.0.xml", "v1.11 (tie, slide, glide, legato, length, scale)", true, true, true, true } })
         {
             const auto state = fixture (c.file);
             const juce::String name (c.release);
@@ -363,7 +370,16 @@ int main (int argc, char* argv[])
             check (juce::approximatelyEqual (plainValue (p, "lfoCutoff"), plainValue (fresh, "lfoCutoff"))
                        && juce::approximatelyEqual (plainValue (p, "filterEnvAmt"), plainValue (fresh, "filterEnvAmt")),
                    (name + ": parameters added since keep their neutral defaults").toRawUTF8());
-            check (c.hasPattern ? patternIs (p, savedPattern) : patternIs (p, defaultPattern),
+            if (c.hasV111)
+                check (juce::approximatelyEqual (plainValue (p, "glide"), 120.0f) && plainValue (p, "legato") > 0.5f
+                           && juce::approximatelyEqual (plainValue (p, "seqLength"), 12.0f) && juce::approximatelyEqual (plainValue (p, "seqKey"), 9.0f)
+                           && juce::approximatelyEqual (plainValue (p, "seqScale"), 10.0f) && plainValue (p, "hold") < 0.5f,
+                       (name + ": its v1.11 parameters load").toRawUTF8());
+            else
+                check (juce::approximatelyEqual (plainValue (p, "glide"), 0.0f) && plainValue (p, "legato") < 0.5f
+                           && juce::approximatelyEqual (plainValue (p, "seqLength"), 16.0f) && plainValue (p, "seqScale") < 0.5f,
+                       (name + ": glide, legato, length and scale keep their neutral defaults").toRawUTF8());
+            check (c.hasV111 ? patternIs (p, savedPatternV111) : c.hasPattern ? patternIs (p, savedPattern) : patternIs (p, defaultPattern),
                    (name + (c.hasPattern ? ": its pattern loads" : ": the default pattern loads")).toRawUTF8());
             check (c.hasSample ? p.getSampleStatus().name.endsWith (".wav") && p.getSampleStatus().problem.isEmpty()
                                : p.getSampleStatus().name == "Default pad",

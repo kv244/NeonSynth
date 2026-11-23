@@ -42,7 +42,7 @@ namespace
 
     constexpr double rate = 48000.0;
     constexpr int    blockSize = 64;   // one event per block, so every note has its own age
-    constexpr int    channel = 1;      // the processor moves keyboard input to channel 1
+    constexpr int    keyboardMidiChannel = 1;      // the processor moves keyboard input to channel 1
 
     void setParameter (juce::AudioProcessor& p, const juce::String& id, float value)
     {
@@ -60,10 +60,10 @@ namespace
         {
             switch (type)
             {
-                case on:        return juce::MidiMessage::noteOn (channel, note, (juce::uint8) 100);
-                case off:       return juce::MidiMessage::noteOff (channel, note);
-                case pedalDown: return juce::MidiMessage::controllerEvent (channel, 64, 127);
-                case pedalUp:   return juce::MidiMessage::controllerEvent (channel, 64, 0);
+                case on:        return juce::MidiMessage::noteOn (keyboardMidiChannel, note, (juce::uint8) 100);
+                case off:       return juce::MidiMessage::noteOff (keyboardMidiChannel, note);
+                case pedalDown: return juce::MidiMessage::controllerEvent (keyboardMidiChannel, 64, 127);
+                case pedalUp:   return juce::MidiMessage::controllerEvent (keyboardMidiChannel, 64, 0);
                 case wait:      break;
             }
             return {};
