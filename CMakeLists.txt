@@ -89,6 +89,21 @@ if(NEONSYNTH_SANITIZE)
     target_link_options(neonsynth_sanitize INTERFACE ${neonsynth_sanitize_flags})
 endif()
 
+# Link-time optimisation for the plugin (v1.11.1). On by default and always on for releases and for
+# the CI job that runs the compare test and pluginval, so what ships is what is tested. Turn it off
+# for local builds and the other CI jobs: it is the slowest step of the plugin's build and changes
+# nothing that sounds (-ffp-contract=off and no fast-math keep the arithmetic exact either way).
+# Only Release uses it (juce_recommended_lto_flags). GCC runs its final step on every core
+# (-flto=auto) instead of one; MSVC's /LTCG is parallel already.
+option(NEONSYNTH_LTO "Link the plugin with link-time optimisation (Release builds)" ON)
+add_library(neonsynth_lto INTERFACE)
+if(NEONSYNTH_LTO)
+    target_link_libraries(neonsynth_lto INTERFACE juce::juce_recommended_lto_flags)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        target_link_options(neonsynth_lto INTERFACE $<$<CONFIG:Release>:-flto=auto>)
+    endif()
+endif()
+
 juce_add_plugin(NeonSynth
     VERSION                     1.11.0
     COMPANY_NAME                "AudioDSP"
@@ -185,7 +200,7 @@ target_link_libraries(NeonSynth
         juce::juce_dsp
     PUBLIC
         juce::juce_recommended_config_flags
-        juce::juce_recommended_lto_flags
+        neonsynth_lto
         juce::juce_recommended_warning_flags
         neonsynth_warning_tweaks
         neonsynth_sanitize
@@ -200,77 +215,126 @@ target_include_directories(NeonSynth
 )
 
 # ---------------------------------------------------------------------------
-# Optional unit tests, one executable per file in tests/ (listed in
-# NEONSYNTH_UNIT_TESTS below). They only need JUCE's audio modules, so they
-# build in a few seconds once JUCE is compiled:
+# Optional tests, one executable per file in tests/ (listed in NEONSYNTH_UNIT_TESTS or
+# NEONSYNTH_ENGINE_TESTS below). JUCE and the engine are compiled once for all of them (v1.11.1),
+# so each new test costs only its own file:
 #   cmake -B build -DJUCE_DIR=... -DNEONSYNTH_BUILD_TESTS=ON
 #   cmake --build build --config Release --target unit_tests
 #   ctest --test-dir build -C Release --output-on-failure
-# Each executable exits non-zero if any test fails. A new test only needs its
-# name added to NEONSYNTH_UNIT_TESTS; CI runs everything ctest knows about.
+# Each executable exits non-zero if any test fails. A new test only needs its name added to one
+# of the two lists; CI runs everything ctest knows about.
 # ---------------------------------------------------------------------------
 option(NEONSYNTH_BUILD_TESTS "Build the unit tests and the render benchmark" OFF)
 
 if(NEONSYNTH_BUILD_TESTS)
     enable_testing()
-    set(NEONSYNTH_UNIT_TESTS StepSequencerTests VoiceEnvelopeTests OscillatorTests ChopTests SculptTests SampleDataTests SampleReaderTests GranularTests FilterTests LfoTests ModulationTests)
     add_custom_target(unit_tests)
 
-    foreach(test ${NEONSYNTH_UNIT_TESTS})
-        juce_add_console_app(${test} PRODUCT_NAME "${test}")
-        target_sources(${test} PRIVATE tests/${test}.cpp)
-        target_include_directories(${test} PRIVATE ${CMAKE_CURRENT_LIST_DIR}/src)
-        target_compile_definitions(${test} PRIVATE
-            JUCE_WEB_BROWSER=0
-            JUCE_USE_CURL=0)
-        target_link_libraries(${test} PRIVATE
-            juce::juce_audio_basics
-            juce::juce_audio_formats
-            juce::juce_recommended_config_flags
-            juce::juce_recommended_warning_flags
-            neonsynth_warning_tweaks
-            neonsynth_sanitize)
-        add_dependencies(unit_tests ${test})
-        add_test(NAME ${test} COMMAND ${test})
-    endforeach()
-
-    # FilterTests compares CytomicSvf with juce::dsp::StateVariableTPTFilter bit for bit
-    target_link_libraries(FilterTests PRIVATE juce::juce_dsp)
-
-    # Programs that drive the whole processor directly (no host, no Python):
-    #   RenderBenchmark       times processBlock for a few load scenarios
-    #   RealtimeSafetyTests   fails if processBlock allocates (also run by ctest)
-    #   ParameterLayoutTests  fails if a parameter changed other than by being appended (ctest)
-    #   SessionStateTests     saving and restoring the sample with a session (ctest)
-    #   StateFuzzTests        damaged and hostile sessions must not crash or break the processor (ctest)
-    #   EditorTests           drives the editor offscreen with mouse events and paints it (ctest;
-    #                         on Linux it needs an X display, e.g. xvfb-run)
-    #   PresetTests           presets: save and load, the factory bank renders cleanly, programs (ctest, v1.11.0)
-    foreach(program RenderBenchmark RealtimeSafetyTests ParameterLayoutTests SessionStateTests StateFuzzTests EditorTests PitchTests MidiModulationTests
-            PlayingTests PresetTests VoiceStealingTests SweepTests)   # v1.11.0
-        juce_add_console_app(${program} PRODUCT_NAME "${program}")
-        juce_generate_juce_header(${program})
-        target_sources(${program} PRIVATE tests/${program}.cpp src/plugin/NeonSynthProcessor.cpp)
-        target_include_directories(${program} PRIVATE ${CMAKE_CURRENT_LIST_DIR}/src)
-        target_compile_definitions(${program} PRIVATE
-            JUCE_WEB_BROWSER=0
-            JUCE_USE_CURL=0
-            JUCE_MODAL_LOOPS_PERMITTED=1                          # EditorTests runs the message loop
-            NEONSYNTH_TESTS_DIR="${CMAKE_CURRENT_LIST_DIR}/tests")   # ParameterLayoutTests' reference
-        target_link_libraries(${program} PRIVATE
-            NeonSynthFonts
+    # v1.11.1: JUCE and the engine are each compiled once for all the test programs, as two
+    # static libraries they link, instead of once per program (before: every one of the 23
+    # programs compiled the JUCE modules it used, and 12 of them NeonSynthProcessor.cpp too).
+    #
+    #   neonsynth_test_juce   the JUCE modules the tests use, built as a console application
+    #                         would build them; its JuceHeader.h is written below
+    #   neonsynth_engine      the processor and everything it includes (voice, DSP, sequencer,
+    #                         state, and the editor for EditorTests), plus the fonts
+    #
+    # The plugin keeps its own copy of both: its JUCE is configured as a plugin
+    # (JucePlugin_* definitions, the wrappers), which a test program must not be.
+    add_library(neonsynth_test_juce STATIC)
+    target_link_libraries(neonsynth_test_juce
+        PRIVATE
             juce::juce_audio_utils
             juce::juce_audio_processors
+            juce::juce_audio_formats
             juce::juce_dsp
+        PUBLIC
             juce::juce_recommended_config_flags
-            juce::juce_recommended_lto_flags
-            juce::juce_recommended_warning_flags
-            neonsynth_warning_tweaks
             neonsynth_sanitize)
+    target_compile_definitions(neonsynth_test_juce
+        PUBLIC
+            JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1
+            JUCE_STANDALONE_APPLICATION=1
+            JUCE_WEB_BROWSER=0
+            JUCE_USE_CURL=0
+            JUCE_MODAL_LOOPS_PERMITTED=1)          # EditorTests runs the message loop
+    # The modules' include paths and JUCE_MODULE_AVAILABLE_* definitions reach the programs
+    # that link this library (JUCE's modules are linked privately, so their sources compile
+    # here once and nowhere else).
+    target_include_directories(neonsynth_test_juce INTERFACE
+        $<TARGET_PROPERTY:neonsynth_test_juce,INCLUDE_DIRECTORIES>
+        ${CMAKE_CURRENT_BINARY_DIR}/neonsynth_test_juce)
+    target_compile_definitions(neonsynth_test_juce INTERFACE
+        $<TARGET_PROPERTY:neonsynth_test_juce,COMPILE_DEFINITIONS>)
+    set_target_properties(neonsynth_test_juce PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    # JuceHeader.h for the tests and the engine, as juceaide would write it for a target with
+    # these modules (juce_generate_juce_header only works on juce_add_* targets).
+    file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/neonsynth_test_juce/JuceHeader.h
+"#pragma once
+#include <juce_audio_utils/juce_audio_utils.h>
+#include <juce_audio_processors/juce_audio_processors.h>
+#include <juce_gui_extra/juce_gui_extra.h>
+#include <juce_gui_basics/juce_gui_basics.h>
+#include <juce_graphics/juce_graphics.h>
+#include <juce_events/juce_events.h>
+#include <juce_core/juce_core.h>
+#include <juce_data_structures/juce_data_structures.h>
+#include <juce_audio_basics/juce_audio_basics.h>
+#include <juce_audio_formats/juce_audio_formats.h>
+#include <juce_audio_devices/juce_audio_devices.h>
+#include <juce_dsp/juce_dsp.h>
+#if ! DONT_SET_USING_JUCE_NAMESPACE
+ using namespace juce;
+#endif
+")
+
+    add_library(neonsynth_engine STATIC src/plugin/NeonSynthProcessor.cpp)
+    target_include_directories(neonsynth_engine PUBLIC ${CMAKE_CURRENT_LIST_DIR}/src)
+    target_link_libraries(neonsynth_engine
+        PUBLIC
+            neonsynth_test_juce
+            NeonSynthFonts
+        PRIVATE
+            juce::juce_recommended_warning_flags
+            neonsynth_warning_tweaks)
+    set_target_properties(neonsynth_engine PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+    # Unit tests of single classes: one program per file, linking only JUCE.
+    set(NEONSYNTH_UNIT_TESTS StepSequencerTests VoiceEnvelopeTests OscillatorTests ChopTests SculptTests SampleDataTests SampleReaderTests GranularTests FilterTests LfoTests ModulationTests)
+
+    # Programs that drive the whole processor directly (no host, no Python), linking the engine:
+    #   RenderBenchmark       times processBlock for a few load scenarios (not run by ctest)
+    #   RealtimeSafetyTests   fails if processBlock allocates
+    #   ParameterLayoutTests  fails if a parameter changed other than by being appended
+    #   SessionStateTests     saving and restoring the sample with a session
+    #   StateFuzzTests        damaged and hostile sessions must not crash or break the processor
+    #   EditorTests           drives the editor offscreen with mouse events and paints it (on
+    #                         Linux it needs an X display, e.g. xvfb-run)
+    #   PitchTests, MidiModulationTests, PlayingTests, PresetTests, VoiceStealingTests, SweepTests
+    set(NEONSYNTH_ENGINE_TESTS RealtimeSafetyTests ParameterLayoutTests SessionStateTests StateFuzzTests EditorTests PitchTests MidiModulationTests
+        PlayingTests PresetTests VoiceStealingTests SweepTests)
+
+    foreach(program ${NEONSYNTH_UNIT_TESTS} ${NEONSYNTH_ENGINE_TESTS} RenderBenchmark)
+        add_executable(${program} tests/${program}.cpp)
+        target_include_directories(${program} PRIVATE ${CMAKE_CURRENT_LIST_DIR}/src)
+        target_compile_definitions(${program} PRIVATE
+            NEONSYNTH_TESTS_DIR="${CMAKE_CURRENT_LIST_DIR}/tests")   # fixtures, the parameter layout
+        target_link_libraries(${program} PRIVATE
+            juce::juce_recommended_warning_flags
+            neonsynth_warning_tweaks)
+        # Kept where they were before v1.11.1, so the test programs land in the same place.
+        set_target_properties(${program} PROPERTIES
+            RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/${program}_artefacts/$<CONFIG>)
     endforeach()
 
-    foreach(program RealtimeSafetyTests ParameterLayoutTests SessionStateTests StateFuzzTests EditorTests PitchTests MidiModulationTests
-            PlayingTests PresetTests VoiceStealingTests SweepTests)   # v1.11.0
+    foreach(test ${NEONSYNTH_UNIT_TESTS})
+        target_link_libraries(${test} PRIVATE neonsynth_test_juce)
+    endforeach()
+    foreach(program ${NEONSYNTH_ENGINE_TESTS} RenderBenchmark)
+        target_link_libraries(${program} PRIVATE neonsynth_engine)
+    endforeach()
+
+    foreach(program ${NEONSYNTH_UNIT_TESTS} ${NEONSYNTH_ENGINE_TESTS})
         add_dependencies(unit_tests ${program})
         add_test(NAME ${program} COMMAND ${program})
     endforeach()
