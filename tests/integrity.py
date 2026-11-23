@@ -316,7 +316,7 @@ CPPCHECK_IGNORED_IDS = {
 }
 CPPCHECK_SUPPRESSIONS = [
     ("containerOutOfBounds", "src/gui/SpectrumView.h", "curve has numPoints + 1 entries; cppcheck takes it for numPoints"),
-    ("badBitmaskCheck", "src/plugin/NeonSynthProcessor.cpp", "keyboardChannel - 1 is 0 on purpose: the channel bits are replaced"),
+    ("badBitmaskCheck", "src/plugin/MidiRouter.cpp", "keyboardChannel - 1 is 0 on purpose: the channel bits are replaced"),
     ("knownConditionTrueFalse", "tests/EditorTests.cpp", "the page cache's count changes inside paint calls cppcheck does not follow"),
     ("knownConditionTrueFalse", "tests/SampleDataTests.cpp", "where no hash was recorded for the platform, the pad is compared with itself"),
     ("knownConditionTrueFalse", "tests/PresetTests.cpp", "the host's counters change inside pumpMessages(), on the message thread, which cppcheck does not follow"),
