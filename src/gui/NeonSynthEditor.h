@@ -1158,9 +1158,9 @@ private:
 
     void updateFilterState (bool on)
     {
-        for (juce::Component* c : { (juce::Component*) &cutoffSlider, (juce::Component*) &filterModeCombo,
-                                    (juce::Component*) &filterResKnob, (juce::Component*) &filterDriveKnob,
-                                    (juce::Component*) &filterEnvAmtKnob, (juce::Component*) &filterVelKnob })
+        for (juce::Component* c : { static_cast<juce::Component*> (&cutoffSlider), static_cast<juce::Component*> (&filterModeCombo),
+                                    static_cast<juce::Component*> (&filterResKnob), static_cast<juce::Component*> (&filterDriveKnob),
+                                    static_cast<juce::Component*> (&filterEnvAmtKnob), static_cast<juce::Component*> (&filterVelKnob) })
         {
             c->setEnabled (on);
             c->setAlpha (on ? 1.0f : 0.4f);
@@ -1192,15 +1192,15 @@ private:
     {
         tab = juce::jlimit (0, 1, tab);
         const bool filter = tab == 1;
-        for (juce::Component* c : { (juce::Component*) &adsrView, (juce::Component*) &attackKnob, (juce::Component*) &decayKnob,
-                                    (juce::Component*) &sustainKnob, (juce::Component*) &releaseKnob,
-                                    (juce::Component*) &attackReadout, (juce::Component*) &decayReadout,
-                                    (juce::Component*) &sustainReadout, (juce::Component*) &releaseReadout })
+        for (juce::Component* c : { static_cast<juce::Component*> (&adsrView), static_cast<juce::Component*> (&attackKnob), static_cast<juce::Component*> (&decayKnob),
+                                    static_cast<juce::Component*> (&sustainKnob), static_cast<juce::Component*> (&releaseKnob),
+                                    static_cast<juce::Component*> (&attackReadout), static_cast<juce::Component*> (&decayReadout),
+                                    static_cast<juce::Component*> (&sustainReadout), static_cast<juce::Component*> (&releaseReadout) })
             c->setVisible (! filter);
-        for (juce::Component* c : { (juce::Component*) &filterAdsrView, (juce::Component*) &filterAttackKnob, (juce::Component*) &filterDecayKnob,
-                                    (juce::Component*) &filterSustainKnob, (juce::Component*) &filterReleaseKnob,
-                                    (juce::Component*) &filterAttackReadout, (juce::Component*) &filterDecayReadout,
-                                    (juce::Component*) &filterSustainReadout, (juce::Component*) &filterReleaseReadout })
+        for (juce::Component* c : { static_cast<juce::Component*> (&filterAdsrView), static_cast<juce::Component*> (&filterAttackKnob), static_cast<juce::Component*> (&filterDecayKnob),
+                                    static_cast<juce::Component*> (&filterSustainKnob), static_cast<juce::Component*> (&filterReleaseKnob),
+                                    static_cast<juce::Component*> (&filterAttackReadout), static_cast<juce::Component*> (&filterDecayReadout),
+                                    static_cast<juce::Component*> (&filterSustainReadout), static_cast<juce::Component*> (&filterReleaseReadout) })
             c->setVisible (filter);
         ampEnvButton.setToggleState (! filter, juce::dontSendNotification);
         filterEnvButton.setToggleState (filter, juce::dontSendNotification);
@@ -1270,7 +1270,7 @@ private:
         set (vibratoReadout,   juce::String (juce::roundToInt (vibratoValue->load())) + " ct");
         const int glideMs = juce::roundToInt (glideValue->load());
         set (glideReadout,     glideMs == 0 ? juce::String ("off") : glideMs < 1000 ? juce::String (glideMs) + " ms"
-                                                                                    : juce::String (glideMs / 1000.0f, 2) + " s");
+                                                                                    : juce::String ((float) glideMs / 1000.0f, 2) + " s");
 
         const auto percent = [] (float v) { return juce::String (juce::roundToInt (v * 100.0f)) + "%"; };
         set (smpRootReadout,      juce::MidiMessage::getMidiNoteName (juce::roundToInt (smpRootValue->load()), true, true, 4));

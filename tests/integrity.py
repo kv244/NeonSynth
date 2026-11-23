@@ -317,6 +317,7 @@ CPPCHECK_SUPPRESSIONS = [
     ("knownConditionTrueFalse", "tests/PresetTests.cpp", "the host's counters change inside pumpMessages(), on the message thread, which cppcheck does not follow"),
     ("knownArgument", "tests/PresetTests.cpp", "the same: the counter is read again after pumpMessages()"),
     ("unusedFunction", "src/state/PresetManager.h", "compareElements is the comparator juce::Array::sort calls by name"),
+    ("suspiciousFloatingPointCast", "tests/FilterTests.cpp", "the float round trip is the point: the filter holds its coefficient as a float"),
 ]
 JUCE_ENTRY_POINTS = {"createPluginFilter", "createEditor"}   # called by JUCE's plugin wrappers
 
