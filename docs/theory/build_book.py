@@ -7,12 +7,16 @@
     python docs/theory/build_book.py --out build/book    # ... or to another folder
 
 The check fails (exit 1) when the book does not match the code it ships with:
-  * "Target instrument" must name the version in CMakeLists.txt;
+  * "Target instrument" must name a release of the same minor version as CMakeLists.txt
+    (same X.Y), no newer than it: an edition for v1.11.0 holds for v1.11.1, as patch
+    releases change no theory (Julian, 23 Nov 2026), but not for v1.12.0;
   * every link to the repository at a tag (github.com/kv244/NeonSynth/.../vX.Y.Z) must
-    name that version too;
+    name a tag of that minor version, no newer than CMakeLists.txt (the files it names
+    exist at that tag; a patch release may have moved them since);
   * every relative link and image must point at a file that exists, and a link to
     a #section (in the book or another Markdown file) at a heading that exists.
-The book in the repository is never changed; the PDF is built from it as it is.
+The book in the repository is never changed; the PDF is built from it as it is, and is
+named and footed with the edition's own version (the "Target instrument" line).
 
 It is printed the way docs/build_manual.py prints the manual (Markdown -> HTML ->
 Chromium through Playwright), and borrows that script's version, heading-anchor and
@@ -41,19 +45,37 @@ sys.path.insert(0, str(DOCS))
 import build_manual  # noqa: E402  (docs/build_manual.py: project_version, heading_anchors, github_slug)
 
 REPO_TAG_LINK = re.compile(r"github\.com/kv244/NeonSynth/(?:blob|tree)/v(\d+\.\d+\.\d+)")
+TARGET = re.compile(r"Target instrument:\s*NeonSynth v(\d+\.\d+\.\d+)")
+
+
+def parse(version):
+    return tuple(int(part) for part in version.split("."))
+
+
+def same_minor(tag, version):
+    """True if release `tag` has the same X.Y as `version` and is not newer than it."""
+    t, v = parse(tag), parse(version)
+    return t[:2] == v[:2] and t <= v
+
+
+def target_version(md):
+    m = TARGET.search(md)
+    return m.group(1) if m else None
 
 
 def check(md, version):
     problems = []
-    m = re.search(r"Target instrument:\s*NeonSynth v(\d+\.\d+\.\d+)", md)
-    if not m:
+    target = target_version(md)
+    if not target:
         problems.append("the 'Target instrument: NeonSynth vX.Y.Z' line is missing")
-    elif m.group(1) != version:
-        problems.append(f"the book targets v{m.group(1)} but CMakeLists.txt says v{version}: "
-                        f"update the edition line (and the text) for this release")
-    stale = sorted({tag for tag in REPO_TAG_LINK.findall(md) if tag != version})
+    elif not same_minor(target, version):
+        problems.append(f"the book targets v{target} but CMakeLists.txt says v{version}: "
+                        f"update the edition line (and the text) for this release "
+                        f"(an edition holds for later patch releases of its own minor version only)")
+    stale = sorted({tag for tag in REPO_TAG_LINK.findall(md) if not same_minor(tag, version)}, key=parse)
     if stale:
-        problems.append(f"links to the repository at v{', v'.join(stale)}; this edition is for v{version}")
+        problems.append(f"links to the repository at v{', v'.join(stale)}; "
+                        f"this edition must link to a v{'.'.join(version.split('.')[:2])}.x tag up to v{version}")
     anchors = build_manual.heading_anchors(md)
     for link in re.findall(r"\]\(([^)\s]+)\)", md):
         if re.match(r"[a-z]+:", link):
@@ -210,13 +232,14 @@ def main():
         print(f"::error file=docs/theory/{BOOK.name}::{p}" if os.environ.get("GITHUB_ACTIONS") else f"error: {p}")
     if problems:
         return 1
-    print(f"book matches v{version}")
+    edition = target_version(md)
+    print(f"book (edition for v{edition}) matches v{version}")
     if a.check:
         return 0
 
     a.out.mkdir(parents=True, exist_ok=True)
-    pdf = a.out / f"The-DSP-Behind-NeonSynth-v{version}.pdf"
-    print_pdf(to_html(md, version), pdf)
+    pdf = a.out / f"The-DSP-Behind-NeonSynth-v{edition}.pdf"
+    print_pdf(to_html(md, edition), pdf)
     print(f"wrote {pdf} ({pdf.stat().st_size // 1024} KiB)")
     return 0
 
