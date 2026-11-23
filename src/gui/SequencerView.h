@@ -21,9 +21,18 @@
 
     Editing (all on the message thread, written to the processor lock-free):
       - click                     toggle the step on / off
-      - drag up / down            change the note, one semitone per 6 px
-      - shift-drag or right-drag  change the velocity
-      - mouse wheel               note +/- 1 semitone (with shift: velocity +/- 4)
+      - drag up / down            change the note, one semitone per 6 px (with the scale lock
+                                  on, one note of the scale per 6 px, so it lands in the scale)
+      - drag the velocity bar     change the velocity, 1 per px (v1.11.0: velocity is the accent)
+      - shift-drag or right-drag  change the velocity from anywhere in the cell
+      - mouse wheel               note +/- 1 semitone or scale note (with shift: velocity +/- 4)
+      - click TIE / SLD           v1.11.0: the two markers on the cell's bottom edge toggle the
+                                  step's tie and slide
+
+    v1.11.0: steps beyond the pattern's LENGTH are drawn dim (they keep their notes and come
+    back when the pattern is made longer), and while ENTER waits for notes the step the next
+    note goes to is outlined. The pattern row (PatternRow.h) hooks in through onBeforeEdit
+    (for undo) and onStepClicked (for ENTER).
 
     The grid keeps no pattern of its own: refresh(), called from the editor's
     timer, re-reads the 16 steps and the playhead from the processor and
@@ -34,10 +43,45 @@ class StepGrid : public juce::Component,
                  public juce::SettableTooltipClient
 {
 public:
-    explicit StepGrid (NeonSynthProcessor& p) : processor (p)
+    explicit StepGrid (NeonSynthProcessor& p)
+        : processor (p),
+          lengthValue (p.getAPVTS().getRawParameterValue ("seqLength")),   // v1.11.0
+          keyValue    (p.getAPVTS().getRawParameterValue ("seqKey")),
+          scaleValue  (p.getAPVTS().getRawParameterValue ("seqScale"))
     {
-        setTooltip ("Click: step on/off.  Drag up/down: note.  Shift- or right-drag: velocity.  Wheel: note (shift: velocity).");
+        setTooltip ("Click: step on/off.  Drag up/down: note (in the scale when it is locked).  Drag the velocity bar "
+                    "(or shift-drag): velocity, the step's accent.  TIE / SLD: hold into the next step / glide to it.  "
+                    "Wheel: note (shift: velocity).");
         refresh();
+    }
+
+    /** v1.11.0: called once before each edit the grid makes, while the pattern is still as it was (undo). */
+    std::function<void()> onBeforeEdit;
+
+    /** v1.11.0: a click on a step's body; return true to take it (ENTER picks its first step) instead of toggling. */
+    std::function<bool (int step)> onStepClicked;
+
+    /** v1.11.0: the step ENTER writes next, outlined; -1 for none. */
+    void setEntryCursor (int step)
+    {
+        if (step != entryCursor) { entryCursor = step; repaint(); }
+    }
+
+    /** v1.11.0: the pattern's length, as the grid shows it (steps beyond it are dim). */
+    /** KEY and SCALE as the parameters hold them (v1.11.0); the pattern row's tools and ENTER
+        read them here too, so the grid and the row always agree. */
+    int key() const noexcept   { return keyValue != nullptr ? juce::jlimit (0, 11, juce::roundToInt (keyValue->load())) : 0; }
+
+    StepSequencer::Scale scale() const noexcept
+    {
+        return scaleValue != nullptr ? (StepSequencer::Scale) juce::jlimit (0, StepSequencer::numScales - 1, juce::roundToInt (scaleValue->load()))
+                                     : StepSequencer::Scale::off;
+    }
+
+    int getLength() const noexcept
+    {
+        return lengthValue != nullptr ? juce::jlimit (1, StepSequencer::numSteps, juce::roundToInt (lengthValue->load()))
+                                      : StepSequencer::numSteps;
     }
 
     /** Re-reads the pattern and playhead; repaints if anything changed. Message thread. */
@@ -52,6 +96,8 @@ public:
 
         const int head = processor.getSequencerPlayhead();
         if (head != playhead) { playhead = head; changed = true; }
+
+        if (const int length = getLength(); length != shownLength) { shownLength = length; changed = true; }   // v1.11.0
 
         if (changed)
             repaint();
@@ -68,9 +114,11 @@ public:
     {
         dragStep   = stepAt (e.position);
         dragged    = false;
+        editNoted  = false;
         if (dragStep < 0) return;
         dragStart  = steps[(size_t) dragStep];
         dragStartY = e.position.y;
+        dragZone   = zoneAt (dragStep, e.position);
     }
 
     void mouseDrag (const juce::MouseEvent& e) override
@@ -83,12 +131,13 @@ public:
         dragged = true;
 
         auto s = dragStart;
-        if (e.mods.isShiftDown() || e.mods.isRightButtonDown())
+        if (e.mods.isShiftDown() || e.mods.isRightButtonDown() || dragZone != Zone::body)   // v1.11.0: or on the velocity bar
             s.velocity = juce::jlimit (1, 127, dragStart.velocity + juce::roundToInt (dy));
         else
-            s.note = juce::jlimit (0, 127, dragStart.note + juce::roundToInt (dy / 6.0f));
+            s.note = StepSequencer::moveInScale (dragStart.note, key(), scale(), juce::roundToInt (dy / 6.0f));   // v1.11.0: snaps
 
-        write (dragStep, s);
+        if (! (s == steps[(size_t) dragStep]))
+            write (dragStep, s);
     }
 
     void mouseUp (const juce::MouseEvent&) override
@@ -96,7 +145,10 @@ public:
         if (dragStep >= 0 && ! dragged)
         {
             auto s = steps[(size_t) dragStep];
-            s.on = ! s.on;
+            if (dragZone == Zone::tie)         s.tie   = ! s.tie;     // v1.11.0
+            else if (dragZone == Zone::slide)  s.slide = ! s.slide;
+            else if (onStepClicked != nullptr && onStepClicked (dragStep)) { dragStep = -1; return; }
+            else                               s.on = ! s.on;
             write (dragStep, s);
         }
         dragStep = -1;
@@ -110,8 +162,10 @@ public:
         const int direction = wheel.deltaY > 0.0f ? 1 : -1;
         auto s = steps[(size_t) index];
         if (e.mods.isShiftDown()) s.velocity = juce::jlimit (1, 127, s.velocity + 4 * direction);
-        else                      s.note     = juce::jlimit (0, 127, s.note + direction);
-        write (index, s);
+        else                      s.note     = StepSequencer::moveInScale (s.note, key(), scale(), direction);   // v1.11.0: snaps
+        editNoted = false;   // each wheel notch is an edit of its own
+        if (! (s == steps[(size_t) index]))
+            write (index, s);
     }
 
 private:
@@ -123,7 +177,43 @@ private:
     static inline const juce::Colour headBlock { 0xffffc15e };
     static inline const juce::Colour headText  { 0xff1a0f00 };
 
+    // v1.11.0: the bottom of each cell, from the bottom up: the TIE / SLD markers, then the velocity bar.
+    static constexpr float markerHeight = 12.0f;
+    static constexpr float barTop       = 26.0f;   // the velocity bar's zone: from here to the markers
+
+    enum class Zone { body, velocity, tie, slide };
+
+    Zone zoneAt (int index, juce::Point<float> position) const
+    {
+        const auto cell = cellBounds (index);
+        if (position.y >= cell.getBottom() - markerHeight)
+            return position.x < cell.getCentreX() ? Zone::tie : Zone::slide;
+        if (position.y >= cell.getBottom() - barTop)
+            return Zone::velocity;
+        return Zone::body;
+    }
+
+
     void paintStep (juce::Graphics& g, int i) const
+    {
+        // v1.11.0: a step beyond LENGTH is drawn faded: it keeps its note but does not play.
+        const bool beyond = i >= shownLength;
+        if (beyond)
+            g.beginTransparencyLayer (0.3f);
+
+        paintCell (g, i);
+
+        if (beyond)
+            g.endTransparencyLayer();
+
+        if (i == entryCursor)   // v1.11.0: where ENTER writes the next note
+        {
+            g.setColour (neon::cyan);
+            g.drawRect (cellBounds (i).expanded (1.0f), 2.0f);
+        }
+    }
+
+    void paintCell (juce::Graphics& g, int i) const
     {
         const auto  cell    = cellBounds (i);
         const auto& s       = steps[(size_t) i];
@@ -165,7 +255,7 @@ private:
         // Note name: VT323, large enough to read across the room.
         const auto name  = juce::MidiMessage::getMidiNoteName (s.note, true, true, 4);
         const auto font  = neon::crt::displayFont (juce::jmin (40.0f, cell.getWidth() * 0.52f));
-        const auto label = cell.withTrimmedBottom (14.0f);
+        const auto label = cell.withTrimmedBottom (barTop);
         g.setFont (font);
         if (playing)
         {
@@ -189,7 +279,7 @@ private:
 
         // Velocity: a row of blocks along the bottom. The last lit block is drawn
         // in proportion to what is left, so every change of velocity still shows.
-        const auto  bar     = cell.reduced (5.0f, 0.0f).removeFromBottom (12.0f).withTrimmedBottom (5.0f);
+        const auto  bar     = cell.reduced (5.0f, 0.0f).removeFromBottom (barTop).withTrimmedBottom (markerHeight + 3.0f).withTrimmedTop (2.0f);
         const int   blocks  = juce::jmax (1, (int) (bar.getWidth() / 5.0f));
         const float pitch   = bar.getWidth() / (float) blocks;
         const float filled  = level * (float) blocks;
@@ -202,6 +292,31 @@ private:
             const juce::Rectangle<float> block { bar.getX() + pitch * (float) b, bar.getY(), pitch - 1.0f, bar.getHeight() };
             g.setColour (barLit.withAlpha (barOff + (barOn - barOff) * lit));
             g.fillRect (block);
+        }
+
+        // v1.11.0: TIE and SLD along the bottom edge, lit when set. A set tie also draws a line
+        // across the gap to the next cell, so a tied run reads as one long note.
+        const auto markers = cell.reduced (3.0f, 0.0f).removeFromBottom (markerHeight).withTrimmedBottom (1.0f);
+        const auto markerFont = neon::crt::displayFont (markerHeight + 1.0f);
+        g.setFont (markerFont);
+        const auto drawMarker = [&] (juce::Rectangle<float> area, const char* markerName, bool set)
+        {
+            const auto ink = playing ? headText : (set ? litText : neon::amber);
+            if (set)
+            {
+                g.setColour ((playing ? headText : litGlow).withAlpha (0.25f));
+                g.fillRect (area.reduced (1.0f, 0.0f));
+            }
+            g.setColour (ink.withAlpha (set ? 1.0f : 0.40f));
+            g.drawText (markerName, area, juce::Justification::centred, false);
+        };
+        drawMarker (markers.withWidth (markers.getWidth() * 0.5f), "TIE", s.tie);
+        drawMarker (markers.withTrimmedLeft (markers.getWidth() * 0.5f), "SLD", s.slide);
+
+        if (s.tie)
+        {
+            g.setColour (litText.withAlpha (0.8f));
+            g.fillRect (cell.getRight() - 2.0f, markers.getCentreY() - 1.0f, 5.0f, 2.0f);   // into the 3 px gap
         }
     }
 
@@ -220,14 +335,24 @@ private:
 
     void write (int index, const StepSequencer::Step& s)
     {
+        if (! editNoted && onBeforeEdit != nullptr)   // v1.11.0: once per gesture, before the change
+            onBeforeEdit();
+        editNoted = true;
         processor.setSequencerStep (index, s);
         steps[(size_t) index] = s;
         repaint();
     }
 
     NeonSynthProcessor& processor;
+    std::atomic<float>* lengthValue = nullptr;   // v1.11.0: the pattern row's parameters
+    std::atomic<float>* keyValue    = nullptr;
+    std::atomic<float>* scaleValue  = nullptr;
     std::array<StepSequencer::Step, StepSequencer::numSteps> steps {};
     int   playhead = -1;
+    int   shownLength = StepSequencer::numSteps;
+    int   entryCursor = -1;
+    Zone  dragZone = Zone::body;
+    bool  editNoted = false;   // onBeforeEdit has been called for this gesture
 
     int   dragStep = -1;
     bool  dragged = false;

@@ -10,7 +10,7 @@ and thin outlines, which are vector shapes laid over the picture; the keys that
 explain the numbers sit below the screenshot, never on it.
 
 Writes (SVG + 300 dpi PNG):
-    fig01-interface            the whole window, ten numbered regions
+    fig01-interface            the whole window, fourteen numbered regions
     fig03-shape-strip          the SOURCE panel with the SHAPE strip
     fig06-sample-granular-ui   the Sample and Granular control strips
     fig08-sequencer            the step grid with a gesture key
@@ -97,6 +97,10 @@ FIG1_REGIONS = [                     # number, box (design px), marker (design p
                                                 # the SCANLINES button (v1.10.0), which ends at x 748
     (9, (1206, 22, 1256, 62), (1191, 42)),
     (10, (28, 648, 1252, 838), (6, 760)),
+    (11, (248, 26, 556, 58), (330, 70)),       # the preset bar (v1.11.0), marker just under the header line
+    (12, (564, 26, 636, 58), (600, 70)),       # HOLD, marker just under the header line
+    (13, (1088, 540, 1250, 630), (1256, 585)),  # GLIDE and LEGATO, MODULATION's second row
+    (14, (150, 688, 754, 716), (6, 702)),      # the pattern row, marker in the white strip
 ]
 FIG1_LEFT = 30                       # white strip left of the capture, capture px: the left markers sit in it
 FIG1_KEY = [
@@ -110,6 +114,10 @@ FIG1_KEY = [
     (8, "Voice lights: one for each of the 16 voices, lit while it sounds. Click one to set how many voices can play (1 = MONO)."),
     (9, "Quick help. Click it, or anywhere on the help page, or press Esc to close."),
     (10, "Step sequencer: RUN, SYNC, rate, keyboard mode, TEMPO, SWING and GATE above; the 16 steps below (Figure 8)."),
+    (11, "Preset bar: the current preset and its category, < and > to step through the presets, the name for the menu, SAVE."),
+    (12, "HOLD: keys keep sounding after you let go, until HOLD is switched off."),
+    (13, "GLIDE, the time to slide to a new note, and LEGATO (with one voice: overlapping keys glide without restarting)."),
+    (14, "The pattern row: LENGTH, KEY and SCALE, then TOOLS, ENTER and UNDO."),
 ]
 
 
@@ -251,9 +259,13 @@ def step_x(i, frac=0.5):
 SEQ_MARKS = [                        # number, target (x, y) in design px
     (1, (step_x(0), 720)),           # enabled step
     (2, (step_x(1), 720)),           # disabled step
-    (3, (step_x(2, 0.86), 763)),     # note name, beside the text (VT323 since v1.10.0, wider)
-    (4, (step_x(4, 0.12), 826)),     # velocity bar, its first block; the line runs beside the note name
-    (5, (step_x(8), 694)),           # playhead (the inverted step since v1.10.0)
+    (3, (step_x(6, 0.86), 763)),     # note name, beside the text (VT323 since v1.10.0, wider)
+    (4, (step_x(4, 0.12), 812)),     # velocity bar, its first block; the line runs beside the note name
+    (5, (step_x(8), 726)),           # playhead (the inverted step since v1.10.0), its top edge
+    (6, (step_x(2, 0.27), 827)),     # a TIE that is set (v1.11.0), and the line into the gap
+    (7, (step_x(7, 0.72), 827)),     # a SLD that is set
+    (8, (step_x(13), 760)),          # a step beyond LENGTH, faded
+    (9, (430, 702)),                 # the pattern row (at SCALE)
 ]
 SEQ_KEY = [
     (1, "Enabled step: an amber outline and a glowing note name. Every fourth step has a mark along its top edge, which marks the beat."),
@@ -261,18 +273,24 @@ SEQ_KEY = [
     (3, "Note name: the pitch the step plays."),
     (4, "Velocity bar: a row of blocks; the more are lit, the higher the step's velocity."),
     (5, "Playhead: the step now playing is drawn inverted, an amber block with dark text."),
+    (6, "TIE set: the note is held into the next step, which does not play its own; a line joins the two cells."),
+    (7, "SLD set: the note glides into the next step's note, at GLIDE time."),
+    (8, "A step beyond LENGTH (here 12 steps): drawn faded, kept, not played."),
+    (9, "The pattern row: LENGTH, KEY, SCALE, TOOLS, ENTER and UNDO."),
 ]
 SEQ_GESTURES = [
     ("Click", "turn the step on or off"),
-    ("Drag up or down", "change the note: one semitone for every 6 pixels"),
-    ("Shift-drag or right-drag", "change the velocity, up or down"),
-    ("Mouse wheel", "note up or down by one semitone"),
+    ("Drag up or down", "change the note: one semitone (or scale note) for every 6 pixels"),
+    ("Drag the velocity bar", "change the velocity (the accent), up or down"),
+    ("Shift-drag or right-drag", "change the velocity anywhere on the step"),
+    ("Mouse wheel", "note up or down by one semitone (or scale note)"),
     ("Shift + mouse wheel", "velocity up or down by 4"),
+    ("Click TIE or SLD", "tie the step to the next, or slide into it"),
 ]
 
 
 def fig08(cap, out):
-    full = np.asarray(Image.open(cap / "ui-oscillator-running.png").convert("RGB"))
+    full = np.asarray(Image.open(cap / "ui-sequencer.png").convert("RGB"))
     x0, y0, x1, y1 = (int(v) for v in px(SEQ_PANEL))
     crop = full[y0:y1, x0:x1]
     h_img = 160 * (crop.shape[0] + SEQ_MARGIN) / crop.shape[1]

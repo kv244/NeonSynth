@@ -259,7 +259,7 @@ int main()
                 v = osc.nextSample();
             double worst = 0.0;
             for (int k = 1; (double) k * hz <= 12000.0; ++k)
-                worst = std::max (worst, std::abs (20.0 * std::log10 (amplitude (x, k * hz) * juce::MathConstants<double>::pi * k / 2.0)));
+                worst = std::max (worst, std::abs (20.0 * std::log10 (amplitude (x, (float) k * hz) * juce::MathConstants<double>::pi * k / 2.0)));
             char what[160];
             std::snprintf (what, sizeof (what), "sawtooth at %.0f Hz: every harmonic up to 12 kHz within 0.75 dB of ideal (worst %.2f dB)", hz, worst);
             check (worst < 0.75, what);

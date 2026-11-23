@@ -15,10 +15,12 @@
 #include "gui/CrtLookAndFeel.h"
 #include "gui/CrtFrame.h"
 #include "gui/SequencerView.h"
+#include "gui/PatternRow.h"
 #include "gui/HelpOverlay.h"
 #include "gui/SampleView.h"
 #include "gui/ShapeView.h"
 #include "gui/LfoView.h"
+#include "gui/PresetBar.h"   // v1.11.0
 
 /**
     Neon Synth editor.
@@ -56,7 +58,7 @@ public:
     const neon::crt::CachedPainter& getBackdrop() const noexcept { return backdrop; }
 
     explicit NeonSynthEditor (NeonSynthProcessor& p)
-        : AudioProcessorEditor (&p), processor (p), apvts (p.getAPVTS()), sampleView (p, p.getAPVTS()), shapeView (p, p.getAPVTS()), stepGrid (p)
+        : AudioProcessorEditor (&p), synthProcessor (p), apvts (p.getAPVTS()), sampleView (p, p.getAPVTS()), shapeView (p, p.getAPVTS()), stepGrid (p)
     {
         addAndMakeVisible (content);
         content.setLookAndFeel (&crtLook);   // every control inherits the CRT look (v1.10.0)
@@ -151,7 +153,7 @@ public:
         loadButton.setTooltip ("Load a WAV, AIFF or FLAC file (or drop one on the synth)");
         padButton.setTooltip ("Go back to the built-in pad");
         loadButton.onClick = [this] { chooseSampleFile(); };
-        padButton.onClick  = [this] { processor.useDefaultSample(); };
+        padButton.onClick  = [this] { synthProcessor.useDefaultSample(); };
 
         content.addAndMakeVisible (smpLoopCombo);
         smpLoopCombo.addItemList ({ "One-shot", "Loop", "Loop until release" }, 1);   // same order as the parameter
@@ -501,7 +503,7 @@ public:
         legatoButton.setColour (juce::TextButton::textColourOnId,   neon::green);
         legatoButton.setColour (juce::ComboBox::outlineColourId,    neon::green.withAlpha (0.6f));
         legatoButton.setTooltip ("Legato (with the voice limit at MONO): a key pressed while another is held glides to "
-                                 "the new note without restarting the envelopes; letting it go returns to the key still held");
+                                 "the new note without restarting the envelopes; letting it go returns to the key still held. With more voices it does nothing");
         content.addAndMakeVisible (legatoButton);
         legatoAttachment = std::make_unique<ButtonAttachment> (apvts, "legato", legatoButton);
 
@@ -554,41 +556,8 @@ public:
         seqRateAttachment = std::make_unique<ComboBoxAttachment> (apvts, "seqRate", seqRateCombo);
         seqModeAttachment = std::make_unique<ComboBoxAttachment> (apvts, "seqMode", seqModeCombo);
 
-        // v1.11.0: the pattern row. LENGTH, KEY and SCALE are parameters; TOOLS, ENTER and UNDO
-        // act on the pattern (agent A gives them their behaviour).
-        for (auto* combo : { &seqLengthCombo, &seqKeyCombo, &seqScaleCombo })
-        {
-            combo->setColour (juce::ComboBox::outlineColourId, neon::amber);
-            combo->setColour (juce::ComboBox::textColourId,    neon::amber);
-            combo->setColour (juce::ComboBox::arrowColourId,   neon::amber);
-            content.addAndMakeVisible (combo);
-        }
-        for (int n = 1; n <= StepSequencer::numSteps; ++n)
-            seqLengthCombo.addItem (juce::String (n) + (n == 1 ? " step" : " steps"), n);
-        seqKeyCombo.addItemList ({ "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" }, 1);
-        seqScaleCombo.addItemList ({ "Scale off", "Major", "Dorian", "Phrygian", "Lydian", "Mixolydian",
-                                     "Natural minor", "Locrian", "Harmonic minor", "Major pentatonic",
-                                     "Minor pentatonic", "Blues", "Whole tone" }, 1);   // same order as the parameter
-        seqLengthCombo.setTooltip ("Pattern length: the pattern repeats after this many steps (try 5 or 7 against the beat)");
-        seqKeyCombo.setTooltip ("Key of the scale lock");
-        seqScaleCombo.setTooltip ("Scale lock: notes you set on the steps snap to this scale. Notes already there stay");
-        seqLengthAttachment = std::make_unique<ComboBoxAttachment> (apvts, "seqLength", seqLengthCombo);
-        seqKeyAttachment    = std::make_unique<ComboBoxAttachment> (apvts, "seqKey",    seqKeyCombo);
-        seqScaleAttachment  = std::make_unique<ComboBoxAttachment> (apvts, "seqScale",  seqScaleCombo);
-
-        for (auto* button : { &seqToolsButton, &seqEnterButton, &seqUndoButton })
-        {
-            button->setColour (juce::TextButton::buttonColourId,   juce::Colours::transparentBlack);
-            button->setColour (juce::TextButton::buttonOnColourId, neon::amber.withAlpha (0.30f));
-            button->setColour (juce::TextButton::textColourOffId,  neon::amber.withAlpha (0.8f));
-            button->setColour (juce::TextButton::textColourOnId,   neon::amber);
-            button->setColour (juce::ComboBox::outlineColourId,    neon::amber.withAlpha (0.6f));
-            content.addAndMakeVisible (button);
-        }
-        seqEnterButton.setClickingTogglesState (true);
-        seqToolsButton.setTooltip ("Pattern tools: shift, octave up or down, reverse, clear, randomise in the scale");
-        seqEnterButton.setTooltip ("Enter notes from the keyboard: click a step, then play; each key fills a step and moves on");
-        seqUndoButton.setTooltip ("Undo the last change to the pattern (Ctrl+Z)");
+        // v1.11.0: the pattern row (LENGTH, KEY, SCALE, TOOLS, ENTER, UNDO), one component; see PatternRow.h.
+        content.addAndMakeVisible (patternRow);
 
         content.addAndMakeVisible (stepGrid);
 
@@ -627,7 +596,7 @@ public:
         scanlinesButton.onClick = [this] { setScanlines (scanlinesButton.getToggleState()); };
         content.addAndMakeVisible (scanlinesButton);
 
-        // v1.11.0: the preset bar (agent C fills it) and HOLD.
+        // v1.11.0: the preset bar (PresetBar.h) and HOLD.
         content.addAndMakeVisible (presetBar);
         holdButton.setClickingTogglesState (true);
         holdButton.setColour (juce::TextButton::buttonColourId,   juce::Colours::transparentBlack);
@@ -674,9 +643,8 @@ public:
             { &loadButton, "loadButton" }, { &padButton, "padButton" },
             { &voiceLeds, "voiceCount" }, { &helpButton, "helpButton" }, { &helpOverlay, "helpOverlay" },
             { &scanlinesButton, "scanlinesButton" }, { &scanlines, "scanlines" },
-            { &presetBar, "presetBar" }, { &holdButton, "hold" }, { &glideKnob, "glide" }, { &legatoButton, "legato" },
-            { &seqLengthCombo, "seqLength" }, { &seqKeyCombo, "seqKey" }, { &seqScaleCombo, "seqScale" },
-            { &seqToolsButton, "seqTools" }, { &seqEnterButton, "seqEnter" }, { &seqUndoButton, "seqUndo" } };
+            { &presetBar, "presetBar" }, { &holdButton, "hold" }, { &glideKnob, "glide" }, { &legatoButton, "legato" } };
+        // (v1.11.0: the pattern row gives its six controls their IDs, seqLength ... seqUndo, itself.)
         for (const auto& [component, id] : ids)
             component->setComponentID (id);
 
@@ -696,7 +664,7 @@ public:
 
         // While the editor was closed the scope FIFO filled up with old audio;
         // throw it away so the first frame shows what is playing now.
-        while (processor.drainScope (scratchLeft.data(), scratchRight.data(), (int) scratchLeft.size()) > 0) {}
+        while (synthProcessor.drainScope (scratchLeft.data(), scratchRight.data(), (int) scratchLeft.size()) > 0) {}
 
         updateReadouts();
         startTimerHz (timerHz);
@@ -722,6 +690,7 @@ public:
     {
         if (key == juce::KeyPress::escapeKey && helpOverlay.dismiss())
             return true;
+        if (patternRow.handleUndoKey (key)) return true;   // v1.11.0: Ctrl+Z, pattern undo
         return AudioProcessorEditor::keyPressed (key);
     }
 
@@ -925,12 +894,7 @@ private:
         seqGateSlider.setBounds (1100, 652, 92, 28);
         seqGateReadout.setBounds (1196, 656, 52, 20);
         // The pattern row (v1.11.0), then the grid, 30 px shorter than before.
-        seqLengthCombo.setBounds (150, 690, 104, 24);
-        seqKeyCombo.setBounds (262, 690, 60, 24);
-        seqScaleCombo.setBounds (326, 690, 168, 24);
-        seqToolsButton.setBounds (502, 690, 84, 24);
-        seqEnterButton.setBounds (594, 690, 80, 24);
-        seqUndoButton.setBounds (682, 690, 72, 24);
+        patternRow.setBounds (150, 690, 604, 24);   // LENGTH 150, KEY 262, SCALE 326, TOOLS 502, ENTER 594, UNDO 682
         stepGrid.setBounds (32, 722, 1216, 112);
 
         helpOverlay.setBounds (0, 0, baseWidth, baseHeight);
@@ -993,7 +957,7 @@ private:
         band.shown = true;
         band.low   = xFor (cutoff / swing);
         band.high  = xFor (cutoff * swing);
-        band.now   = xFor (cutoff * std::exp2 ((double) (octaves * processor.getModulation().getLfoValue())));
+        band.now   = xFor (cutoff * std::exp2 ((double) (octaves * synthProcessor.getModulation().getLfoValue())));
         return band;
     }
 
@@ -1155,7 +1119,7 @@ private:
                               [this] (const juce::FileChooser& fc)
                               {
                                   if (const auto file = fc.getResult(); file.existsAsFile())
-                                      processor.loadSampleFileAsync (file);
+                                      synthProcessor.loadSampleFileAsync (file);
                               });
     }
 
@@ -1168,7 +1132,7 @@ public:
     void filesDropped (const juce::StringArray& files, int, int) override
     {
         if (files.size() == 1 && isSampleFile (files[0]))
-            processor.loadSampleFileAsync (juce::File (files[0]));
+            synthProcessor.loadSampleFileAsync (juce::File (files[0]));
     }
 
 private:
@@ -1194,9 +1158,9 @@ private:
 
     void updateFilterState (bool on)
     {
-        for (juce::Component* c : { (juce::Component*) &cutoffSlider, (juce::Component*) &filterModeCombo,
-                                    (juce::Component*) &filterResKnob, (juce::Component*) &filterDriveKnob,
-                                    (juce::Component*) &filterEnvAmtKnob, (juce::Component*) &filterVelKnob })
+        for (juce::Component* c : { static_cast<juce::Component*> (&cutoffSlider), static_cast<juce::Component*> (&filterModeCombo),
+                                    static_cast<juce::Component*> (&filterResKnob), static_cast<juce::Component*> (&filterDriveKnob),
+                                    static_cast<juce::Component*> (&filterEnvAmtKnob), static_cast<juce::Component*> (&filterVelKnob) })
         {
             c->setEnabled (on);
             c->setAlpha (on ? 1.0f : 0.4f);
@@ -1228,15 +1192,15 @@ private:
     {
         tab = juce::jlimit (0, 1, tab);
         const bool filter = tab == 1;
-        for (juce::Component* c : { (juce::Component*) &adsrView, (juce::Component*) &attackKnob, (juce::Component*) &decayKnob,
-                                    (juce::Component*) &sustainKnob, (juce::Component*) &releaseKnob,
-                                    (juce::Component*) &attackReadout, (juce::Component*) &decayReadout,
-                                    (juce::Component*) &sustainReadout, (juce::Component*) &releaseReadout })
+        for (juce::Component* c : { static_cast<juce::Component*> (&adsrView), static_cast<juce::Component*> (&attackKnob), static_cast<juce::Component*> (&decayKnob),
+                                    static_cast<juce::Component*> (&sustainKnob), static_cast<juce::Component*> (&releaseKnob),
+                                    static_cast<juce::Component*> (&attackReadout), static_cast<juce::Component*> (&decayReadout),
+                                    static_cast<juce::Component*> (&sustainReadout), static_cast<juce::Component*> (&releaseReadout) })
             c->setVisible (! filter);
-        for (juce::Component* c : { (juce::Component*) &filterAdsrView, (juce::Component*) &filterAttackKnob, (juce::Component*) &filterDecayKnob,
-                                    (juce::Component*) &filterSustainKnob, (juce::Component*) &filterReleaseKnob,
-                                    (juce::Component*) &filterAttackReadout, (juce::Component*) &filterDecayReadout,
-                                    (juce::Component*) &filterSustainReadout, (juce::Component*) &filterReleaseReadout })
+        for (juce::Component* c : { static_cast<juce::Component*> (&filterAdsrView), static_cast<juce::Component*> (&filterAttackKnob), static_cast<juce::Component*> (&filterDecayKnob),
+                                    static_cast<juce::Component*> (&filterSustainKnob), static_cast<juce::Component*> (&filterReleaseKnob),
+                                    static_cast<juce::Component*> (&filterAttackReadout), static_cast<juce::Component*> (&filterDecayReadout),
+                                    static_cast<juce::Component*> (&filterSustainReadout), static_cast<juce::Component*> (&filterReleaseReadout) })
             c->setVisible (filter);
         ampEnvButton.setToggleState (! filter, juce::dontSendNotification);
         filterEnvButton.setToggleState (filter, juce::dontSendNotification);
@@ -1282,8 +1246,8 @@ private:
         set (widthReadout, juce::String (juce::roundToInt (widthValue->load() * 100.0f)) + "%");
 
         // Shows the tempo actually in use: the host's while following it, otherwise the TEMPO slider.
-        set (seqTempoReadout, processor.isSequencerFollowingHost()
-                                  ? "HOST " + juce::String (processor.getSequencerTempo(), 1)
+        set (seqTempoReadout, synthProcessor.isSequencerFollowingHost()
+                                  ? "HOST " + juce::String (synthProcessor.getSequencerTempo(), 1)
                                   : juce::String (seqTempoValue->load(), 1) + " BPM");
         set (seqSwingReadout, juce::String (juce::roundToInt (seqSwingValue->load() * 100.0f)) + "%");
         set (seqGateReadout,  juce::String (juce::roundToInt (seqGateValue->load() * 100.0f)) + "%");
@@ -1306,7 +1270,7 @@ private:
         set (vibratoReadout,   juce::String (juce::roundToInt (vibratoValue->load())) + " ct");
         const int glideMs = juce::roundToInt (glideValue->load());
         set (glideReadout,     glideMs == 0 ? juce::String ("off") : glideMs < 1000 ? juce::String (glideMs) + " ms"
-                                                                                    : juce::String (glideMs / 1000.0f, 2) + " s");
+                                                                                    : juce::String ((float) glideMs / 1000.0f, 2) + " s");
 
         const auto percent = [] (float v) { return juce::String (juce::roundToInt (v * 100.0f)) + "%"; };
         set (smpRootReadout,      juce::MidiMessage::getMidiNoteName (juce::roundToInt (smpRootValue->load()), true, true, 4));
@@ -1329,7 +1293,7 @@ private:
         set (foldDriveReadout,    juce::String (foldDriveValue->load(), 1));
         set (foldMixReadout,      juce::String (juce::roundToInt (foldMixValue->load())) + "%");
 
-        const auto status = processor.getSampleStatus();
+        const auto status = synthProcessor.getSampleStatus();
         // Re-fitted only when the text or the label's size changes (it measures glyphs).
         const auto details = "  " + juce::String (status.seconds, 1) + " s  " + formatSampleRate (status.sampleRate);
         if (status.name + details != fittedFor || sampleNameLabel.getWidth() != fittedWidth)
@@ -1344,7 +1308,7 @@ private:
 
     void timerCallback() override
     {
-        const int n = processor.drainScope (scratchLeft.data(), scratchRight.data(), (int) scratchLeft.size());
+        const int n = synthProcessor.drainScope (scratchLeft.data(), scratchRight.data(), (int) scratchLeft.size());
 
         // Scope and spectrum show the mid signal (L + R) / 2.
         for (int i = 0; i < n; ++i)
@@ -1353,7 +1317,7 @@ private:
 
         meter.update (scratchLeft.data(), scratchRight.data(), n, timerHz);
 
-        const auto& voices = processor.getVoiceViews();
+        const auto& voices = synthProcessor.getVoiceViews();
         float lowestHz = 0.0f;
         for (const auto& v : voices)
         {
@@ -1362,7 +1326,7 @@ private:
                 lowestHz = hz;
         }
 
-        const double sampleRate = processor.getSampleRate();
+        const double sampleRate = synthProcessor.getSampleRate();
         if (oscilloscope.isVisible())
             oscilloscope.update (history, sampleRate, lowestHz);
         else
@@ -1375,7 +1339,7 @@ private:
         voiceLeds.update (voices);
         voiceLeds.setLimit (voiceCount());
 
-        const auto& modulation = processor.getModulation();
+        const auto& modulation = synthProcessor.getModulation();
         const bool lfoActive = lfoPitchValue->load() != 0.0f || lfoCutoffValue->load() != 0.0f || lfoAmpValue->load() != 0.0f;
         lfoView.update ((Lfo::Shape) juce::jlimit (0, 4, juce::roundToInt (lfoShapeValue->load())),
                         modulation.getLfoPhase(), modulation.getLfoValue(), lfoActive);
@@ -1390,7 +1354,8 @@ private:
         sampleView.refresh(); // sample, markers, playheads
         shapeView.refresh();  // the sculpted cycle, CHOP's steps
         updateReadouts();
-        processor.freeReplacedSamples();   // a sample replaced while notes played it, once they have ended
+        synthProcessor.freeReplacedSamples();   // a sample replaced while notes played it, once they have ended
+        patternRow.forgetHistoryIfStateLoaded();
     }
 
     /** Everything the editor shows lives here, at the design size; resized() scales it to the window. */
@@ -1400,7 +1365,7 @@ private:
         void paint (juce::Graphics& g) override { if (onPaint) onPaint (g); }
     };
 
-    NeonSynthProcessor&           processor;
+    NeonSynthProcessor&           synthProcessor;
     juce::AudioProcessorValueTreeState& apvts;
     CrtLookAndFeel crtLook;   // declared before content, so it outlives everything that uses it
     Content content;   // declared before every control, so it outlives them
@@ -1523,10 +1488,8 @@ private:
     std::unique_ptr<ButtonAttachment>   seqOnAttachment, seqSyncAttachment;
     std::unique_ptr<SliderAttachment>   seqTempoAttachment, seqSwingAttachment, seqGateAttachment;
     std::unique_ptr<ComboBoxAttachment> seqRateAttachment, seqModeAttachment;
-    // v1.11.0: the pattern row
-    juce::ComboBox     seqLengthCombo, seqKeyCombo, seqScaleCombo;
-    juce::TextButton   seqToolsButton { "TOOLS" }, seqEnterButton { "ENTER" }, seqUndoButton { "UNDO" };
-    std::unique_ptr<ComboBoxAttachment> seqLengthAttachment, seqKeyAttachment, seqScaleAttachment;
+    // v1.11.0: the pattern row (after stepGrid, which it hooks into)
+    PatternRow         patternRow { synthProcessor, stepGrid };
 
     // Modulation (v1.9.0)
     LfoView          lfoView;
@@ -1545,8 +1508,8 @@ private:
     juce::TextButton legatoButton { "LEGATO" };
     std::unique_ptr<SliderAttachment> glideAttachment;
     std::unique_ptr<ButtonAttachment> legatoAttachment;
-    // v1.11.0: the header's preset bar (a placeholder until agent C's PresetBar) and HOLD
-    juce::Component  presetBar;
+    // v1.11.0: the header's preset bar (PresetBar.h) and HOLD
+    PresetBar        presetBar { synthProcessor.getPresetManager() };
     juce::TextButton holdButton { "HOLD" };
     std::unique_ptr<ButtonAttachment> holdAttachment;
     CutoffBand cutoffBand;   // as last drawn under the cutoff slider

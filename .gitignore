@@ -10,3 +10,4 @@ docs/*.pdf
 docs/demo/*.wav
 build-san/
 build-move/
+build-*/

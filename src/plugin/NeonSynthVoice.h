@@ -11,6 +11,7 @@
 #include "dsp/GrainCloud.h"
 #include "dsp/CytomicSvf.h"
 #include "dsp/Modulation.h"
+#include "sequencer/StepSequencer.h"
 
 class NeonSynthSound : public juce::SynthesiserSound
 {
@@ -42,6 +43,14 @@ public:
 class NeonSynthVoice : public juce::SynthesiserVoice
 {
 public:
+    /** The hard stop's fade (a stolen or cut voice): the envelope's linear release, and the tail
+        the processor reports to the host on top of RELEASE. */
+    static constexpr double hardStopFadeSeconds = 0.005;
+
+    /** The crossfade between two read positions of the sample (a retrigger, or a move to
+        another copy of the sample), short enough not to smear an attack. */
+    static constexpr double sampleCrossfadeSeconds = 0.002;
+
     /** Where a note's sound comes from (the Source parameter's order). */
     enum class Source { oscillator = 0, sample = 1, granular = 2, random = 3 };
 
@@ -71,6 +80,8 @@ public:
         GrainCloud::Settings grainSettings;       // live: applies to the next grains
         ChopSettings chop;                        // Oscillator and Random; pattern and Comb take effect at a cycle boundary
         SculptSettings sculpt;                    // Oscillator and Random: Noise, then Fold
+
+        float glideSeconds = 0.0f;                // v1.11.0, GLIDE: time to slide to a new note; 0 = jump (v1.10.1)
     };
 
     /** What the editor's visualisers need to know about this voice. */
@@ -125,7 +136,7 @@ public:
         cloud.end();
         resetSeeds();
 
-        sampleRate = newSampleRate;
+        sampleRate = newSampleRate;   // (resetSeeds() above also forgets any glide, v1.11.0: its step is per sample)
         adsr.setSampleRate (newSampleRate);
         adsr.reset();
         filterEnvelope.setSampleRate (newSampleRate);
@@ -189,6 +200,7 @@ public:
         blockSample    = p.sample;
         sampleSettings = p.sampleSettings;
         cloud.setSettings (p.grainSettings);
+        glideSeconds = juce::jmax (0.0f, p.glideSeconds);   // v1.11.0: latched by each note that glides
     }
 
     /** Audio thread, once per block after setParameters(): this block's modulation buffers (v1.9.0).
@@ -198,9 +210,58 @@ public:
         modulatedCutoffHz() reads modulation.cutoffOctaves. */
     void setModulation (const ModulationBlock& block) noexcept   { modulation = block; modulationIndex = 0; }
 
+    /**
+        v1.11.0, LEGATO and SLIDE: makes the next start of this voice a legato step. The synth
+        (PlayingSynthesiser) calls this just before juce::Synthesiser::startVoice(), which sends
+        a hard stopNote() and then startNote(): the stop is ignored, and startNote() glides the
+        sounding note to the new pitch at GLIDE time (0 = a jump) without restarting the
+        envelopes, the source or the velocity. A voice that has gone silent starts normally.
+    */
+    void prepareLegatoStep() noexcept   { legatoStepPending = true; }
+
+    /**
+        v1.11.0, GLIDE with several voices: the keyboard note played before the one about to
+        start (-1 = none yet), set on every voice by PlayingSynthesiser just before a keyboard
+        note-on. A keyboard note glides from there, so the glide starts from the last note you
+        played, whichever voice played it (Julian, 23 Nov 2026).
+    */
+    void setKeyboardGlideFrom (int note) noexcept   { keyboardGlideFrom = note; }
+
     void startNote (int midiNote, float velocity, juce::SynthesiserSound*, int) override
     {
-        // Set the pitch directly: no glide from the previous note.
+        // v1.11.0: a legato step keeps everything sounding and only moves the pitch.
+        if (legatoStepPending)
+        {
+            legatoStepPending = false;
+            if (adsr.isActive() && ! hardStopping)
+            {
+                glideToNote (midiNote);
+                return;
+            }
+        }
+
+        // v1.11.0, GLIDE: where the pitch was (the note playing, or the one this voice last played),
+        // as an offset in octaves from the new note; the glide starts there. With GLIDE at 0, or on
+        // a voice's first note, it is 0 and the note starts exactly at its pitch, as in v1.10.1.
+        // The sequencer's notes never glide here: like a 303, a step glides only when the step
+        // before it is marked SLIDE (the legato step above), so the other steps keep their attack
+        // whatever GLIDE is set to (Julian, 22 Nov 2026). Keyboard notes glide whenever GLIDE > 0.
+        // A keyboard note glides from the last keyboard note played: from where this voice's pitch
+        // is now if it played that note (so a glide still moving carries on smoothly), otherwise
+        // from that note. The first keyboard note has nothing to glide from.
+        const bool sequencerNote = isPlayingChannel (StepSequencer::midiChannel);
+        float glideFrom = 0.0f;
+        if (glideSeconds > 0.0f && ! sequencerNote && keyboardGlideFrom >= 0)
+        {
+            const float fromNote = hasGlidePitch && glideBaseNote == keyboardGlideFrom ? currentPitchNote()
+                                                                                     : (float) keyboardGlideFrom;
+            glideFrom = (fromNote - (float) midiNote) / 12.0f;
+        }
+        glideBaseNote = midiNote;
+        hasGlidePitch = true;
+        beginGlide (glideFrom, 0.0f);
+
+        // The note's own pitch; a glide (above) multiplies it towards 1 from where it was.
         frequencyHz     = (float) juce::MidiMessage::getMidiNoteInHertz (midiNote);
         oscillator.setFrequency (frequencyHz, sampleRate);
         randomOscillator.setFrequency (frequencyHz, sampleRate);
@@ -255,6 +316,10 @@ public:
 
     void stopNote (float, bool allowTailOff) override
     {
+        // v1.11.0: the hard stop juce::Synthesiser::startVoice() sends ahead of a legato step.
+        if (legatoStepPending && ! allowTailOff)
+            return;
+
         samplesSinceOff = 0;
 
         if (allowTailOff)
@@ -271,7 +336,7 @@ public:
         // a click, a stolen voice's next note retriggers it from where it is, and when the fade
         // ends the voice resets it.
         hardStopping = true;
-        adsr.setParameters ({ 0.001f, 0.001f, 1.0f, 0.005f });
+        adsr.setParameters ({ 0.001f, 0.001f, 1.0f, (float) hardStopFadeSeconds });
         adsr.noteOff();
         clearCurrentNote();
     }
@@ -350,7 +415,7 @@ public:
 
         // Pitch modulation ended (or never started) with the sample on another copy than
         // the note's own: go back to it. Never happens without pitch modulation.
-        if (modulation.pitchRatio == nullptr)
+        if (modulation.pitchRatio == nullptr && ! glideActive())   // (v1.11.0: nor a glide)
             settleSampleCopy (1.0f, false);
 
         const bool steady = ! level.isSmoothing() && ! cutoff.isSmoothing() && ! filterMix.isSmoothing() && ! pan.isSmoothing()
@@ -387,7 +452,7 @@ public:
         if (rendered > 0)
         {
             sampleNoteFresh = false;
-            shownPitchRatio = isPitchModulated() ? pitchAt (startSample + rendered - 1) : 1.0f;
+            shownPitchRatio = isPitchModulated() ? pitchRatioAt (startSample + rendered - 1, 0) : 1.0f;
         }
     }
 
@@ -478,6 +543,7 @@ private:
     {
         if (isVoiceActive())
             clearCurrentNote();
+        finishGlide();   // v1.11.0: the next note glides from where this one was going
         filter.reset();
         filterEnvelope.reset();
         modeFade.setCurrentAndTargetValue (1.0f);
@@ -625,7 +691,7 @@ private:
         if (source == Source::sample && reader.isActive() && ! reader.hasFinished() && adsr.isActive())
         {
             reader.swapWith (fadingReader);   // fadingReader now holds the old note and its sample reference
-            fadingSamplesLeft = fadingSamplesTotal = juce::jmax (1, (int) (0.002 * sampleRate));
+            fadingSamplesLeft = fadingSamplesTotal = juce::jmax (1, (int) (sampleCrossfadeSeconds * sampleRate));
         }
         fadingCopy = false;   // the new note starts at full level, whatever was fading
 
@@ -672,7 +738,7 @@ private:
             for (int done = 0; done < cloudSamples;)
             {
                 const int chunk = juce::jmin (cloudChunk, cloudSamples - done);
-                cloud.setPitchRatio (pitchAt (firstIndex + done));
+                cloud.setPitchRatio (pitchRatioAt (firstIndex + done, done));
                 cloud.render (cloudBuffer.data() + done, chunk);
                 done += chunk;
             }
@@ -682,12 +748,30 @@ private:
             cloud.end();
     }
 
-    bool isPitchModulated() const noexcept   { return modulation.pitchRatio != nullptr && modulation.numSamples > 0; }
+    bool isModulated() const noexcept        { return modulation.pitchRatio != nullptr && modulation.numSamples > 0; }
 
-    /** The pitch ratio at a block index (only while isPitchModulated()); past the buffer, its last value. */
+    /** True if anything moves the voice's pitch away from its note: the modulation (v1.9.0) or a glide (v1.11.0). */
+    bool isPitchModulated() const noexcept   { return isModulated() || glideActive(); }
+
+    /** The modulation's pitch ratio at a block index (only while isModulated()); past the buffer, its last value. */
     float pitchAt (int index) const noexcept
     {
         return modulation.pitchRatio[juce::jlimit (0, modulation.numSamples - 1, index)];
+    }
+
+    /**
+        The voice's shared pitch, as a ratio to its note, at a block index (only while
+        isPitchModulated()): the modulation times the glide, `samplesAhead` samples after the
+        glide's current position. Every source reads it (oscillators, sample, grains), so they
+        all glide together (v1.11.0). Without a glide it is pitchAt() exactly, bit for bit.
+    */
+    float pitchRatioAt (int index, int samplesAhead) const noexcept
+    {
+        const float modulated = isModulated() ? pitchAt (index) : 1.0f;
+        if (! glideActive())
+            return modulated;
+        const float glide = samplesAhead == 0 ? glideRatio : std::exp2 (glideOctavesAhead (samplesAhead));
+        return modulated * glide;
     }
 
     /** The current note's sound source, one sample; index is its position in the processor's block. */
@@ -695,7 +779,74 @@ private:
     {
         if (! isPitchModulated())
             return sourceSample<false> (cloudSounds, 1.0f, index);   // v1.8.0's path, operation for operation
-        return sourceSample<true> (cloudSounds, pitchAt (index), index);
+        const float ratio = pitchRatioAt (index, 0);
+        advanceGlide();   // v1.11.0: one sample on (nothing happens unless a glide is moving)
+        return sourceSample<true> (cloudSounds, ratio, index);
+    }
+
+    //==============================================================================
+    // GLIDE (v1.11.0). The pitch is kept as the note the source started on (glideBaseNote,
+    // whose frequency the oscillators and the sample reader were set to) plus an offset in
+    // octaves, which moves in a straight line to its target: equal steps in octaves, so a
+    // glide sounds even, and a step size worked out from the distance, so any interval takes
+    // GLIDE time. A normal note starts at the offset of where the voice was and glides to 0;
+    // a legato step keeps its source and glides the offset to the new note. At rest on 0
+    // (always, with GLIDE at 0 and LEGATO off) the voice renders exactly as v1.10.1 did.
+
+    bool glideActive() const noexcept   { return glideOctaves != 0.0f || glideTargetOctaves != 0.0f; }
+
+    /** The pitch the voice is at now, as a (fractional) MIDI note. */
+    float currentPitchNote() const noexcept   { return (float) glideBaseNote + 12.0f * glideOctaves; }
+
+    /** Starts a glide of the offset from `fromOctaves` to `toOctaves` in glideSeconds (0 = jump). */
+    void beginGlide (float fromOctaves, float toOctaves) noexcept
+    {
+        glideTargetOctaves = toOctaves;
+        if (glideSeconds > 0.0f && fromOctaves != toOctaves)
+        {
+            glideOctaves = fromOctaves;
+            glideStepOctaves = std::abs (toOctaves - fromOctaves) / juce::jmax (1.0f, glideSeconds * (float) sampleRate);
+        }
+        else
+        {
+            glideOctaves = toOctaves;
+        }
+        glideRatio = glideOctaves == 0.0f ? 1.0f : std::exp2 (glideOctaves);
+    }
+
+    /** A legato step: the sounding note glides to midiNote, nothing restarts. */
+    void glideToNote (int midiNote) noexcept
+    {
+        beginGlide (glideOctaves, (float) (midiNote - glideBaseNote) / 12.0f);
+        notePan = juce::jlimit (-1.0f, 1.0f, (float) (midiNote - 60) / 24.0f);   // the pan follows (20 ms smoothing)
+        pan.setTargetValue (notePan * width);
+        samplesSinceOff = -1;   // a key holds it again (a return to a held key)
+    }
+
+    /** One sample along the glide. */
+    void advanceGlide() noexcept
+    {
+        if (glideOctaves == glideTargetOctaves)
+            return;
+        glideOctaves = glideOctavesAhead (1);
+        glideRatio = glideOctaves == 0.0f ? 1.0f : std::exp2 (glideOctaves);
+    }
+
+    /** The offset `samples` samples from now (the grain cloud renders ahead of the loop). */
+    float glideOctavesAhead (int samples) const noexcept
+    {
+        const float distance = glideTargetOctaves - glideOctaves;
+        const float travel = glideStepOctaves * (float) samples;
+        if (std::abs (distance) <= travel)
+            return glideTargetOctaves;
+        return glideOctaves + (distance > 0.0f ? travel : -travel);
+    }
+
+    /** Jumps to where the glide is going (the voice went silent, or the sample rate changed). */
+    void finishGlide() noexcept
+    {
+        glideOctaves = glideTargetOctaves;
+        glideRatio = glideOctaves == 0.0f ? 1.0f : std::exp2 (glideOctaves);
     }
 
     /** One sample of the source: at the note's own pitch, or (pitched) times `ratio`. */
@@ -775,7 +926,7 @@ private:
 
         reader.copyNoteTo (fadingReader);   // the old copy, fading out from where the note is now
         reader.moveToLevel (wanted);
-        fadingSamplesLeft = fadingSamplesTotal = juce::jmax (1, (int) (0.002 * sampleRate));
+        fadingSamplesLeft = fadingSamplesTotal = juce::jmax (1, (int) (sampleCrossfadeSeconds * sampleRate));
         fadingCopy = true;
     }
 
@@ -810,10 +961,26 @@ public:
         noteCounter = 0;
         randomOscillator.reseed ((juce::uint32) (voiceIndex + 1) * 2654435761u);
         sculpt.reseed ((juce::uint32) (voiceIndex + 1) * 2246822519u);
+
+        // v1.11.0: forget the last pitch too, so a repeated render's first notes don't glide.
+        hasGlidePitch = false;
+        glideBaseNote = 60;
+        glideOctaves = glideTargetOctaves = 0.0f;
+        glideRatio = 1.0f;
     }
 
 private:
     bool   hardStopping = false;
+
+    // GLIDE and legato (v1.11.0); see beginGlide().
+    float glideSeconds = 0.0f;                      // from the GLIDE parameter
+    int   glideBaseNote = 60;                       // the note the source was started on
+    bool  hasGlidePitch = false;                    // the voice has played a note to glide from
+    float glideOctaves = 0.0f, glideTargetOctaves = 0.0f;   // offset from glideBaseNote, now and where it goes
+    float glideStepOctaves = 0.0f;                  // per sample
+    float glideRatio = 1.0f;                        // exp2 (glideOctaves)
+    bool  legatoStepPending = false;                // see prepareLegatoStep()
+    int   keyboardGlideFrom = -1;                   // see setKeyboardGlideFrom()
 
     // Telemetry for the GUI (written here on the audio thread, copied out by the processor).
     float       frequencyHz = 0.0f, lastEnvelope = 0.0f;

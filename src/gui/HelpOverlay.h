@@ -16,18 +16,35 @@
     image (v1.10.0: a CRT terminal page, VT323 headings over Plex Mono text).
 
     Closing: click anywhere on the overlay or press Escape. The editor's "?"
-    button also toggles it. Hosts do not always give the overlay keyboard focus,
-    so the editor also passes Escape on to dismiss() from whichever control has it. The overlay takes all mouse clicks while it is
+    button also toggles it. The overlay takes all mouse clicks while it is
     visible, so nothing underneath is changed by accident.
+
+    Escape has three ways in, because hosts treat a plugin window's keys differently:
+      1. The overlay takes keyboard focus when it opens, so Escape comes straight here.
+      2. If the host leaves focus on a control instead, the key goes up through the
+         control's parents to the editor's keyPressed(), which calls dismiss().
+      3. Some hosts (DAWs with their own shortcuts, or windows that never pass keys on)
+         keep the key before any component sees it (v1.11.0). While the overlay is open, a
+         timer also reads the Escape key's state from the system, 40 times a second, and
+         closes on a fresh press while the host's process is in front. It runs only while
+         the help is showing, and only notices a key pressed after the help opened.
 
     To edit the help, change the entries in buildColumns() - each one is a
     heading followed by its lines.
 */
-class HelpOverlay : public juce::Component
+class HelpOverlay : public juce::Component,
+                    private juce::Timer
 {
 public:
     /** Called when the overlay closes itself (click or Escape), so the owner can update its button. */
     std::function<void()> onClose;
+
+    /** Whether Escape is held down right now while this process is in front: the system's key
+        state, which a host cannot keep from us (way 3 above). Tests replace it. */
+    std::function<bool()> isEscapeHeldInFront = []
+    {
+        return juce::Process::isForegroundProcess() && juce::KeyPress::isKeyCurrentlyDown (juce::KeyPress::escapeKey);
+    };
 
     HelpOverlay (int designWidth, int designHeight) : baseWidth (designWidth), baseHeight (designHeight)
     {
@@ -63,6 +80,25 @@ public:
         setVisible (true);
         toFront (true);
         grabKeyboardFocus();
+        escapeWasDown = isEscapeHeldInFront();   // a key already down when it opened doesn't count
+        startTimerHz (escapePollHz);
+    }
+
+    /** The overlay was hidden by any route (Escape, a click, the "?" button): no more polling. */
+    void visibilityChanged() override
+    {
+        if (! isVisible())
+            stopTimer();
+    }
+
+    /** One look at the Escape key (the timer's work; tests call it directly). */
+    void pollEscapeKey()
+    {
+        const bool down = isEscapeHeldInFront();
+        const bool pressed = down && ! escapeWasDown;
+        escapeWasDown = down;
+        if (pressed)
+            dismiss();
     }
 
     /** Closes the overlay if it is open; returns true if it was. */
@@ -75,6 +111,8 @@ public:
     }
 
 private:
+    void timerCallback() override   { pollEscapeKey(); }
+
     /** The CRT terminal page: the tube darkened almost to black, a thin glowing
         phosphor frame, VT323 headings and Plex Mono body text. The text is bright
         and the backing nearly opaque so it stays easy to read under the scanlines. */
@@ -174,9 +212,14 @@ private:
 
         addSection (0, { "EDITING STEPS", {
             "Click: switch a step on or off (its note is kept).",
-            "Drag up / down: change the note (one semitone per 6 px).",
-            "Mouse wheel: nudge the note by a semitone.",
-            "Shift-drag or right-drag: velocity, shown by the bar at the bottom. Shift + wheel nudges it." } }, neon::amber);
+            "Drag up / down: change the note (one semitone per 6 px, or one scale note with SCALE on). The wheel nudges it.",
+            "Drag the velocity bar at the bottom (or shift-drag anywhere): velocity, the step's accent. Shift + wheel nudges it.",
+            "TIE holds the note into the next step. SLD slides into the next step's note at GLIDE time." } }, neon::amber);
+
+        addSection (0, { "PATTERN ROW", {
+            "LENGTH: the pattern repeats after 1 to 16 steps. KEY + SCALE: notes you set snap to the scale.",
+            "ENTER: switch it on, click a step, play keys: each fills a step and moves on.",
+            "TOOLS: shift, octave up / down, reverse, randomise, clear. UNDO (or Ctrl+Z) steps back." } }, neon::amber);
 
         addSection (0, { "MODES", {
             "Layer: the pattern plays along with your keyboard.",
@@ -191,7 +234,9 @@ private:
         addSection (0, { "MOVEMENT (MODULATION panel)", {
             "LFO: a slow wave (Sine, Triangle, Square, Saw, or Random: a new level each cycle). RATE sets its speed in Hz; with SYNC it is a note length that follows the tempo.",
             "PITCH, CUTOFF and AMP set how far it moves the pitch (semitones), the filter (octaves; the green band under CUTOFF) and the level (tremolo). At 0 it does nothing.",
-            "Pitch bend and mod wheel work from any MIDI keyboard or controller. BEND: the range in semitones each way. VIBRATO: the wheel's vibrato depth at the top, in cents." } }, neon::green);
+            "Pitch bend and mod wheel work from any MIDI keyboard or controller. BEND: the range in semitones each way. VIBRATO: the wheel's vibrato depth at the top, in cents.",
+            "GLIDE: how long a note takes to slide from the last one. LEGATO (at MONO): a key played over a held one glides there without a new attack.",
+            "HOLD (in the header) keeps your keys sounding after you let go, until you switch it off." } }, neon::green);
 
         // Right column: the synth and getting sound out.
         addSection (1, { "SOUND", {
@@ -219,9 +264,14 @@ private:
             "Laptop speakers play very little below about 200 Hz. For low notes pick Sawtooth or Square, raise the notes, or use headphones.",
             "Check the output device and its active channels in Options > Audio/MIDI Settings." } }, neon::cyan);
 
-        addSection (1, { "SAVING", {
+        addSection (1, { "PRESETS AND SAVING", {
+            "The preset bar: < and > step through the presets; click the name for the menu; SAVE keeps your sound in Documents/NeonSynth/Presets.",
             "The pattern, the sample (up to 10 MB, otherwise by its path) and all settings are saved with your DAW project (and by the Standalone between runs)." } }, neon::cyan);
     }
+
+    // 40 Hz: a quick tap holds a key down for 50 ms or more, so one is never missed.
+    static constexpr int escapePollHz = 40;
+    bool escapeWasDown = false;
 
     const int baseWidth, baseHeight;
     static constexpr float columnWidth = 560.0f;

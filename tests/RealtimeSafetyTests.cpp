@@ -90,12 +90,21 @@ void* operator new   (std::size_t size, std::align_val_t a)               { retu
 void* operator new[] (std::size_t size, std::align_val_t a)               { return allocateAligned (size, a); }
 void  operator delete   (void* p) noexcept                                { release (p); }
 void  operator delete[] (void* p) noexcept                                { release (p); }
+// Clang does not declare the sized forms unless sized deallocation is on, so it would flag these
+// replacements as functions without a prototype (the integrity job's -Wmissing-prototypes).
+#if defined (__clang__)
+ #pragma clang diagnostic push
+ #pragma clang diagnostic ignored "-Wmissing-prototypes"
+#endif
 void  operator delete   (void* p, std::size_t) noexcept                   { release (p); }
 void  operator delete[] (void* p, std::size_t) noexcept                   { release (p); }
 void  operator delete   (void* p, std::align_val_t) noexcept              { releaseAligned (p); }
 void  operator delete[] (void* p, std::align_val_t) noexcept              { releaseAligned (p); }
 void  operator delete   (void* p, std::size_t, std::align_val_t) noexcept { releaseAligned (p); }
 void  operator delete[] (void* p, std::size_t, std::align_val_t) noexcept { releaseAligned (p); }
+#if defined (__clang__)
+ #pragma clang diagnostic pop
+#endif
 
 //==============================================================================
 namespace
@@ -320,6 +329,23 @@ int main()
             midi.addEvent (juce::MidiMessage::controllerEvent (1, 1, (b / 5) % 128), 200);
         if (b % 500 == 499)
             midi.addEvent (juce::MidiMessage::controllerEvent (1, 121, 0), 300);           // reset all controllers
+
+        // v1.11.0 playing and pattern features: GLIDE, LEGATO (it acts at Voices 1, above), HOLD
+        // switched on and off with keys held, LENGTH, and ties and slides written into the
+        // pattern while it plays (the editor's tools and undo do the same on the message thread).
+        if (b % 100 == 0)
+            setParameter (processor, "glide", (float) ((b / 100) % 3) * 150.0f);           // 0, 150, 300 ms
+        if (b % 130 == 0)
+            setParameter (processor, "legato", (float) ((b / 130) % 2));
+        if (b % 140 == 0)
+            setParameter (processor, "hold", (float) ((b / 140) % 2));
+        if (b % 110 == 0)
+            setParameter (processor, "seqLength", (float) (1 + (b / 110) % 16));
+        if (b % 45 == 0)
+        {
+            const int k = (b / 45) % StepSequencer::numSteps;
+            processor.setSequencerStep (k, { true, 48 + k, 100, (b / 45) % 3 == 0, (b / 45) % 3 == 1 });
+        }
 
         inAudioCallback = true;
         processor.processBlock (buffer, midi);

@@ -309,6 +309,7 @@ void NeonSynthProcessor::reset()
     // Repeating a render from here gives the same grains (hosts call this before offline renders).
     for (auto* v : voices)
         v->resetSeeds();
+    synth.forgetLastKeyboardNote();   // v1.11.0: nor does the first note glide from before the reset
     modulation.reset();   // LFO phase 0, bend and wheel centred
 }
 
@@ -332,7 +333,7 @@ void NeonSynthProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 
     sequencer.prepare (sampleRate);
     playMidi.ensureSize (8192);   // bytes; far more than a block of keyboard + sequencer events needs
-    internalBeat   = 0.0;
+    restartInternalClock();
     numHeldKeys    = 0;
 
     sampleSlot.setAudioRunning (true);
@@ -371,6 +372,7 @@ void NeonSynthProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
                               grDensityParameter->get(), grSprayParameter->get(), grJitterParameter->get() };
     params.chop = { chopPattern.load (std::memory_order_relaxed), chopCombParameter->get(), chopOvertoneParameter->get() * 0.01f };
     params.sculpt = { noiseLevelParameter->get() * 0.01f, foldDriveParameter->get(), foldMixParameter->get() * 0.01f };
+    params.glideSeconds = glideParameter->get() * 0.001f;   // v1.11.0 (region B): GLIDE, ms to seconds
 
     // Modulation (v1.9.0): the LFO, pitch bend and the mod wheel, worked out once for all voices.
     // Bend and wheel are read from the incoming MIDI, with their sample positions, so they reach
@@ -385,6 +387,7 @@ void NeonSynthProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     modSettings.vibratoCents       = vibratoParameter->get();
     modulation.setSettings (modSettings);
     synth.setVoiceLimit (voiceCountParameter->get());   // new notes use only the first N voices
+    synth.setMonoLegato (legatoParameter->get() && voiceCountParameter->get() == 1);   // v1.11.0 (region B): LEGATO is MONO only
     modulation.handleMidi (midiMessages, numSamples);
     const auto modulationBlock = modulation.render (numSamples, lfoTransport());
 
@@ -429,8 +432,8 @@ void NeonSynthProcessor::pushScope (const float* left, const float* right, int n
     int i = 0;
     scopeFifo.write (numFrames).forEach ([&] (int index)
     {
-        scopeRing[(size_t) (2 * index)]     = left[i];
-        scopeRing[(size_t) (2 * index + 1)] = right[i];
+        scopeRing[2 * (size_t) index]     = left[i];
+        scopeRing[2 * (size_t) index + 1] = right[i];
         ++i;
     });
 }
@@ -461,8 +464,8 @@ int NeonSynthProcessor::drainScope (float* destLeft, float* destRight, int maxFr
     int i = 0;
     scopeFifo.read (juce::jmin (maxFrames, scopeFifo.getNumReady())).forEach ([&] (int index)
     {
-        destLeft[i]  = scopeRing[(size_t) (2 * index)];
-        destRight[i] = scopeRing[(size_t) (2 * index + 1)];
+        destLeft[i]  = scopeRing[2 * (size_t) index];
+        destRight[i] = scopeRing[2 * (size_t) index + 1];
         ++i;
     });
     return i;
@@ -479,32 +482,10 @@ bool NeonSynthProcessor::isBusesLayoutSupported (const BusesLayout& layouts) con
 
 namespace
 {
-    // State tree layout for the pattern: <Pattern><Step on="1" note="48" velocity="110"/> x16</Pattern>
-    const juce::Identifier patternId  { "Pattern" };
-    const juce::Identifier stepId     { "Step" };
-    const juce::Identifier onId       { "on" };
-    const juce::Identifier noteId     { "note" };
-    const juce::Identifier velocityId { "velocity" };
-    const juce::Identifier tieId      { "tie" };     // v1.11.0; written only when set, absent = off
-    const juce::Identifier slideId    { "slide" };   // v1.11.0; written only when set, absent = off
-
-    /**
-        Saved-state format version, written as an attribute of the state tree.
-          (none) v1.0 - v1.3: parameters, the editor's view and, from v1.3, the pattern
-          2      v1.4: same content; the attribute exists so later format changes
-                 can tell old sessions apart and migrate them
-          3      v1.5: adds the Sample child (the sample, embedded or by path);
-                 older states load with the built-in pad
-          4      v1.6+: adds the Chop child (CHOP's 16-step pattern); older
-                 states load with the default pattern (every second step)
-    */
-    const juce::Identifier stateVersionId { "stateVersion" };
-    constexpr int currentStateVersion = 4;
+    using namespace StateFormat;   // the state's names and version (src/state/StateFormat.h)
 
     // State tree layout for CHOP's pattern (v1.6.0+): <Chop pattern="0101010101010101"/>,
     // one character per step, step 1 first, "1" = chopped.
-    const juce::Identifier chopId        { "Chop" };
-    const juce::Identifier chopPatternId { "pattern" };
 
     juce::String chopPatternToString (juce::uint16 pattern)
     {
@@ -529,12 +510,6 @@ namespace
     //   <Sample default="1"/>                                  the built-in pad
     //   <Sample name="pad.wav" path="C:/..." hash="..." flac="<base64>"/>
     // flac is the sample itself as 24-bit FLAC, left out above 10 MB (the path is used then).
-    const juce::Identifier sampleId        { "Sample" };
-    const juce::Identifier sampleDefaultId { "default" };
-    const juce::Identifier sampleNameId    { "name" };
-    const juce::Identifier samplePathId    { "path" };
-    const juce::Identifier sampleHashId    { "hash" };
-    const juce::Identifier sampleFlacId    { "flac" };
 
     /** Keyboard input is played on this channel; the sequencer has StepSequencer::midiChannel (16). */
     constexpr int keyboardChannel = 1;
@@ -568,6 +543,23 @@ void NeonSynthProcessor::setSequencerStep (int index, const StepSequencer::Step&
     updateHostDisplay (ChangeDetails().withNonParameterStateChanged (true));
 }
 
+void NeonSynthProcessor::setSequencerPattern (const StepSequencer::Pattern& pattern)
+{
+    // v1.11.0: the pattern tools, undo and ENTER change several steps at once; the host is told
+    // once, not once per step. Message thread, like setSequencerStep().
+    bool changed = false;
+    for (int i = 0; i < StepSequencer::numSteps; ++i)
+    {
+        if (! (sequencer.getStep (i) == pattern[(size_t) i]))
+        {
+            sequencer.setStep (i, pattern[(size_t) i]);
+            changed = true;
+        }
+    }
+    if (changed)
+        updateHostDisplay (ChangeDetails().withNonParameterStateChanged (true));
+}
+
 void NeonSynthProcessor::trackHeldKey (int note, bool isDown) noexcept
 {
     // Remove the key if present, then (for a key-down) append it as the most recent.
@@ -586,11 +578,28 @@ void NeonSynthProcessor::trackHeldKey (int note, bool isDown) noexcept
         heldKeys[(size_t) numHeldKeys++] = note;
 }
 
+void NeonSynthProcessor::releaseHeldNotes (SequencerMode mode) noexcept
+{
+    // v1.11.0 (region B): HOLD switched off. Each kept-back note-off goes to the synth (which
+    // ignores one for a note no longer sounding) and, in Transpose mode, lets go of the key.
+    for (int note = 0; note < (int) notesHeldByHold.size(); ++note)
+    {
+        if (! notesHeldByHold[(size_t) note])
+            continue;
+        notesHeldByHold[(size_t) note] = false;
+        synth.forgetKey (note);   // its key is up: the note-off below must not step a LEGATO voice back to it
+        playMidi.addEvent (juce::MidiMessage::noteOff (keyboardChannel, note), 0);
+        if (mode == SequencerMode::transpose)
+            trackHeldKey (note, false);
+    }
+}
+
 Lfo::Transport NeonSynthProcessor::lfoTransport() const
 {
     // A playing host sets the LFO's phase from its song position (when SYNC is on); otherwise the
     // LFO free-runs, at the host's tempo when there is one, else at the Sequencer Tempo parameter.
-    Lfo::Transport transport { false, 0.0, (double) seqTempoParameter->get() };
+    Lfo::Transport transport;
+    transport.bpm = (double) seqTempoParameter->get();
 
     if (auto* hostPlayHead = getPlayHead())
     {
@@ -599,10 +608,21 @@ Lfo::Transport NeonSynthProcessor::lfoTransport() const
             if (const auto bpm = position->getBpm(); bpm.hasValue())
                 transport.bpm = *bpm;
 
+            // v1.11.0: the bar divisions follow the host's time signature (4/4 gives 4 beats,
+            // exactly as before); Lfo::render() falls back to 4/4 for a signature that makes no sense.
+            if (const auto signature = position->getTimeSignature(); signature.hasValue() && signature->numerator > 0 && signature->denominator > 0)
+                transport.beatsPerBar = 4.0 * (double) signature->numerator / (double) signature->denominator;
+
             if (const auto ppq = position->getPpqPosition(); ppq.hasValue() && position->getIsPlaying())
             {
                 transport.hostPlaying = true;
                 transport.ppq = *ppq;
+
+                if (const auto barStart = position->getPpqPositionOfLastBarStart(); barStart.hasValue())
+                {
+                    transport.hasBarStart = true;
+                    transport.barStartPpq = *barStart;
+                }
             }
         }
     }
@@ -637,6 +657,15 @@ void NeonSynthProcessor::buildPlayMidi (const juce::MidiBuffer& input, int numSa
     if (mode != SequencerMode::transpose)
         numHeldKeys = 0;   // forget keys held under another mode
 
+    // v1.11.0 (region B), HOLD: like a sustain pedal for the keyboard. While it is on, keyboard
+    // note-offs are kept back (below); switching it off sends them all, at the block's first
+    // sample. The sequencer's notes are made after this and never pass through it. Off (the
+    // default), nothing here runs and the keyboard path is exactly v1.10.1's.
+    const bool holding = holdParameter->get();
+    if (wasHolding && ! holding)
+        releaseHeldNotes (mode);
+    wasHolding = holding;
+
     // 1. Keyboard input. Layer passes everything through; Replace and Transpose
     //    keep controllers, pitch bend and so on, but take note-ons out of the
     //    synth's path (Transpose uses them to steer the pattern instead).
@@ -670,6 +699,14 @@ void NeonSynthProcessor::buildPlayMidi (const juce::MidiBuffer& input, int numSa
         const bool noteOn  = status == 0x90 && bytes[2] > 0;
         const bool noteOff = status == 0x80 || (status == 0x90 && bytes[2] == 0);
 
+        // v1.11.0 (region B), HOLD: the key stays down for the synth, and for Transpose mode too
+        // (the pattern goes on playing, latched), until HOLD is switched off.
+        if (noteOff && holding)
+        {
+            notesHeldByHold[(size_t) (bytes[1] & 0x7f)] = true;
+            continue;
+        }
+
         if ((noteOn || noteOff) && mode == SequencerMode::transpose)
             trackHeldKey (bytes[1], noteOn);
 
@@ -690,7 +727,7 @@ void NeonSynthProcessor::buildPlayMidi (const juce::MidiBuffer& input, int numSa
     //    (the Standalone, or Sync off). The internal clock restarts at beat 0
     //    each time the sequencer is switched on.
     if (sequencerOn && ! wasSequencerOn)
-        internalBeat = 0.0;
+        restartInternalClock();
     wasSequencerOn = sequencerOn;
 
     StepSequencer::Transport transport;
@@ -716,9 +753,18 @@ void NeonSynthProcessor::buildPlayMidi (const juce::MidiBuffer& input, int numSa
 
     if (! followsHost)
     {
+        // The beat is worked out from the samples counted since the last tempo change, not
+        // summed block by block: a running sum gathers rounding error with every block, which
+        // at one-sample blocks and 192 kHz put a step one sample late (SweepTests). v1.11.0.
         const double tempo = seqTempoParameter->get();
-        transport = { true, internalBeat, tempo };
-        internalBeat += (double) numSamples * tempo / (60.0 * getSampleRate());
+        if (! juce::exactlyEqual (tempo, internalTempo))
+        {
+            internalBeatOrigin = internalBeatAt (internalSamples);
+            internalSamples    = 0;
+            internalTempo      = tempo;
+        }
+        transport = { true, internalBeatAt (internalSamples), tempo };
+        internalSamples += numSamples;
     }
 
     transport.playing = transport.playing && sequencerOn;   // switching off releases sounding notes
@@ -730,6 +776,7 @@ void NeonSynthProcessor::buildPlayMidi (const juce::MidiBuffer& input, int numSa
     settings.rate  = (StepSequencer::Rate) seqRateParameter->getIndex();
     settings.swing = seqSwingParameter->get();
     settings.gate  = seqGateParameter->get();
+    settings.length = seqLengthParameter->get();   // v1.11.0 (region A); 16, the default, plays as before
 
     if (mode == SequencerMode::transpose)
     {
@@ -985,6 +1032,7 @@ void NeonSynthProcessor::setStateInformation (const void* data, int sizeInBytes)
                                               ChopSettings().pattern));
 
     restoreSample (tree.getChildWithName (sampleId));
+    stateLoads.fetch_add (1, std::memory_order_release);   // v1.11.0: the editor's pattern undo starts afresh
 }
 
 void NeonSynthProcessor::setChopStep (int step, bool chopped) noexcept

@@ -11,10 +11,11 @@ again it must render the same.
 | `v1.4.0.xml` | v1.4.0 | 16 parameters, stateVersion 2, the sequencer pattern |
 | `v1.5.0.xml` | v1.5.0 | 29 parameters, stateVersion 3, the pattern and an embedded sample (FLAC) |
 | `v1.10.0.xml` | v1.10.0 | every parameter, stateVersion 4, pattern, CHOP pattern and embedded sample |
+| `v1.11.0.xml` | v1.11.0 | as v1.10.0, plus GLIDE, LEGATO, LENGTH, KEY and SCALE set and a tie and a slide in the pattern |
 
-`v1.10.0.xml` was written by `SessionStateTests --write-fixture` (a quarter-second test
+`v1.11.0.xml` and `v1.10.0.xml` were written by `SessionStateTests --write-fixture` (each by its own release) (a quarter-second test
 sample, Sawtooth, the filter on at 900 Hz and a few other settings away from their defaults;
-the sample's name and path were then made neutral by hand). The older three are cut from it
+the sample's name and path were then made neutral by hand). The older three are cut from `v1.10.0.xml`
 by `make_fixtures.py`, which keeps exactly what each release wrote, reading that release's
 parameter IDs from its own source at the tag. The files are the XML inside the binary
 block a host stores; the test wraps them with `copyXmlToBinary`, as JUCE does.

@@ -46,11 +46,14 @@ cmake --build build --config Release
 
 ## Sequencer engine notes
 
-- Every step is placed on an exact sample, derived from the transport each block, so timing does not drift and does not depend on the host's buffer size. The synth also starts every note on its exact sample (it renders up to each MIDI event rather than in 32-sample chunks).
+- Every step is placed on an exact sample, derived from the transport each block, so timing does not drift and does not depend on the host's buffer size. Without a host transport (the Standalone, or SYNC off) the internal clock is counted in samples since the last tempo change, not summed block by block (v1.11.0): a running sum gathered rounding error, which at one-sample blocks and 192 kHz put a step one sample late (`SweepTests`). The synth also starts every note on its exact sample (it renders up to each MIDI event rather than in 32-sample chunks).
 - Small irregularities in the host's beat position — a tempo change inside a block, rounding — of up to 2 ms are treated as continuous playback; only a real jump (a loop or locate) releases held notes.
 - With SYNC on in a DAW, the sequencer follows the DAW's transport: press play in the DAW to hear it.
 - The sequencer and the keyboard never cut off each other's notes, even on the same pitch: the sequencer plays on its own MIDI channel, and keyboard input is moved to channel 1 whatever channel it arrives on.
-- The pattern (16 × on / note / velocity) is saved in the plugin state with the session and presets. Sessions saved with earlier versions load with the default pattern.
+- The pattern (16 × on / note / velocity / tie / slide) is saved in the plugin state with the session and presets. Sessions saved with earlier versions load with the default pattern; patterns saved before v1.11.0 have no tie or slide attributes, which read as off.
+- LENGTH (1–16) wraps the step index; swing follows the absolute step count, so it stays on the beat with an odd length (v1.11.0).
+- A tie holds the note in the queue past its gate until the next step fires. A slide is sent on channel 16 as four events at one sample: CC 68 = 127, the new note-on, the old note-off, CC 68 = 0. `PlayingSynthesiser` takes a channel-16 note-on while CC 68 is down as a legato step of the voice holding the old note; an overlap without the mark (gate 100%, swing) retriggers as before.
+- The pattern tools (`PatternTools`), 32-level undo (`PatternHistory`) and step entry (`NoteEntry`) are pure functions and classes in `StepSequencer.h` for the message thread; `src/gui/PatternRow.h` wires them to the controls.
 - The engine is `StepSequencer.h`; it depends only on `juce_audio_basics` and is covered by its own unit tests (`tests/StepSequencerTests.cpp`, see [Unit tests and benchmark](#unit-tests-and-benchmark)). The controls are described in the manual's sequencer chapter.
 
 ---
@@ -64,6 +67,8 @@ cmake -S . -B build -DJUCE_DIR="/path/to/JUCE" -DNEONSYNTH_BUILD_TESTS=ON
 cmake --build build --config Release --target unit_tests RenderBenchmark
 ctest --test-dir build -C Release --output-on-failure
 ```
+
+`ctest` knows 22 programs: the 11 engine tests built from `NEONSYNTH_UNIT_TESTS` and the 11 that drive the whole processor (every program in the table below except `RenderBenchmark`).
 
 CI also configures with `-DNEONSYNTH_WARNINGS_AS_ERRORS=ON`, so a compiler warning in NeonSynth's own code fails the build. It is off by default, so a newer compiler cannot stop anyone from building locally. One warning is switched off for the project, `-Wfloat-equal` (GCC and Clang), because the code compares floats exactly on purpose; the CMake file says why.
 
@@ -86,7 +91,30 @@ CI also configures with `-DNEONSYNTH_WARNINGS_AS_ERRORS=ON`, so a compiler warni
 | `EditorTests` | Opens the editor offscreen and drives it with mouse events: every parameter has a control, each source shows its own controls with nothing overlapping, knobs, boxes and buttons write their parameter in one gesture and follow it, the step grid, the CHOP strip, the sample markers, the four envelope points, the view and help buttons (Esc closes help from any control), a replaced sample being freed once its notes end, and a background load that is overtaken; the SCANLINES switch (clicks pass through, the choice is saved); the CRT look's text contrast (4.5:1 on the glass) and that its backdrop, graticules and help page are drawn once and reused; then paints every view at 75%, 100% and 150% for every source (set `NEONSYNTH_SNAPSHOT_DIR` to keep the pictures). Finds controls only by component ID, so it carries over to a new layout. On Linux it needs an X display (`xvfb-run`) |
 | `SessionStateTests` | Saving and loading sessions: round trips, the embedded sample, missing and changed files, and sessions saved by v1.2, v1.4, v1.5 and v1.10 (`tests/fixtures/state`): each loads with every newer parameter at its neutral default, plays, and renders the same once saved again |
 | `StateFuzzTests` | About 1 600 damaged and hostile sessions (truncated or garbled XML, bad embedded-sample text, parameter values that are not numbers, deep nesting, huge patterns, long paths), seeded so a failure repeats; after each the plugin must still render finite audio, and the cases that crashed or hung v1.10.0 stay in the list |
+| `PlayingTests` | GLIDE, LEGATO, HOLD and the voice side of SLIDE: the glide reaches its pitch in the set time, evenly in octaves, for intervals up and down, in every source; LEGATO keeps the envelope through overlapping keys and returns to the key still held, and does nothing above one voice; HOLD keeps keyboard notes, releases them when switched off, passes sequencer notes and latches Transpose; the slide MIDI glides the held voice, also to the same pitch, while unmarked overlaps retrigger as before; at the defaults the renders are identical to ones that never touch these controls; no clicks when switching them while notes sound |
+| `PresetTests` | The factory data (16 presets, unique names, known categories, real parameter IDs and values in range, valid patterns and CHOP text); every factory preset loads, renders finite under −6 dBFS and ends in silence (it prints each one's peak); save and load round trips (parameters, ties and slides, CHOP, the embedded sample) and keep the window's view settings; the user folder, sorting and wrap-around stepping; the program list and the host's program notifications, and a restored session reporting its program; broken preset files refused; the preset bar's controls, menu and painting |
+| `VoiceStealingTests` | Which voice a new note takes below 16 voices: a free voice, else the oldest on the same note, else the oldest released (key up and not held by the pedal), else the oldest; hand-written cases at 1, 4 and 15 voices, then seeded random sequences with repeated pitches and pedal moves checked against a reference `juce::Synthesiser`; at 16 voices JUCE's own choice is unchanged |
+| `SweepTests` | Every source and the sequencer at 44.1, 48, 88.2, 96 and 192 kHz with blocks of 1, 31, 64, 512 and 4096 samples and a changing sequence: finite output under the soft clipper's ceiling, the note at its pitch, audio identical sample for sample whatever the block sizes, sequencer steps on their exact sample on the internal clock and a host transport, and glide, tie, slide and LENGTH identical for every block plan |
 | `RenderBenchmark` | Times `processBlock` directly (no host) for idle, one note, 16 voices, 16 voices on each of the Sample, Random and Granular sources, 16 sculpted voices (CHOP, Noise and Fold all on), the LFO on the cutoff, the mod wheel's vibrato and a moving bend on the granular source (all on 16 voices), and a dense sequencer + chords load |
+
+### The integrity job
+
+`tests/integrity.py` (Python 3.9+, standard library only) makes the checks a compiler cannot:
+
+```bash
+python tests/integrity.py            # every check; exits 1 if any finds a problem
+python tests/integrity.py --list     # also prints what each check looked at
+python tests/integrity.py --cppcheck # cppcheck, filtered (cppcheck 2.13 or newer)
+```
+
+| Check | What it requires |
+|---|---|
+| version | The same x.y.z in `CMakeLists.txt` (project and plugin), `installer.nsi`, the manual's "Applies to" line, the cover (`docs/images/cover.json`, written by `docs/figures/cover.py`) and the newest CHANGELOG row |
+| parameters | Every parameter in `tests/parameter-layout.txt` is named in the manual and on the help page (the text in `HelpOverlay.h`'s `buildColumns()`) by its label in the window; `PARAMETER_TERMS` in the script lists the words that count, so a new parameter needs a line there |
+| links | Every local path the manual, the README, this file and the companion books link to or quote in backticks exists, and so do links into this repository on GitHub that point at master, main or the version being released |
+| constants | Each tuning constant several places depend on (the soft clipper's knee and ceiling, the voice count, the 5 ms hard-stop fade and others) is defined once |
+
+`.github/workflows/integrity.yml` runs it on every push and pull request, in three jobs: the four checks above, cppcheck (`--enable=unusedFunction,style` on `src/` and `tests/`, with each filtered finding given its reason in the script), and a Clang build of the plugin and every test with the integrity warnings as errors (`-DNEONSYNTH_INTEGRITY=ON`), followed on a pull request by clang-tidy (`tests/clang-tidy.yaml`) on the C++ files it changes.
 
 ### Sanitizers
 
@@ -329,9 +357,10 @@ How to read it, top to bottom, with the code that does each part:
 
 | Stage | What happens | Code |
 |---|---|---|
-| Notes in | Keyboard MIDI, filtered by the sequencer mode, is merged with the sequencer's own notes into one MIDI buffer for the block | `NeonSynthProcessor::buildPlayMidi`, `StepSequencer.h` |
+| Notes in | Keyboard MIDI, filtered by the sequencer mode and by HOLD (which keeps note-offs back while it is on), is merged with the sequencer's own notes into one MIDI buffer for the block | `NeonSynthProcessor::buildPlayMidi`, `StepSequencer.h` |
+| Voice allocation | `LimitedSynthesiser` (the Voices limit and the stealing order) on `PlayingSynthesiser`, which moves a sounding voice to a new note for LEGATO and the sequencer's slides | `NeonSynthProcessor.h`, `PlayingSynthesiser.h` |
 | Modulation | The LFO, pitch bend and the mod wheel are worked out once per block for all voices: a pitch ratio, a cutoff offset and a tremolo | `Modulation.h`, `Lfo.h` |
-| Voices | Up to 16 voices (the VOICES limit). Each runs its source; Oscillator and Random then pass through CHOP, Noise and Fold. Then velocity times the amp envelope, drive and the filter (one stage, bypassed together by the filter's ON switch), and a pan set by pitch | `NeonSynthVoice.h`, `Oscillator.h`, `Sculpt.h`, `SampleReader.h`, `GrainCloud.h`, `VoiceEnvelope.h`, `CytomicSvf.h` |
+| Voices | Up to 16 voices (the VOICES limit). Each runs its source, at the note's pitch times the glide and the modulation's pitch ratio; Oscillator and Random then pass through CHOP, Noise and Fold. Then velocity times the amp envelope, drive and the filter (one stage, bypassed together by the filter's ON switch), and a pan set by pitch | `NeonSynthVoice.h`, `Oscillator.h`, `Sculpt.h`, `SampleReader.h`, `GrainCloud.h`, `VoiceEnvelope.h`, `CytomicSvf.h` |
 | Output | The voices are summed, then tremolo, output gain and the soft clipper (under −1 dBFS, untouched below −6 dBFS) | `NeonSynthProcessor::processBlock`, `softClip` |
 | Displays | The finished block is copied to the scope FIFO and each voice's state to the voice views | `pushScope`, `publishVoiceViews` |
 
@@ -342,7 +371,7 @@ NeonSynth runs on three kinds of thread. The rule is that the audio thread never
 | Thread | What runs there | Must not |
 |---|---|---|
 | Audio thread (the host's) | `processBlock`: reading parameters, the sequencer, the modulation, the voices, the soft clipper, filling the scope FIFO and the voice views, queuing MIDI for the log | Allocate, free, lock, throw, do I/O |
-| Message thread | The editor and its views; the 30 Hz timer that drains the scope, reads the voice and modulation views and frees replaced samples; step edits in the sequencer grid (`setSequencerStep`); starting a sample load; telling the host the state changed (`updateHostDisplay`) | Block for long: it is the host's GUI thread too |
+| Message thread | The editor and its views; the 30 Hz timer that drains the scope, reads the voice and modulation views and frees replaced samples; step edits in the sequencer grid (`setSequencerStep`), the pattern row's tools, undo and ENTER (`setSequencerPattern`); presets (`PresetManager`: loading, saving, the host's program calls, which some hosts make on another thread under the manager's lock); starting a sample load; telling the host the state changed (`updateHostDisplay`) | Block for long: it is the host's GUI thread too |
 | Background threads | The sample loader (a one-thread `juce::ThreadPool`, "NeonSynth sample loader") reads and prepares a file; the MIDI log writer (a `juce::Thread`, "NeonSynth MIDI log", only when `NEONSYNTH_MIDILOG` is set) formats and writes the log | Touch the editor or call the host |
 
 The host calls `getStateInformation` and `setStateInformation` on a thread of its choosing, usually the message thread. They use `sampleInfoLock`, which the audio thread never takes.
@@ -357,6 +386,7 @@ How data crosses between them:
 | MIDI log | Audio thread → log writer | A lock-free `juce::AbstractFifo` of fixed-size records in `MidiLogger.h`; when it is full, events are counted as dropped instead of waiting |
 | Sequencer pattern | Message thread ↔ audio thread | One `std::atomic<uint32>` per step in `StepSequencer.h`; the playing step is an atomic too |
 | CHOP pattern | Message thread → audio thread | One `std::atomic<uint16>`, bit k = step k |
+| Notes for ENTER | Audio thread → pattern row's timer | While ENTER is armed (an atomic flag), each keyboard note-on is pushed into a small lock-free `juce::AbstractFifo` (`pushEnteredNote` / `popEnteredNote`) |
 | Voice and modulation views | Audio thread → editor timer | Relaxed atomic stores once per block (`VoiceView`, `Modulation`'s LFO phase and value, bend and wheel positions, the sequencer's tempo); values may come from neighbouring blocks, which is fine for display |
 | "Sample loaded" host notification | Loader thread → message thread | The loader triggers an `AsyncUpdater` member (`HostNotifier`), which calls `updateHostDisplay` on the message thread; a notification still pending when the processor is destroyed is cancelled |
 
@@ -372,9 +402,9 @@ The plugin's sources are grouped by job under `src/` (v1.11.0); includes name th
 |---|---|
 | `src/dsp` | Signal processing: oscillators, CHOP and the sculpt stages, sample playback, grains, the filter, the envelope, the LFO and modulation |
 | `src/sequencer` | The step sequencer engine |
-| `src/state` | Samples: loading, the prepared sample and its hand-off to the audio thread |
+| `src/state` | Samples (loading, the prepared sample and its hand-off to the audio thread) and presets |
 | `src/gui` | The editor, the CRT theme and look-and-feel, and every view |
-| `src/plugin` | The processor (parameters, sessions, MIDI routing), the voice and the MIDI log |
+| `src/plugin` | The processor (parameters, sessions, MIDI routing, HOLD), the synthesiser (LEGATO and slides), the voice and the MIDI log |
 
 | File | Purpose |
 |---|---|
@@ -385,10 +415,12 @@ The plugin's sources are grouped by job under `src/` (v1.11.0); includes name th
 | `src/dsp/CytomicSvf.h` | The state-variable filter (low-pass, high-pass, band-pass, notch) with drive |
 | `src/dsp/Lfo.h` / `src/dsp/Modulation.h` | The LFO and the shared per-block modulation buffers (pitch, cutoff, tremolo), pitch bend and the mod wheel |
 | `src/dsp/VoiceEnvelope.h` | The voice's ADSR envelope (slewed sustain, release rate fixed at note-off) |
-| `src/sequencer/StepSequencer.h` | Step sequencer engine — timing, swing, gate, note-off queue, lock-free pattern |
+| `src/sequencer/StepSequencer.h` | Step sequencer engine — timing, swing, gate, LENGTH, ties and slides, the scale lock, note-off queue, lock-free pattern; the pattern tools, undo history and step entry |
 | `src/state/SampleData.h` | A prepared sample: mono, normalised, 24-bit grid, with 1/2- and 1/4-rate copies |
 | `src/state/SampleSlot.h` | Lock-free hand-off of the current sample to the audio thread; frees replaced samples only when safe |
 | `src/state/SampleLoader.h` | Loads WAV, AIFF and FLAC files and embedded FLAC; renders the built-in pad |
+| `src/state/PresetManager.h` | Presets (v1.11.0): `.neonpreset` files (the session's XML with a category and a name), the user folder, the bank order, the host's program list, and what a session remembers of its preset |
+| `src/state/FactoryPresets.h` | The 16 factory presets, written as data in each parameter's own units, with their patterns and CHOP steps |
 | `src/gui/ShapeView.h` | The SHAPE strip's drawing of one cycle, with CHOP step editing |
 | `src/gui/SampleView.h` | The sample's waveform in the editor, with draggable markers and live playheads |
 | `src/gui/NeonSynthEditor.h` | The editor — layout, controls, resizing, the 30 Hz timer that feeds the visualisers, the SCANLINES switch |
@@ -396,7 +428,9 @@ The plugin's sources are grouped by job under `src/` (v1.11.0); includes name th
 | `src/gui/CrtFrame.h` | The CRT frame: bezel, tube glass, panels and their titles, the GAIN fader's groove and dB marks |
 | `src/gui/CrtLookAndFeel.h` | How every stock control is drawn in the CRT look: knobs, sliders, buttons, combo boxes and pop-up menus |
 | `src/gui/LfoView.h` | The LFO's drawing in the MODULATION panel |
-| `src/gui/SequencerView.h` | The 16-step grid in the editor (editing and playhead) |
+| `src/gui/SequencerView.h` | The 16-step grid in the editor (editing, the velocity bar, the TIE / SLD markers, the faded steps beyond LENGTH, the ENTER cursor, the playhead) |
+| `src/gui/PatternRow.h` | The sequencer's pattern row (v1.11.0): LENGTH, KEY, SCALE, TOOLS, ENTER and UNDO |
+| `src/gui/PresetBar.h` | The preset bar in the header (v1.11.0): <, the name and category with the preset menu, >, SAVE |
 | `src/gui/HelpOverlay.h` | Quick-help page opened by the editor's ? button |
 | `src/gui/NeonStyle.h` | The neon palette and the drawing helpers the views share: panel inset, graticule, phosphor glow, afterglow, readout formats |
 | `src/gui/SignalHistory.h` | The newest output samples from the scope FIFO, and the display window's scaling with the sample rate |
@@ -405,8 +439,9 @@ The plugin's sources are grouped by job under `src/` (v1.11.0); includes name th
 | `src/gui/LevelMeter.h` | The block L/R meter with peak hold and the clip light |
 | `src/gui/AdsrView.h` | The envelope graph with its draggable points and the voices' positions |
 | `src/gui/VoiceLights.h` | The 16 voice lights; clicking one sets the voice limit |
-| `src/plugin/NeonSynthProcessor.h`, `.cpp` | `AudioProcessor` — parameter management, MIDI, state |
-| `src/plugin/NeonSynthVoice.h` | Voice and sound classes — sound source, filter, envelope, pan |
+| `src/plugin/NeonSynthProcessor.h`, `.cpp` | `AudioProcessor` — parameter management, MIDI, HOLD, the internal clock, the voice limit and stealing order, state, programs |
+| `src/plugin/PlayingSynthesiser.h` | `juce::Synthesiser` with LEGATO (mono, overlapping keys) and the sequencer's slides (v1.11.0) |
+| `src/plugin/NeonSynthVoice.h` | Voice and sound classes — sound source, glide, filter, envelope, pan |
 | `src/plugin/MidiLogger.h` | Real-time-safe MIDI logging (lock-free FIFO + background writer thread) |
 | `fonts/` | VT323 and IBM Plex Mono (SIL Open Font Licence, `OFL-*.txt`), compiled into the plugin as binary data |
 | `tests/StepSequencerTests.cpp` | Unit tests for the sequencer engine (`-DNEONSYNTH_BUILD_TESTS=ON`) |
@@ -424,6 +459,11 @@ The plugin's sources are grouped by job under `src/` (v1.11.0); includes name th
 | `tests/sanitizer-suppressions.txt` | The two JUCE-internal UBSan reports the sanitizer build tolerates, and why |
 | `tests/ParameterLayoutTests.cpp`, `tests/parameter-layout.txt` | The parameter-layout test and its reference |
 | `tests/EditorTests.cpp` | Offscreen editor tests (gestures, painting, the CRT look's contrast and caches) |
+| `tests/PlayingTests.cpp` | GLIDE, LEGATO, HOLD and the voice side of slides |
+| `tests/PresetTests.cpp` | Presets, the factory bank, programs and the preset bar |
+| `tests/VoiceStealingTests.cpp` | The stealing order below 16 voices, against a reference synthesiser |
+| `tests/SweepTests.cpp` | Sample rates and block sizes: identical audio and exact step timing |
+| `tests/integrity.py` | Versions, parameters described in the manual and help page, links, constants defined once, and filtered cppcheck |
 | `tests/complexity_report.py` | Lines of code and the cyclomatic complexity of every plugin function, as Markdown (`pip install lizard`); CI runs it on every push and pull request |
 | `tests/compare_versions.py` | Renders a set of sessions through two VST3 builds and requires identical audio (CI compares against the v1.6.0 release) |
 | `CMakeLists.txt` | Build config — Standalone + VST3, JUCE path, the test programs |
@@ -442,6 +482,7 @@ The plugin's sources are grouped by job under `src/` (v1.11.0); includes name th
 | `.github/workflows/build.yml` | CI — CMake build and unit tests on Ubuntu (GCC) |
 | `.github/workflows/lint.yml` | CI — ruff lint of every Python file, and the code statistics report (lines of code, cyclomatic complexity per function) on the run's Summary page |
 | `.github/workflows/manual.yml` | CI — checks the manual against the version and builds its PDF |
+| `.github/workflows/integrity.yml` | CI — `tests/integrity.py`, cppcheck, and a Clang build with the integrity warnings plus clang-tidy on a pull request's changed files, on every push and pull request |
 | `.github/workflows/release.yml` | Release on a version tag — manual check, all tests, pluginval (strictness 10), installer, GitHub Release with the manual PDF |
 | `requirements-test.txt` | Pinned Python dependencies for `test_midi.py` |
 | `installer.nsi` | NSIS installer script (VST3 + Standalone) |

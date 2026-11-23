@@ -6,10 +6,12 @@
 #include <JuceHeader.h>
 #include <array>
 #include "plugin/NeonSynthVoice.h"
+#include "plugin/PlayingSynthesiser.h"
 #include "plugin/MidiLogger.h"
 #include "sequencer/StepSequencer.h"
 #include "state/SampleSlot.h"
 #include "state/SampleLoader.h"
+#include "state/PresetManager.h"
 
 class NeonSynthProcessor : public juce::AudioProcessor
 {
@@ -34,13 +36,23 @@ public:
     bool isMidiEffect() const override { return false; }
 
     /** Release time plus the 5 ms hard-stop fade (the envelope's release is linear and exact). */
-    double getTailLengthSeconds() const override { return (double) releaseParameter->get() + 0.005; }
+    double getTailLengthSeconds() const override { return (double) releaseParameter->get() + NeonSynthVoice::hardStopFadeSeconds; }
 
-    int getNumPrograms() override { return 1; }
-    int getCurrentProgram() override { return 0; }
-    void setCurrentProgram (int) override {}
-    const juce::String getProgramName (int) override { return "Default"; }
-    void changeProgramName (int, const juce::String&) override {}
+    // v1.11.0, region C (presets): the 16 factory presets are the host's program list. The current
+    // program is the factory preset loaded last, remembered with the session (PresetManager.h); 0
+    // when there is none, as JUCE needs an index.
+    int getNumPrograms() override                         { return PresetManager::numFactoryPresets; }
+    int getCurrentProgram() override                      { return juce::jmax (0, presetManager.getCurrentProgramIndex()); }
+    void setCurrentProgram (int index) override           { presetManager.requestFactory (index); }
+    const juce::String getProgramName (int index) override { return PresetManager::getFactoryName (index); }
+    void changeProgramName (int, const juce::String&) override {}   // the factory names are fixed
+
+    /** Counts the sessions and presets loaded (v1.11.0): the pattern row clears its undo
+        history when it changes, so UNDO never writes an old sound's pattern onto a new one. */
+    int getStateLoadCount() const noexcept                { return stateLoads.load (std::memory_order_acquire); }
+
+    /** Presets: the factory bank, the user folder, loading and saving (message thread). */
+    PresetManager& getPresetManager() noexcept            { return presetManager; }
 
     void getStateInformation (juce::MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
@@ -119,6 +131,10 @@ public:
         marked as modified.
     */
     void setSequencerStep (int index, const StepSequencer::Step& step);
+
+    /** v1.11.0: writes every step that differs from `pattern`, then tells the host once (the
+        pattern tools, undo and ENTER). Message thread. */
+    void setSequencerPattern (const StepSequencer::Pattern& pattern);
 
     /**
         v1.11.0, ENTER: while armed, every keyboard note-on is also queued for the editor, which
@@ -210,7 +226,7 @@ private:
 
     // Stereo frames, interleaved L/R: index i of the FIFO lives at 2i and 2i + 1.
     juce::AbstractFifo scopeFifo { scopeFifoSize };
-    std::array<float, 2 * scopeFifoSize> scopeRing {};
+    std::array<float, 2 * (std::size_t) scopeFifoSize> scopeRing {};
 
     MidiLogger  midiLogger;
     juce::int64 samplesProcessed = 0;
@@ -220,13 +236,16 @@ private:
         16 is the full pool. At 16 it defers to juce::Synthesiser's own voice choice, so sessions
         saved before v1.9.0 allocate and steal voices exactly as before. Lowering N lets the voices
         above it finish their notes; new notes only go to the first N.
+        v1.11.0 (region B): built on PlayingSynthesiser, which adds LEGATO and the sequencer's SLIDE.
     */
-    class LimitedSynthesiser : public juce::Synthesiser
+    class LimitedSynthesiser : public PlayingSynthesiser
     {
     public:
         void setVoiceLimit (int newLimit) noexcept   { voiceLimit = newLimit; }
 
     protected:
+        int getVoiceLimit() const noexcept override   { return voiceLimit; }
+
         juce::SynthesiserVoice* findFreeVoice (juce::SynthesiserSound* sound, int midiChannel,
                                                int midiNoteNumber, bool stealIfNoneAvailable) const override
         {
@@ -241,8 +260,12 @@ private:
             if (! stealIfNoneAvailable)
                 return nullptr;
 
-            // Steal within the first N: the same note if it is already sounding, else the oldest
-            // voice whose key is up (in its release), else the oldest of all.
+            // Steal within the first N: the oldest voice already playing this note, else the oldest
+            // released voice, else the oldest of all. Released means in its release: key up and
+            // not held by the sustain pedal (v1.11.0 fix: a pedal-held note counted as released,
+            // and of two voices on the same note the lower one was taken, not the older;
+            // VoiceStealingTests).
+            juce::SynthesiserVoice* oldestSameNote = nullptr;
             juce::SynthesiserVoice* oldestReleased = nullptr;
             juce::SynthesiserVoice* oldest = nullptr;
             for (int i = 0; i < limit; ++i)
@@ -250,14 +273,14 @@ private:
                 auto* v = getVoice (i);
                 if (! v->canPlaySound (sound))
                     continue;
-                if (v->getCurrentlyPlayingNote() == midiNoteNumber)
-                    return v;
-                if (! v->isKeyDown() && (oldestReleased == nullptr || v->wasStartedBefore (*oldestReleased)))
+                if (v->getCurrentlyPlayingNote() == midiNoteNumber && (oldestSameNote == nullptr || v->wasStartedBefore (*oldestSameNote)))
+                    oldestSameNote = v;
+                if (v->isPlayingButReleased() && (oldestReleased == nullptr || v->wasStartedBefore (*oldestReleased)))
                     oldestReleased = v;
                 if (oldest == nullptr || v->wasStartedBefore (*oldest))
                     oldest = v;
             }
-            return oldestReleased != nullptr ? oldestReleased : oldest;
+            return oldestSameNote != nullptr ? oldestSameNote : oldestReleased != nullptr ? oldestReleased : oldest;
         }
 
     private:
@@ -279,18 +302,33 @@ private:
     /** Keeps the list of held keys up to date (Transpose mode). */
     void trackHeldKey (int note, bool isDown) noexcept;
 
+    // v1.11.0 (region B), HOLD: keyboard note-offs kept back while it is on, sent when it goes off.
+    std::array<bool, 128> notesHeldByHold {};   // keyboard notes whose note-off HOLD is keeping back
+    bool wasHolding = false;
+    void releaseHeldNotes (SequencerMode mode) noexcept;
+
     /** Fills the pattern with the default bassline (used until a session supplies one). */
     void loadDefaultPattern() noexcept;
 
     StepSequencer    sequencer;
     juce::MidiBuffer playMidi;                 // keyboard + sequencer events for the synth; capacity reserved in prepareToPlay
-    double internalBeat   = 0.0;               // internal clock position in beats
+    // The internal clock (v1.11.0): the beat at the last tempo change or restart, the samples
+    // since then and the tempo in force, so the position is one multiplication, not a running sum.
+    double       internalBeatOrigin = 0.0;
+    juce::int64  internalSamples    = 0;
+    double       internalTempo      = 0.0;
+    double internalBeatAt (juce::int64 samples) const noexcept
+    {
+        return internalBeatOrigin + (double) samples * internalTempo / (60.0 * getSampleRate());
+    }
+    void restartInternalClock() noexcept   { internalBeatOrigin = 0.0; internalSamples = 0; internalTempo = 0.0; }
     bool   wasSequencerOn = false;
     std::array<int, 16> heldKeys {};           // Transpose mode: keys currently down, most recent last
     int    numHeldKeys = 0;
 
     // ENTER's queue of keyboard notes (note in the low byte, velocity in the next).
     std::atomic<bool> noteEntryArmed { false };
+    std::atomic<int>  stateLoads { 0 };   // see getStateLoadCount()
     juce::AbstractFifo enteredNotesFifo { 64 };
     std::array<juce::uint16, 64> enteredNotes {};
     void pushEnteredNote (int note, int velocity) noexcept;
@@ -298,6 +336,7 @@ private:
     std::atomic<bool>  sequencerFollowsHost { false };
 
     juce::AudioProcessorValueTreeState apvts;
+    PresetManager presetManager { *this, apvts };   // v1.11.0, region C; after apvts, whose state it listens to
 
     juce::AudioParameterChoice* waveformParameter      = nullptr;
     juce::AudioParameterFloat*  cutoffParameter        = nullptr;
