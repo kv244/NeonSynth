@@ -3,7 +3,7 @@
 // Licensed under the GNU Affero General Public License v3; see LICENSE.
 
 /*
-    Unit tests for CHOP (Oscillator.h): Overtone 0 changes nothing, chopped steps
+    Unit tests for CHOP (Chop.h): Overtone 0 changes nothing, chopped steps
     are silenced at 100% and inverted at 200%, Comb repeats the pattern, the
     edges are band-limited, and CHOP fades out where steps get too short.
 

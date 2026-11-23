@@ -59,6 +59,22 @@
     loop, a locate, the sequencer being switched off), every pending note is
     released immediately so nothing hangs.
 
+    Gate and swing
+    --------------
+    The gate is a fraction of the nominal step (stepLength), not of the time
+    until the next step actually starts. Swing moves only where odd steps
+    start, so an odd step's note still lasts gate x stepLength: with a long
+    gate it runs on past the start of the following (even, unswung) step, by
+    up to (gate + swingDelay / stepLength - 1) x stepLength. At gate 1 and
+    full swing that is half a step of overlap. On different pitches both notes
+    sound together for that time (two voices); on the same pitch the new
+    note-on first ends the old note (releaseSamePitch), since
+    juce::Synthesiser would otherwise end the new note with the old one's
+    note-off. Even steps are never delayed, so they never overlap the next
+    (odd) step, and with no swing gate 1 is legato (to within a sample of
+    rounding). Ties and slides are separate: their notes are held until the
+    next step fires, whatever the gate.
+
     Tie and slide (v1.11.0; the contract between the sequencer and the voices)
     ------------------------------------------------------------------------
     Each step carries two more flags, stored in the same atomic word as the rest. A tied step
@@ -93,6 +109,19 @@
     pattern is stored as one std::atomic<uint32_t> per step, so the GUI can
     edit steps (setStep) while the audio thread reads them (getStep). The
     current playhead position is published the same way for the editor.
+
+    The contract, member by member (v1.11.1):
+      - prepare(), process(), releaseAll(): the audio thread only (prepare()
+        from prepareToPlay(), which a host never runs at the same time as
+        processBlock()). They share the note-off queue and the timing state,
+        which are plain members: never call them from two threads.
+      - setStep(), getStep(), getCurrentStep(): any thread, at any time. Each
+        step is one atomic word, so a reader sees a step either before or after
+        an edit, never half of one; edits to several steps are not one atomic
+        change (the audio thread may play a mix of old and new steps for one
+        block). Relaxed ordering is enough: a step carries no other data.
+      - The static helpers (stepLengthInBeats, the scale functions) touch no
+        state and are safe anywhere.
 
     Notes are sent on MIDI channel 16 so they can never cancel a note of the
     same pitch played on the keyboard (juce::Synthesiser matches note-offs by
@@ -156,7 +185,7 @@ public:
     {
         Rate  rate      = Rate::sixteenth;
         float swing     = 0.0f;    ///< 0..1: delays odd steps by up to half a step (about 0.67 is a triplet feel)
-        float gate      = 0.5f;    ///< 0.05..1: note length as a fraction of one step
+        float gate      = 0.5f;    ///< 0.05..1: note length as a fraction of one nominal step (see "Gate and swing")
         int   transpose = 0;       ///< semitones added to every step's note
         bool  triggersEnabled = true;  ///< false = keep time but start no new notes (Transpose mode, no key held)
         int   length    = numSteps;  ///< v1.11.0: 1..16, the pattern repeats after this many steps (16 = as before)
