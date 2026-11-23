@@ -138,18 +138,18 @@ endif()
 option(NEONSYNTH_PCH "Precompile JUCE's headers for NeonSynth's own sources" ON)
 # C++ only: the project also enables C (JUCE compiles a few C files), which must not get it.
 set(neonsynth_pch_headers
-    "$<$<COMPILE_LANGUAGE:CXX>:<juce_core/juce_core.h>>"
-    "$<$<COMPILE_LANGUAGE:CXX>:<juce_events/juce_events.h>>"
-    "$<$<COMPILE_LANGUAGE:CXX>:<juce_data_structures/juce_data_structures.h>>"
-    "$<$<COMPILE_LANGUAGE:CXX>:<juce_graphics/juce_graphics.h>>"
-    "$<$<COMPILE_LANGUAGE:CXX>:<juce_gui_basics/juce_gui_basics.h>>"
-    "$<$<COMPILE_LANGUAGE:CXX>:<juce_gui_extra/juce_gui_extra.h>>"
-    "$<$<COMPILE_LANGUAGE:CXX>:<juce_audio_basics/juce_audio_basics.h>>"
-    "$<$<COMPILE_LANGUAGE:CXX>:<juce_audio_formats/juce_audio_formats.h>>"
-    "$<$<COMPILE_LANGUAGE:CXX>:<juce_audio_devices/juce_audio_devices.h>>"
-    "$<$<COMPILE_LANGUAGE:CXX>:<juce_audio_processors/juce_audio_processors.h>>"
-    "$<$<COMPILE_LANGUAGE:CXX>:<juce_audio_utils/juce_audio_utils.h>>"
-    "$<$<COMPILE_LANGUAGE:CXX>:<juce_dsp/juce_dsp.h>>")
+    "$<$<COMPILE_LANGUAGE:CXX>:<juce_core/juce_core.h$<ANGLE-R>>"
+    "$<$<COMPILE_LANGUAGE:CXX>:<juce_events/juce_events.h$<ANGLE-R>>"
+    "$<$<COMPILE_LANGUAGE:CXX>:<juce_data_structures/juce_data_structures.h$<ANGLE-R>>"
+    "$<$<COMPILE_LANGUAGE:CXX>:<juce_graphics/juce_graphics.h$<ANGLE-R>>"
+    "$<$<COMPILE_LANGUAGE:CXX>:<juce_gui_basics/juce_gui_basics.h$<ANGLE-R>>"
+    "$<$<COMPILE_LANGUAGE:CXX>:<juce_gui_extra/juce_gui_extra.h$<ANGLE-R>>"
+    "$<$<COMPILE_LANGUAGE:CXX>:<juce_audio_basics/juce_audio_basics.h$<ANGLE-R>>"
+    "$<$<COMPILE_LANGUAGE:CXX>:<juce_audio_formats/juce_audio_formats.h$<ANGLE-R>>"
+    "$<$<COMPILE_LANGUAGE:CXX>:<juce_audio_devices/juce_audio_devices.h$<ANGLE-R>>"
+    "$<$<COMPILE_LANGUAGE:CXX>:<juce_audio_processors/juce_audio_processors.h$<ANGLE-R>>"
+    "$<$<COMPILE_LANGUAGE:CXX>:<juce_audio_utils/juce_audio_utils.h$<ANGLE-R>>"
+    "$<$<COMPILE_LANGUAGE:CXX>:<juce_dsp/juce_dsp.h$<ANGLE-R>>")
 if(NEONSYNTH_PCH)
     if(DEFINED JUCE_DIR)
         set(neonsynth_juce_source_dir "${JUCE_DIR}")
