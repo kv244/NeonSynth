@@ -79,7 +79,7 @@ may ask you to confirm. The manual's first chapters cover setup in detail.
 
 ## Building
 
-You need CMake 3.21 or newer, a C++17 compiler (MSVC 2022, Clang or GCC) and git.
+You need CMake 3.22 or newer, a C++17 compiler (MSVC 2022, Clang or GCC) and git.
 [JUCE 9.0.0](https://github.com/juce-framework/JUCE/releases/tag/9.0.0) comes by itself: the first
 configure downloads it (CMake's FetchContent, pinned to the 9.0.0 commit) into the build folder.
 

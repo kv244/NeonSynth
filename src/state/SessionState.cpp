@@ -16,10 +16,7 @@ namespace
     // past 4/3 of the cap (the size prefix and the dot).
     constexpr int maxSizeDigits = 9;
     constexpr size_t sizePrefixAllowance = 64;
-}
 
-namespace
-{
     using namespace StateFormat;   // the state's names and version (src/state/StateFormat.h)
 
     // State tree layout for CHOP's pattern (v1.6.0+): <Chop pattern="0101010101010101"/>,

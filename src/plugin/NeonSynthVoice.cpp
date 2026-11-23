@@ -12,7 +12,8 @@
 namespace
 {
     // Multipliers that spread a voice index, note or note count over all 32 bits of a seed
-    // (Knuth's multiplicative hash, xxHash's second prime, and a small odd prime), so nearby
+    // (Knuth's multiplicative hash, xxHash's second prime, and 40503, about 2^16 divided by the
+    // golden ratio, the 16-bit Fibonacci-hashing multiplier), so nearby
     // voices and notes get unrelated random streams.
     constexpr juce::uint32 seedHashA = 2654435761u;
     constexpr juce::uint32 seedHashB = 2246822519u;

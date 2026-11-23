@@ -11,7 +11,7 @@ Paths in this file are relative to the repository root.
 
 | Tool | Version |
 |---|---|
-| CMake | 3.21+ |
+| CMake | 3.22+ (JUCE 9.0.0 needs it) |
 | JUCE | 9.0.0: fetched by CMake when no `JUCE_DIR` is given (v1.11.1), or a checkout of your own |
 | git | any recent version (CMake uses it to fetch JUCE) |
 | C++ compiler | MSVC 2022 / Clang / GCC with C++17 |
@@ -145,7 +145,7 @@ as the `sanitizers` job on Ubuntu.
 
 ### Performance
 
-`RenderBenchmark` on the development machine, 48 kHz with 512-sample blocks (share of one CPU core in real time):
+`RenderBenchmark` on the development machine, 48 kHz with 512-sample blocks (share of one CPU core in real time). Since v1.11.1 the test programs, RenderBenchmark included, are built without link-time optimisation (the plugin keeps it), and the voice and editor have .cpp files, so these figures are not directly comparable with those of earlier releases:
 
 | Load | CPU |
 |---|---|

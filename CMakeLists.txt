@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.21)
+cmake_minimum_required(VERSION 3.22)   # JUCE 9.0.0 needs 3.22
 project(NeonSynth VERSION 1.11.1 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -82,8 +82,8 @@ set(neonsynth_integrity_flags
 # and every test program, so a memory error or undefined behaviour fails the tests instead of going
 # unnoticed. UB stops the program (-fno-sanitize-recover) rather than printing a warning ctest would
 # ignore. GCC and Clang only (MSVC's /fsanitize=address has no UBSan). Configure it with
-# CMAKE_BUILD_TYPE Debug or RelWithDebInfo: Release adds -flto (juce_recommended_lto_flags), which
-# makes the reports harder to read and the build much slower. The JUCE code compiled into each target
+# CMAKE_BUILD_TYPE Debug or RelWithDebInfo: a Release plugin build adds link-time optimisation
+# (NEONSYNTH_LTO), which makes the reports harder to read and the build much slower. The JUCE code compiled into each target
 # is instrumented too, which is what ASan needs to see the buffers JUCE hands to NeonSynth's code.
 # Leave NEONSYNTH_WARNINGS_AS_ERRORS off here: GCC 13's shift instrumentation makes it report
 # -Wsign-conversion in shifts that are clean in a normal build (CI checks warnings there).
@@ -108,18 +108,22 @@ if(NEONSYNTH_SANITIZE)
     target_link_options(neonsynth_sanitize INTERFACE ${neonsynth_sanitize_flags})
 endif()
 
-# Link-time optimisation for the plugin (v1.11.1). On by default and always on for releases and for
-# the CI job that runs the compare test and pluginval, so what ships is what is tested. Turn it off
-# for local builds and the other CI jobs: it is the slowest step of the plugin's build and changes
-# nothing that sounds (-ffp-contract=off and no fast-math keep the arithmetic exact either way).
-# Only Release uses it (juce_recommended_lto_flags). GCC runs its final step on every core
-# (-flto=auto) instead of one; MSVC's /LTCG is parallel already.
+# Link-time optimisation for the plugin (v1.11.1), Release builds only. The default is ON, so a
+# plain configure builds what ships; releases and the CI job that runs the compare test and
+# pluginval always use it. For faster local builds, and in the other CI jobs, configure with
+# -DNEONSYNTH_LTO=OFF: it is the slowest step of the plugin's build and changes nothing that
+# sounds (-ffp-contract=off and no fast-math keep the arithmetic exact either way). The test
+# programs never use it. GCC runs its final step on every core (-flto=auto) instead of one, so
+# with GCC the flags are set here rather than through JUCE's plain -flto, which would come later
+# on the link line and win; MSVC's /LTCG is parallel already.
 option(NEONSYNTH_LTO "Link the plugin with link-time optimisation (Release builds)" ON)
 add_library(neonsynth_lto INTERFACE)
 if(NEONSYNTH_LTO)
-    target_link_libraries(neonsynth_lto INTERFACE juce::juce_recommended_lto_flags)
     if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        target_compile_options(neonsynth_lto INTERFACE $<$<CONFIG:Release>:-flto>)
         target_link_options(neonsynth_lto INTERFACE $<$<CONFIG:Release>:-flto=auto>)
+    else()
+        target_link_libraries(neonsynth_lto INTERFACE juce::juce_recommended_lto_flags)
     endif()
 endif()
 
@@ -301,7 +305,9 @@ if(NEONSYNTH_BUILD_TESTS)
     set_target_properties(neonsynth_test_juce PROPERTIES POSITION_INDEPENDENT_CODE ON)
     # JuceHeader.h for the tests and the engine, as juceaide would write it for a target with
     # these modules (juce_generate_juce_header only works on juce_add_* targets).
-    file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/neonsynth_test_juce/JuceHeader.h
+    # file(CONFIGURE) writes it only when its text changes, so a re-configure doesn't rebuild every
+    # file that includes it.
+    file(CONFIGURE OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/neonsynth_test_juce/JuceHeader.h CONTENT
 "#pragma once
 #include <juce_audio_utils/juce_audio_utils.h>
 #include <juce_audio_processors/juce_audio_processors.h>
