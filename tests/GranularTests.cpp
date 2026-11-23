@@ -16,6 +16,7 @@
 #include "dsp/GrainCloud.h"
 #include <cstdio>
 #include <cmath>
+#include <limits>
 #include <random>
 
 namespace
@@ -125,15 +126,19 @@ int main()
             c.end();
             return out;
         };
-        const auto scalar = renderWith (GrainCloud::SimdPath::scalar);
-        const auto sse2   = renderWith (GrainCloud::SimdPath::sse2);
-        const auto avx2   = renderWith (GrainCloud::SimdPath::avx2);
+        const auto scalar    = renderWith (GrainCloud::SimdPath::scalar);
+        const auto sse2      = renderWith (GrainCloud::SimdPath::sse2);
+        const auto avx2      = renderWith (GrainCloud::SimdPath::avx2);
+        const auto avx2Loads = renderWith (GrainCloud::SimdPath::avx2Loads);
         GrainCloud::forceSimdPath (GrainCloud::SimdPath::automatic);
 
         check (scalar == sse2, "the SSE2 grain loop renders bit-identical audio to the scalar loop");
         std::snprintf (what, sizeof (what), "the AVX2 grain loop renders bit-identical audio to the scalar loop%s",
                        GrainCloud::cpuHasAVX2() ? "" : " (no AVX2 on this CPU: SSE2 was used)");
         check (scalar == avx2, what);
+        std::snprintf (what, sizeof (what), "the AVX2 grain loop with scalar loads instead of gather (v1.11.1) is bit-identical too%s",
+                       GrainCloud::cpuHasAVX2() ? "" : " (no AVX2 on this CPU: SSE2 was used)");
+        check (scalar == avx2Loads, what);
     }
 
     std::printf ("SIMD paths under pitch modulation (v1.9.0)\n");
@@ -158,13 +163,14 @@ int main()
         };
         for (const bool changing : { false, true })
         {
-            const auto scalar = renderWith (GrainCloud::SimdPath::scalar, changing);
-            const auto sse2   = renderWith (GrainCloud::SimdPath::sse2, changing);
-            const auto avx2   = renderWith (GrainCloud::SimdPath::avx2, changing);
-            std::snprintf (what, sizeof (what), "pitch ratio %s: SSE2 and AVX2 grain loops are bit-identical to the scalar loop%s",
+            const auto scalar    = renderWith (GrainCloud::SimdPath::scalar, changing);
+            const auto sse2      = renderWith (GrainCloud::SimdPath::sse2, changing);
+            const auto avx2      = renderWith (GrainCloud::SimdPath::avx2, changing);
+            const auto avx2Loads = renderWith (GrainCloud::SimdPath::avx2Loads, changing);
+            std::snprintf (what, sizeof (what), "pitch ratio %s: SSE2 and AVX2 (gather and loads) grain loops are bit-identical to the scalar loop%s",
                            changing ? "moving around 1.37" : "1.37",
                            GrainCloud::cpuHasAVX2() ? "" : " (no AVX2 on this CPU: SSE2 was used)");
-            check (scalar == sse2 && scalar == avx2, what);
+            check (scalar == sse2 && scalar == avx2 && scalar == avx2Loads, what);
         }
         GrainCloud::forceSimdPath (GrainCloud::SimdPath::automatic);
 
@@ -183,6 +189,39 @@ int main()
         }
         check (finite, "grains bent two octaves up after they started stay inside the sample (bounded output)");
         g.end();
+    }
+
+    std::printf ("Odd inputs (v1.11.1)\n");
+    {
+        GrainCloud g;
+        g.begin (noise.get(), 60, 60, rate, cloud (60, 40), 5);
+        const auto expected = render (g, 4800);
+        g.end();
+
+        g.begin (noise.get(), 60, 60, rate, cloud (60, 40), 5);
+        float untouched[4] = { 7.0f, 7.0f, 7.0f, 7.0f };
+        g.render (untouched, 0);
+        g.render (untouched, -3);
+        g.setPitchRatio (std::numeric_limits<float>::quiet_NaN());
+        g.setPitchRatio (std::numeric_limits<float>::infinity());
+        auto broken = g.getSettings();
+        broken.position = std::numeric_limits<float>::quiet_NaN();
+        broken.scan = std::numeric_limits<float>::infinity();
+        broken.sizeSeconds = -std::numeric_limits<float>::infinity();
+        broken.density = std::numeric_limits<float>::quiet_NaN();
+        broken.spray = std::numeric_limits<float>::quiet_NaN();
+        broken.jitterCents = std::numeric_limits<float>::quiet_NaN();
+        g.setSettings (broken);
+        const auto got = render (g, 4800);
+        check (untouched[0] == 7.0f && untouched[3] == 7.0f, "render() with no samples (or a negative count) writes nothing");
+        check (got == expected, "a NaN or infinite pitch ratio or setting is ignored: the cloud renders exactly as without it");
+        // cppcheck-suppress knownConditionTrueFalse ; cppcheck reads the guard too: that it holds is the test
+        check (g.getGrainPositions (nullptr, 8) == 0, "getGrainPositions() with no destination returns 0");
+        g.end();
+
+        check (! g.begin (noise.get(), 60, 60, std::numeric_limits<double>::quiet_NaN(), cloud (60, 40), 5) && ! g.isActive()
+                 && noise->users.load() == 0,
+               "begin() refuses a NaN sample rate and holds no reference");
     }
 
     std::printf ("Density\n");
