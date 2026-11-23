@@ -212,9 +212,14 @@ private:
 
         addSection (0, { "EDITING STEPS", {
             "Click: switch a step on or off (its note is kept).",
-            "Drag up / down: change the note (one semitone per 6 px).",
-            "Mouse wheel: nudge the note by a semitone.",
-            "Shift-drag or right-drag: velocity, shown by the bar at the bottom. Shift + wheel nudges it." } }, neon::amber);
+            "Drag up / down: change the note (one semitone per 6 px, or one scale note with SCALE on). The wheel nudges it.",
+            "Drag the velocity bar at the bottom (or shift-drag anywhere): velocity, the step's accent. Shift + wheel nudges it.",
+            "TIE holds the note into the next step. SLD slides into the next step's note at GLIDE time." } }, neon::amber);
+
+        addSection (0, { "PATTERN ROW", {
+            "LENGTH: the pattern repeats after 1 to 16 steps. KEY + SCALE: notes you set snap to the scale.",
+            "ENTER: switch it on, click a step, play keys: each fills a step and moves on.",
+            "TOOLS: shift, octave up / down, reverse, randomise, clear. UNDO (or Ctrl+Z) steps back." } }, neon::amber);
 
         addSection (0, { "MODES", {
             "Layer: the pattern plays along with your keyboard.",
@@ -229,7 +234,9 @@ private:
         addSection (0, { "MOVEMENT (MODULATION panel)", {
             "LFO: a slow wave (Sine, Triangle, Square, Saw, or Random: a new level each cycle). RATE sets its speed in Hz; with SYNC it is a note length that follows the tempo.",
             "PITCH, CUTOFF and AMP set how far it moves the pitch (semitones), the filter (octaves; the green band under CUTOFF) and the level (tremolo). At 0 it does nothing.",
-            "Pitch bend and mod wheel work from any MIDI keyboard or controller. BEND: the range in semitones each way. VIBRATO: the wheel's vibrato depth at the top, in cents." } }, neon::green);
+            "Pitch bend and mod wheel work from any MIDI keyboard or controller. BEND: the range in semitones each way. VIBRATO: the wheel's vibrato depth at the top, in cents.",
+            "GLIDE: how long a note takes to slide from the last one. LEGATO (at MONO): a key played over a held one glides there without a new attack.",
+            "HOLD (in the header) keeps your keys sounding after you let go, until you switch it off." } }, neon::green);
 
         // Right column: the synth and getting sound out.
         addSection (1, { "SOUND", {
@@ -257,7 +264,8 @@ private:
             "Laptop speakers play very little below about 200 Hz. For low notes pick Sawtooth or Square, raise the notes, or use headphones.",
             "Check the output device and its active channels in Options > Audio/MIDI Settings." } }, neon::cyan);
 
-        addSection (1, { "SAVING", {
+        addSection (1, { "PRESETS AND SAVING", {
+            "The preset bar: < and > step through the presets; click the name for the menu; SAVE keeps your sound in Documents/NeonSynth/Presets.",
             "The pattern, the sample (up to 10 MB, otherwise by its path) and all settings are saved with your DAW project (and by the Standalone between runs)." } }, neon::cyan);
     }
 

@@ -6,20 +6,22 @@
 
 NeonSynth is a learning synthesizer: a place to hear what a waveform sounds like, see what changes when you shape it, and explore the code that makes it happen. Its oscillator, sample, random, and granular engines provide different starting points for that exploration, with source code available to read, build, and modify ([NeonSynth project](https://github.com/kv244/NeonSynth)).
 
-For musicians, begin with one note and one waveform, without stacked oscillator layers obscuring what you are hearing. For coders, follow the same sound into the C++ implementation, from waveform generation through envelope, filter, and output; the interface and the code become two views of the same instrument ([voice architecture](https://github.com/kv244/NeonSynth/blob/v1.10.1/NeonSynthVoice.h)).
+For musicians, begin with one note and one waveform, without stacked oscillator layers obscuring what you are hearing. For coders, follow the same sound into the C++ implementation, from waveform generation through envelope, filter, and output; the interface and the code become two views of the same instrument ([voice architecture](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/plugin/NeonSynthVoice.h)).
 
 **Instrument:** NeonSynth by Razvan Julian Petrescu / AudioDSP  
-**Edition:** 1.9, updated 18 November 2026 (v1.10.1: hardening against damaged sessions; no change to controls or sound)<br>
-**Applies to:** NeonSynth v1.10.1, source tag `v1.10.1`  
-**Formats:** VST3 instrument and standalone application; a Windows installer is supplied for this release ([v1.10.1 release](https://github.com/kv244/NeonSynth/releases/tag/v1.10.1)).
+**Edition:** 2.0, updated 23 November 2026 (v1.11.0 "Playing": HOLD, GLIDE and LEGATO; pattern length, ties, slides, a scale lock, step entry, pattern tools and undo in the sequencer; presets, with a bank of 16 factory presets)<br>
+**Applies to:** NeonSynth v1.11.0, source tag `v1.11.0`  
+**Formats:** VST3 instrument and standalone application; a Windows installer is supplied for this release ([v1.11.0 release](https://github.com/kv244/NeonSynth/releases/tag/v1.11.0)).
 
 ### About this manual
 
-The instructions were checked against the v1.10.1 source code. Every recipe in the sound-design chapter was rendered through the plugin, to confirm that it sounds, releases cleanly to silence and stays clear of the output soft clipper: the first six through v1.6.0, which v1.7.0 to v1.10.0 keep bit-identical at the settings they use (each version's new controls start neutral), as the project's compare test checks; the wind recipe through v1.9.0, which v1.10.0 keeps bit-identical (it changed only the look). This is not a certification of compatibility with every audio device or DAW.
+The instructions were checked against the v1.11.0 source code. Every recipe in the sound-design chapter was rendered through the plugin, to confirm that it sounds, releases cleanly to silence and stays clear of the output soft clipper: the first six through v1.6.0, which v1.7.0 to v1.11.0 keep bit-identical at the settings they use (each version's new controls start neutral), as the project's compare test checks; the wind recipe through v1.9.0, which v1.10.0 and v1.11.0 keep bit-identical. The 16 factory presets of v1.11.0 are checked by the project's preset test: each one loads, renders below −6 dBFS, under the output soft clipper, and ends in silence. This is not a certification of compatibility with every audio device or DAW.
 
 Each figure is labelled by how it was made: **Actual application capture** (a screenshot of the running instrument, with numbered callouts added), **Plot derived from rendered audio** (measured from sound the plugin produced, with the settings stated), or **Explanatory schematic** (a drawing that explains an idea and is not a measurement). How to regenerate them is in [figures/README.md](figures/README.md).
 
-The sound-design settings are starting points, not factory presets. Begin at a low listening level and adjust by ear.
+The sound-design settings are starting points to set by hand; most of them are also in the factory bank (see [Presets](#presets)). Begin at a low listening level and adjust by ear.
+
+Edition 2.0 adds the chapters [Playing: HOLD, GLIDE and LEGATO](#playing-hold-glide-and-legato) and [Presets](#presets), and the step sequencer chapter now covers pattern length, ties and slides, the scale lock, step entry, the pattern tools and undo. Figures 1 and 8 show the v1.11.0 window.
 
 ## Contents
 
@@ -30,10 +32,12 @@ The sound-design settings are starting points, not factory presets. Begin at a l
 - [Sculpting a waveform](#sculpting-a-waveform)
 - [Shaping a sound](#shaping-a-sound)
 - [Movement: LFO, pitch bend and mod wheel](#movement-lfo-pitch-bend-and-mod-wheel)
+- [Playing: HOLD, GLIDE and LEGATO](#playing-hold-glide-and-legato)
 - [Sample playback](#sample-playback)
 - [Granular synthesis](#granular-synthesis)
 - [Step sequencer](#step-sequencer)
 - [Output and visual feedback](#output-and-visual-feedback)
+- [Presets](#presets)
 - [Saving, automation, and MIDI](#saving-automation-and-midi)
 - [Sound-design starting points](#sound-design-starting-points)
 - [Troubleshooting](#troubleshooting)
@@ -44,7 +48,7 @@ The sound-design settings are starting points, not factory presets. Begin at a l
 
 ### Install the Windows release
 
-Download `NeonSynth-1.10.1-Windows-Setup.exe` from the [v1.10.1 release page](https://github.com/kv244/NeonSynth/releases/tag/v1.10.1). The installer provides the VST3 instrument and an optional standalone application (see [Installation](../README.md#installation) in the README).
+Download `NeonSynth-1.11.0-Windows-Setup.exe` from the [v1.11.0 release page](https://github.com/kv244/NeonSynth/releases/tag/v1.11.0). The installer provides the VST3 instrument and an optional standalone application (see [Installation](../README.md#installation) in the README).
 
 | Component | Default location |
 |---|---|
@@ -69,6 +73,8 @@ Use this sequence for an uncomplicated standalone check. The built-in sequencer 
 The factory pattern should now provide a repeating starting point. **RUN** is off on a new instance, so the instrument is initially silent unless it receives MIDI notes; in standalone operation, the sequencer can use its own clock.
 
 Once sound is present, move **Cutoff** to hear the brightness change, then try the other waveforms. Press **RUN** again to stop the pattern; notes already sounding are released rather than held indefinitely.
+
+For a ready-made sound instead, click **>** in the preset bar at the top of the window: the factory presets in the Sequence category start the sequencer themselves (see [Presets](#presets)).
 
 ### Play from a MIDI controller
 
@@ -125,11 +131,11 @@ Only after those differences become familiar should you add chords, sequencing, 
 
 ## Finding your way around
 
-![The NeonSynth window with ten numbered regions: 1 source and waveform menus, 2 the strip and its knobs, 3 scope or spectrum, 4 envelope graph and knobs with the AMP and FILTER tabs, 5 filter, 6 output with the width slider, gain fader and meters, 7 modulation, 8 voice lights, 9 the help button, 10 the step sequencer.](images/fig01-interface.png)
+![The NeonSynth window with fourteen numbered regions: 1 source and waveform menus, 2 the strip and its knobs, 3 scope or spectrum, 4 envelope graph and knobs with the AMP and FILTER tabs, 5 filter, 6 output with the width slider, gain fader and meters, 7 modulation, 8 voice lights, 9 the help button, 10 the step sequencer, 11 the preset bar, 12 HOLD, 13 GLIDE and LEGATO, 14 the sequencer's pattern row.](images/fig01-interface.png)
 
-Figure 1. The main window (v1.10.0 at 150%, Source set to Oscillator, Sawtooth, with the sequencer running, and LFO CUTOFF at +1.5 octaves at 2 Hz, so the green band under CUTOFF and the dot in the LFO view show). *Actual application capture; the numbered outlines and the key below the picture were added.* Regions 1–10 are explained in the key, and the window is described panel by panel in the table below.
+Figure 1. The main window (v1.11.0 at 150%, Source set to Oscillator, Sawtooth, with the sequencer running, and LFO CUTOFF at +1.5 octaves at 2 Hz, so the green band under CUTOFF and the dot in the LFO view show). *Actual application capture; the numbered outlines and the key below the picture were added.* Regions 1–14 are explained in the key, and the window is described panel by panel in the table below. Regions 11 to 14 are new in v1.11.0: 11, the preset bar in the header; 12, HOLD beside it; 13, the GLIDE knob and the LEGATO switch in the second row of the MODULATION panel; 14, the pattern row across the top of the step grid (LENGTH, KEY, SCALE, TOOLS, ENTER, UNDO).
 
-The window looks like an old computer monitor: glowing phosphor text and traces on a dark green screen, behind a grey bezel, with faint scanlines across it. It has six panels, each outlined in its own colour. SOURCE, on the left, is where the sound starts: what plays, and how it is shaped before the envelope. The middle column shows the sound (scope or spectrum) above the envelope and filter. On the right, OUTPUT sets and measures the level, and MODULATION below it makes the sound move. SEQUENCER runs along the bottom. Colours carry the same meaning everywhere: cyan for the source and output, amber for the envelope and sequencer, magenta for the filter and the granular controls, and green for modulation.
+The window looks like an old computer monitor: glowing phosphor text and traces on a dark green screen, behind a grey bezel, with faint scanlines across it. It has six panels, each outlined in its own colour. SOURCE, on the left, is where the sound starts: what plays, and how it is shaped before the envelope. The middle column shows the sound (scope or spectrum) above the envelope and filter. On the right, OUTPUT sets and measures the level, and MODULATION below it makes the sound move. SEQUENCER runs along the bottom. Above them all, the header holds the preset bar, HOLD, SCANLINES, the voice lights and the help button. Colours carry the same meaning everywhere: cyan for the source and output, amber for the envelope and sequencer, magenta for the filter and the granular controls, and green for modulation.
 
 | Panel | What you do there |
 |---|---|
@@ -138,9 +144,9 @@ The window looks like an old computer monitor: glowing phosphor text and traces 
 | ENVELOPE | Set the shape of each note: drag the points on the graph or turn ATTACK, DECAY, SUSTAIN and RELEASE. The **AMP** tab shapes the level, the **FILTER** tab the filter's own envelope. |
 | FILTER | Switch the filter in with ON, set its CUTOFF and mode, and the RES, DRIVE, ENV and VEL knobs. |
 | OUTPUT | Set WIDTH, raise or lower the volume with the GAIN fader beside the meters, and watch the left and right levels. |
-| MODULATION | Set the LFO (shape, rate, sync) and how far it moves the pitch, cutoff and level; set the pitch-bend range and the mod wheel's vibrato. |
-| Header | See which of the 16 voices are sounding, click a light to set how many voices can play, switch the scanlines with **SCANLINES**, and open the quick help with **?**. |
-| SEQUENCER | Start a pattern, edit its steps, and set timing and keyboard interaction. |
+| MODULATION | Set the LFO (shape, rate, sync) and how far it moves the pitch, cutoff and level; set the pitch-bend range and the mod wheel's vibrato; set **GLIDE** and switch **LEGATO**. |
+| Header | Choose, step through and save presets in the preset bar; latch your keys with **HOLD**; see which of the 16 voices are sounding, click a light to set how many voices can play, switch the scanlines with **SCANLINES**, and open the quick help with **?**. |
+| SEQUENCER | Start a pattern, edit its steps, and set timing and keyboard interaction. The pattern row above the grid sets the pattern's **LENGTH**, its **KEY** and **SCALE**, and holds **TOOLS**, **ENTER** and **UNDO**. |
 
 ### Window size
 
@@ -154,7 +160,7 @@ Labels are at least 12 pixels at 100%, so they stay readable at 75%. On a small 
 
 ### Quick help
 
-Click **?** for a one-page reference over the whole window. Click anywhere on it, press **Esc**, or click **?** again to return to the controls. Esc works from whichever control you touched last; some DAWs keep keystrokes for themselves until you click inside the plugin window, so click it first if Esc does nothing.
+Click **?** for a one-page reference over the whole window. Click anywhere on it, press **Esc**, or click **?** again to return to the controls. Esc closes it from anywhere in the plugin window, even in DAWs that keep the keyboard to themselves.
 
 ## Choosing a sound source
 
@@ -329,6 +335,8 @@ With all three depths at 0 the LFO does nothing, and the LFO view in the panel i
 
 **Sync.** With SYNC on and a DAW playing, the LFO takes its position from the song position, so it lands on the beat after you jump or loop. When the transport is stopped, and in the Standalone, it runs freely at the tempo: the DAW's when there is one, otherwise the sequencer's TEMPO.
 
+**Bars follow the time signature.** 4 bars, 2 bars and 1 bar follow the DAW's time signature: in 3/4 a bar is three beats, in 7/8 three and a half. The note lengths (1/2 to 1/16T) are always in beats. With no DAW, a bar is four beats. If the time signature changes during the song, the bar lengths count from the DAW's last bar line.
+
 **Without clicks.** The sudden jumps of Square, Random and Saw are smoothed over 2 ms, enough to stop a click on the level or a resonant filter, too short to soften the rhythm. Changing the shape crossfades over 10 ms, and the three depths glide over 20 ms when you turn them.
 
 **Tremolo only dips.** AMP lowers the level from where it is and never raises it: at 100% the level swings between full and silence, at 50% between full and half. So turning AMP up never pushes the output into the soft clipper.
@@ -356,13 +364,53 @@ Earlier versions ignored pitch bend and the mod wheel. A project that contains s
 
 ### Voices: from mono to 16
 
-The 16 voice lights at the top of the window also set how many voices can play. Click a light: click the fourth for four voices, the first for one. With one voice NeonSynth is monophonic (the readout says MONO): each new note takes over the voice that is playing. When all the allowed voices are busy, a new note takes over one of them, preferring one already in its release. The lights above the limit are drawn as faint dots. Notes already sounding on them finish normally, so lowering the limit never cuts a note off. The limit is the automatable parameter **Voices**; the initial value is 16.
+The 16 voice lights at the top of the window also set how many voices can play. Click a light: click the fourth for four voices, the first for one. With one voice NeonSynth is monophonic (the readout says MONO): each new note takes over the voice that is playing, unless **LEGATO** is on (see [Playing: HOLD, GLIDE and LEGATO](#playing-hold-glide-and-legato)). The lights above the limit are drawn as faint dots. Notes already sounding on them finish normally, so lowering the limit never cuts a note off. The limit is the automatable parameter **Voices**; the initial value is 16.
+
+**Which voice a new note takes.** With fewer than 16 voices, a new note takes a free voice. If none is free, it reuses the oldest voice already playing that note, otherwise the oldest note already released (one held by the sustain pedal counts as held), otherwise the oldest note. At 16 voices the choice is the one NeonSynth has always made. v1.11.0 fixed two faults in this order: a note held by the sustain pedal counted as released, and of two voices on the same note the newer one was taken. A project that uses fewer than 16 voices can therefore sound different from v1.10 where a note is stolen.
 
 ### Listening exercise: three kinds of movement
 
 1. Choose Oscillator and Sawtooth, switch the filter ON, and set CUTOFF to about 800 Hz with RES at 40%. Set the LFO to Sine at 0.5 Hz and CUTOFF to +2 octaves, then hold a chord: the sound opens and closes slowly. Raise RATE to 6 Hz for a wobble, then try Square (the tone jumps between dark and bright) and Random (a different brightness on each step).
 2. Return CUTOFF to 0. Set AMP to 60% with Triangle at 5 Hz: that is tremolo. Return AMP to 0 and set PITCH to 0.3 semitones at 6 Hz: the LFO's vibrato. Compare it with the mod wheel's.
 3. Turn SYNC on, choose 1/8, and run the sequencer with CUTOFF at +2 octaves: the sweeps now land on the steps.
+
+## Playing: HOLD, GLIDE and LEGATO
+
+Three controls change how a note follows the one before it. **HOLD** sits in the header (region 12 in Figure 1); **GLIDE** and **LEGATO** are in the second row of the MODULATION panel, beside BEND and VIBRATO (region 13). All three start where they change nothing, so a session saved before v1.11.0 sounds as it did.
+
+| Control | Meaning | Range | Initial value |
+|---|---|---|---|
+| HOLD | Keeps keyboard notes sounding after you let go of the keys, until HOLD is switched off. | on / off | off |
+| GLIDE | How long a voice takes to slide from the last note it played to the new one. The readout shows **off**, a time in ms, or seconds above 1 s. | 0–2000 ms | 0 (off) |
+| LEGATO | With the voice limit at 1 (MONO): a key pressed while another is held glides to the new note without restarting the envelopes. | on / off | off |
+
+### HOLD
+
+HOLD works like a sustain pedal for the keyboard. While it is on, keys keep sounding after you let go. Switching it off releases them all at once; a key you are still holding keeps sounding until you let it go. The sequencer's own notes are not affected.
+
+In Transpose mode HOLD latches the key: press a key, let it go, and the pattern keeps playing at that key's offset until you press another key or switch HOLD off.
+
+### GLIDE
+
+With GLIDE above 0, each voice slides from the last note it played to the new one. The slide is even in pitch, and it takes the same time whatever the interval: an octave and a semitone both take the GLIDE time. Every source glides: the oscillator, Random, the sample and the grains.
+
+- A voice's first note never glides: it has no note to come from.
+- With several voices, each glides from its own last note, so a chord can arrive from several directions at once. For one clear line, set the voice limit to 1.
+- Keyboard notes glide whenever GLIDE is above 0. The sequencer's steps glide only into a step after one marked **SLD**, like a 303; the other steps keep their attack whatever GLIDE is set to (see [Ties and slides](#ties-and-slides)).
+
+### LEGATO
+
+LEGATO acts only with the voice limit at 1, MONO. A key pressed while another is held does not start a new note: the sounding note glides to the new key at GLIDE time, and its envelopes carry on from where they are, with no new attack. Letting go of that key returns to the key still held, the same way. The last key up releases the note as usual. At GLIDE 0 the pitch jumps, but the envelope still does not restart.
+
+With more than one voice LEGATO does nothing: there would be no telling which voice a key belongs to.
+
+### Listening exercise: a mono line that glides
+
+1. Choose Oscillator and Sawtooth, switch the filter ON with CUTOFF about 1.5 kHz, and set ATTACK 5 ms, DECAY 300 ms, SUSTAIN 60%, RELEASE 200 ms. Turn RUN off.
+2. Click the first voice light, so the readout says MONO. Set GLIDE to about 150 ms.
+3. Play C3, then G3, as separate notes: each note glides up from the last one and attacks again.
+4. Switch LEGATO on and play the same two notes overlapping: hold C3, press G3, then let go of G3. The pitch slides up and back with a single attack, like a slurred phrase. Set GLIDE to 0 and repeat: the pitch now jumps, still without a new attack.
+5. Switch LEGATO off, set the voice limit back to 16 and GLIDE to 0, and press **HOLD**. Play a chord and let go: it keeps sounding. Switch HOLD off to release it.
 
 ## Sample playback
 
@@ -444,7 +492,7 @@ Each voice supports up to 32 simultaneous grains; further grain onsets are skipp
 
 ### Start and synchronise a pattern
 
-The sequencer repeats a fixed 16-step pattern, with one note, velocity, and enabled/disabled state per step. It generates notes internally for NeonSynth; it is not a MIDI-output sequencer for controlling other instruments.
+The sequencer repeats a pattern of up to 16 steps, with one note, velocity, and enabled/disabled state per step, and a tie and a slide mark. It generates notes internally for NeonSynth; it is not a MIDI-output sequencer for controlling other instruments.
 
 | Control | Operation |
 |---|---|
@@ -455,6 +503,8 @@ The sequencer repeats a fixed 16-step pattern, with one note, velocity, and enab
 | Mode | Layer, Replace, or Transpose; initially Layer. |
 | SWING | 0–100%; delays alternate steps by up to half a step; initially 0%. |
 | GATE | 5–100% of the nominal step duration; initially 50%. |
+| LENGTH | 1–16 steps: the pattern repeats after this many; initially 16. |
+| KEY / SCALE | The scale lock: a key (C to B) and one of 13 scales, or off; initially C, off. |
 
 When **SYNC** is enabled in a compatible DAW, the sequence follows the host's transport position and stops when the host stops. In standalone operation, or when no usable host timing is available, it uses TEMPO instead; turning SYNC off explicitly selects the internal clock.
 
@@ -465,24 +515,85 @@ For a straightforward 16-step loop in 4/4, begin with **1/16**, zero swing, and 
 | Gesture | Result |
 |---|---|
 | Click a step | Switches it on or off. |
-| Drag up or down | Changes pitch in semitone steps. |
-| Shift-drag or right-drag | Changes velocity. |
-| Mouse wheel | Raises or lowers pitch by one semitone per wheel event. |
+| Drag up or down | Changes pitch in semitone steps, or in scale notes with the scale lock on. |
+| Drag the velocity bar up or down | Changes velocity, the step's accent. |
+| Shift-drag or right-drag | Changes velocity from anywhere in the cell. |
+| Click **TIE** or **SLD** | Switches the step's tie or slide on or off. |
+| Mouse wheel | Raises or lowers pitch by one semitone (or one scale note) per wheel event. |
 | Shift + mouse wheel | Changes velocity in increments of four. |
 
-The grid supports MIDI notes 0–127 and enabled-step velocities 1–127. Each step shows its note name, bright when the step is on and dim when it is off; the step playing now is a solid amber block with dark text, and the row of small blocks along each cell's bottom shows its velocity.
+The grid supports MIDI notes 0–127 and enabled-step velocities 1–127. Each step shows its note name, bright when the step is on and dim when it is off; the step playing now is a solid amber block with dark text, and the row of small blocks along each cell's bottom shows its velocity. Below the velocity bar, the bottom edge of each cell carries two small markers, **TIE** on the left and **SLD** on the right, lit when set; a set tie also draws a short line into the gap to the next cell, so a tied run reads as one long note. Steps beyond the pattern's LENGTH are drawn faded.
 
-![The 16-step grid, with numbered pointers to an enabled step, a disabled step, a note name, a velocity bar and the playhead, and a list of the mouse and wheel gestures.](images/fig08-sequencer.png)
+![The 16-step grid and the pattern row above it, with numbered pointers to an enabled step, a disabled step, a note name, a velocity bar, the playhead, a set TIE marker, a set SLD marker, a faded step beyond LENGTH and the pattern row, and a list of the mouse and wheel gestures.](images/fig08-sequencer.png)
 
-Figure 8. The step grid (v1.10.0 at 150%, sequencer running). *Actual application capture; the numbered pointers and the gesture key were added.* The gestures are those in the table above, as coded in the step view: one semitone for every 6 pixels of vertical drag, velocity changes of one for each pixel of Shift-drag or right-drag, and steps of four for Shift with the wheel.
+Figure 8. The step grid (v1.11.0 at 150%, sequencer running). *Actual application capture; the numbered pointers and the gesture key were added.* Pointers 1–5 show an enabled step, a disabled step, a note name, a velocity bar and the playhead; 6, a step with its TIE set, and the line it draws into the gap; 7, a step with its SLD set; 8, a step beyond LENGTH, drawn faded; 9, the pattern row (LENGTH, KEY, SCALE, TOOLS, ENTER, UNDO). The gestures are those in the table above, as coded in the step view: one semitone (or scale note) for every 6 pixels of vertical drag, velocity changes of one for each pixel of a drag on the velocity bar, a Shift-drag or a right-drag, and steps of four for Shift with the wheel.
 
-To create a new pattern, first switch unwanted steps off, drag the remaining steps to their pitches, and adjust their velocities for accents. There is no separate pattern-bank or pattern-length control in this version.
+To create a new pattern, first switch unwanted steps off, drag the remaining steps to their pitches, and adjust their velocities for accents. A step that is off keeps its note, so switching it on again brings it back.
+
+### Velocity is the accent
+
+There is no separate accent switch: a step's velocity is its accent. Drag the velocity bar at the bottom of a cell up for a louder step and down for a softer one. Velocity sets the step's level and, through the filter's **VEL** knob, how far the step opens the filter, so with VEL at 2 octaves or so a loud step is both louder and brighter, as an accent on a 303 is.
+
+### Pattern length
+
+**LENGTH**, the first menu in the pattern row (it shows **16 steps** in a new instance), sets after how many steps the pattern repeats, from 1 to 16. Steps beyond the length are faded and silent, but they keep their notes, so making the pattern longer again brings them back.
+
+An odd length drifts against the beat: a 5-step or 7-step pattern lands on a different step at each bar line, and comes round to the start again only after 5 or 7 beats' worth of sixteenths. SWING still follows the beat, not the pattern: it delays every second step in time, whichever step of the pattern falls there.
+
+### Ties and slides
+
+Each step has two marks along its bottom edge. Click one to set it; click again to clear it.
+
+- **TIE** holds the step's note into the next step without restarting it. The next step's own note is ignored. A run of ties is one long note, ending at the last step's GATE.
+- **SLD** (slide) makes the note overlap the next step's, so the voice glides to the next note at GLIDE time, with no new attack, whatever the keyboard mode. At GLIDE 0 it is a plain legato step: the pitch changes, the envelope does not restart.
+
+A few cases follow from these two rules. A slide into a step that is off makes a full-length note: it ends where the next step starts. A slide to the same pitch is a tie. A step with both marks set is a tie. The step slid into keeps the level of the step before it, because its note does not start again. A tie or a slide on the last step of the pattern goes on into the first.
+
+Only a slide makes a sequencer step glide: steps without SLD before them keep their attack whatever GLIDE is set to. So a pattern sounds as it did before v1.11.0 until you set a mark.
+
+### The scale lock: KEY and SCALE
+
+The **KEY** and **SCALE** menus in the pattern row lock the notes you set to a scale. With a scale chosen, dragging, the mouse wheel, ENTER and the randomise tool all land on notes of the scale, and a drag moves one scale note per 6 pixels. Notes already in the pattern are never changed, so you can lock to a scale and then edit only the steps you want to.
+
+The 13 choices of SCALE are Off (shown as **Scale off**, every note allowed), Major, Dorian, Phrygian, Lydian, Mixolydian, Natural minor, Locrian, Harmonic minor, Major pentatonic, Minor pentatonic, Blues and Whole tone.
+
+### Enter notes from the keyboard: ENTER
+
+1. Click **ENTER** to switch it on.
+2. Click the step to start from. The step being entered is outlined in cyan.
+3. Play keys. Each key fills one step, with the velocity you played (snapped to the scale if one is on), and moves to the next step.
+
+Entry stops at the last step of LENGTH or when you click ENTER off. A step's tie and slide marks stay as they were. While ENTER is on, a click on a step chooses where entry starts instead of switching the step on or off.
+
+### Pattern tools and UNDO
+
+**TOOLS** opens a menu of changes to the whole pattern. Each acts on the steps inside LENGTH and leaves the others alone.
+
+| Tool | Result |
+|---|---|
+| Shift left / Shift right | Every step moves one place; the step pushed off one end comes in at the other. |
+| Octave up / Octave down | Every note moves an octave. If any note would leave the MIDI range, nothing changes. |
+| Reverse | The steps play backwards; each tie and slide stays between the same two notes. |
+| Randomise (in the scale) | A new pattern: about three steps in four on, notes from the key's note in octave 3 up to an octave higher, in the scale if one is on, with varied velocities and no ties or slides. |
+| Clear | Every step off, with no ties or slides. The notes and velocities stay, for when you switch steps on again. |
+
+**UNDO**, or Ctrl+Z (Cmd+Z on a Mac) while the plugin window has the keyboard, steps the pattern back, up to 32 times. Each drag on the grid, each tool and each ENTER run is one step of undo. UNDO is greyed out when there is nothing to undo. Some DAWs keep Ctrl+Z for their own undo; use the UNDO button there.
+
+The pattern's steps are saved state rather than host parameters, so a DAW's own undo does not undo them. LENGTH, KEY and SCALE are host parameters, so the DAW's undo and automation do reach those.
+
+### Listening exercise: a slide line and a pattern against the beat
+
+1. Load the factory preset **Rounded Bass** (Sequence): it switches RUN on itself. In a DAW with SYNC on, start the transport too.
+2. Listen for steps 8 and 12: their SLD marks are lit, and the next note glides in with no new attack. Turn GLIDE from 60 ms up to 300 ms and back to 0: the slides lengthen, then become plain legato steps. Click SLD on another step to add a slide; set VEL to 2 octaves and drag a few velocity bars up and down to accent the line.
+3. Click TIE on step 1: steps 1 and 2 become one long note.
+4. Set LENGTH to 7 steps. The pattern now drifts against the beat, starting on a different sixteenth at each bar. Try 5, then 12. Return to 16 and the faded steps come back as they were.
+5. Click UNDO a few times to step back through your changes to the steps.
 
 ### Choose how the keyboard interacts
 
 - **Layer:** Keyboard notes play alongside the pattern.
 - **Replace:** The running sequencer supplies notes; incoming keyboard note-ons do not play additional notes.
-- **Transpose:** Hold a key to trigger the pattern at an offset relative to MIDI note 60, labelled C4; the most recently pressed held key determines the offset.
+- **Transpose:** Hold a key to trigger the pattern at an offset relative to MIDI note 60, labelled C4; the most recently pressed held key determines the offset. With **HOLD** on, the key is latched: the pattern keeps playing after you let it go.
 
 These behaviours apply while RUN is on; with the sequencer off, keyboard note input plays normally. In Transpose mode, hold C4 for the unshifted pattern, C5 for an octave up, or C3 for an octave down, remembering that some hosts use different octave names for the same MIDI note numbers.
 
@@ -508,13 +619,65 @@ The scope and spectrum show the stereo mid signal, `(L + R) / 2`, rather than se
 
 The output soft clipper leaves signals below −6 dBFS unchanged and constrains peaks to below approximately −1 dBFS. Its indicator signals peak shaping, not a guarantee against clipping later in the DAW chain or excessive listening volume; lower GAIN when you want less peak shaping.
 
+## Presets
+
+### The preset bar
+
+The preset bar in the header (region 11 in Figure 1) shows the current preset and its category. **<** and **>** step through the 16 factory presets, then your own, and wrap around. Click the name for the menu:
+
+- **FACTORY**: the factory bank, grouped by category;
+- **USER**: your presets, sorted by name;
+- **Load a preset file...**: a preset from anywhere on your computer;
+- **Show the preset folder**: opens the folder your presets are saved in (once you have saved one).
+
+A new instance, or a session saved before v1.11.0, shows **DEFAULT**: no preset has been loaded.
+
+A preset changes the sound, not the window: loading one never changes SCOPE or SPECTRUM, the envelope tab or SCANLINES. It sets every parameter, the pattern and CHOP's pattern; a parameter a factory preset does not list goes to its initial value, so each preset sounds the same whatever was loaded before it. Factory presets use the built-in pad, so loading one replaces a sample you had loaded; the Sequence and Percussion presets switch RUN on, and the others switch it off.
+
+### Save your own
+
+Click **SAVE**, type a name, choose a category (Bass, Lead, Pad, Keys, Sequence, Percussion, FX, or none) and click **SAVE** again. If a preset of that name exists, NeonSynth asks before replacing it. The preset stores the current sound: every parameter, the pattern, CHOP's pattern and the sample, embedded as in a session (see [Keep sample-based sessions portable](#keep-sample-based-sessions-portable)).
+
+Presets are saved as `.neonpreset` files in **Documents/NeonSynth/Presets**, a folder created on the first save. To remove or rename one, use the folder: **Show the preset folder** opens it.
+
+A preset file is an ordinary NeonSynth session, so you can send one to someone, and they load it with **Load a preset file...** or by copying it into their own preset folder. A damaged file is refused with a message, and the current sound stays as it was.
+
+### Presets in a DAW
+
+The 16 factory presets are also the DAW's program list, so a host's program menu can choose them. A saved project remembers which preset it came from and shows it in the preset bar when it opens; whatever you changed after loading the preset is kept, because the project saves the sound itself.
+
+On a fresh instance, choosing program 0 (Glass Bell) from a DAW's program list does nothing until another program has been chosen: the VST3 plugin wrapper ignores a change to the program it takes to be current already. Use the preset bar instead, or choose another program first.
+
+### The factory bank
+
+| # | Name | Category | What it is |
+|---|---|---|---|
+| 0 | Glass Bell | Keys | A folded sine whose filter envelope mellows it as it fades; play from C6 up. |
+| 1 | Comb Chime | Keys | A triangle with CHOP COMB 3 and a light fold: a metallic chime with a soft ring. |
+| 2 | Marimba Chop | Keys | A square with CHOP COMB 4 and a 450 ms decay: wooden, hollow mallet notes. |
+| 3 | Warm Sub | Bass | A sine with a touch of fold, cutoff 900 Hz, centred: a round sub bass for C1 to C3. |
+| 4 | Folded Growl | Bass | A sawtooth folded hard (DRIVE 8) under a 1.5 kHz low-pass: a gritty bass. |
+| 5 | Chopped Lead | Lead | The chopped, folded lead below, mono, with LEGATO and GLIDE 80 ms: overlapping keys glide. |
+| 6 | Sampled Pad | Pad | The built-in pad looped through its middle half, with a slow attack and a 2 s release; hold chords. |
+| 7 | Shimmer Cloud | Pad | Dense 40 ms grains of the pad, slowly scanned; play octaves or fifths. |
+| 8 | Frozen Cloud | Pad | 150 ms grains held at one point of the pad; move POS to explore. |
+| 9 | Rounded Bass | Sequence | The rounded sequencer bass below on the default bassline, with two SLD steps and GLIDE 60 ms. |
+| 10 | Random Pluck | Sequence | Random-source plucks in 1/8 with velocity accents; each note differs. |
+| 11 | Broken Radio | Sequence | A noisy, folded Random wave locked to A minor pentatonic, LENGTH 12 against the bar. |
+| 12 | Closed Hat Loop | Percussion | Noise high-passed at 7 kHz with a 50 ms decay, in 1/16 with accents on the beat. |
+| 13 | Wind Sweep | FX | Band-passed noise that rises into a whistle, with Random LFO gusts; hold low notes. |
+| 14 | Gale | FX | Wind Sweep louder and wilder: a howling, gritty storm; add a fifth above. |
+| 15 | Drifting Cloud | FX | 100 ms grains scanning forward through the pad: a moving atmosphere. |
+
+The numbers are the DAW's program numbers.
+
 ## Saving, automation, and MIDI
 
 ### Save the sound and pattern
 
-In a DAW, save your project or use the host's plugin-state/preset facilities to retain NeonSynth's settings. Its saved state includes the parameters (the LFO, BEND, VIBRATO and Voices among them), the 16-step pattern, CHOP's pattern, the selected Scope/Spectrum view, and sample information; individual step values are saved state rather than separate automatable host parameters.
+In a DAW, save your project or use the host's plugin-state/preset facilities to retain NeonSynth's settings. Its saved state includes the parameters (the LFO, BEND, VIBRATO, Voices, HOLD, GLIDE, LEGATO, LENGTH, KEY and SCALE among them), the 16-step pattern with its ties and slides, CHOP's pattern, the selected Scope/Spectrum view, the preset it came from, and sample information; individual step values are saved state rather than separate automatable host parameters.
 
-The custom editor has no dedicated patch browser or Save Patch button. Use the host's facilities where available, and verify a saved project by closing and reopening it before relying on it for an important session.
+To keep a sound for use in other projects, save it as a preset with **SAVE** in the preset bar (see [Presets](#presets)). Verify a saved project by closing and reopening it before relying on it for an important session.
 
 ### Keep sample-based sessions portable
 
@@ -526,7 +689,7 @@ For dependable archiving, keep original samples with the DAW project even when e
 
 ### Automate controls
 
-Use the DAW's automation facilities for the exposed parameters, including source, waveform, envelope, the filter's controls and its envelope, the LFO and its three depths, BEND, VIBRATO, Voices, output controls, sample settings, granular settings, the five sculpting knobs, and sequencer timing/mode controls. The Scope/Spectrum choice, individual sequencer steps and CHOP's steps are not independent automation parameters.
+Use the DAW's automation facilities for the exposed parameters, including source, waveform, envelope, the filter's controls and its envelope, the LFO and its three depths, BEND, VIBRATO, Voices, HOLD, GLIDE, LEGATO, output controls, sample settings, granular settings, the five sculpting knobs, and the sequencer's timing/mode controls, LENGTH, KEY and SCALE. The Scope/Spectrum choice, the preset, individual sequencer steps with their ties and slides, and CHOP's steps are not independent automation parameters.
 
 Automation follows each control's playback semantics: a source or Sample-loop change takes effect at a subsequent note, while granular changes shape newly generated grains. Do not expect every automated change to rewrite audio already sounding.
 
@@ -534,11 +697,13 @@ Automation follows each control's playback semantics: a source or Sample-loop ch
 
 NeonSynth responds to MIDI note pitch and velocity, with up to 16 simultaneous voices (or fewer, set with the voice lights) and voice stealing when that pool is occupied. Incoming keyboard channels are consolidated internally so keyboard notes and sequencer notes do not cut each other off solely because they share a pitch.
 
-It also responds to pitch bend, the modulation wheel (controller 1, with controller 33 for 14-bit wheels) and Reset All Controllers (controller 121), on any channel; see [Pitch bend and mod wheel](#pitch-bend-and-mod-wheel). Other controllers are ignored. There is no dedicated MIDI-learn interface or external MIDI-output function exposed by the instrument; map a controller's knobs in the DAW, through its automation.
+It also responds to pitch bend, the modulation wheel (controller 1, with controller 33 for 14-bit wheels) and Reset All Controllers (controller 121), on any channel; see [Pitch bend and mod wheel](#pitch-bend-and-mod-wheel). The sustain pedal (controller 64) holds keyboard notes, as HOLD does. Other controllers are ignored. The sequencer's notes travel inside the plugin on MIDI channel 16, and a slide is marked there with controller 68 (Legato Footswitch): 127, the new note-on, the old note-off, then 0, all at one sample. That is internal to the sequencer; keyboard input is moved to channel 1, so a controller 68 from your keyboard or the DAW does not make slides.
+
+The DAW can also choose a factory preset through its program list (see [Presets in a DAW](#presets-in-a-daw)). There is no dedicated MIDI-learn interface or external MIDI-output function exposed by the instrument; map a controller's knobs in the DAW, through its automation.
 
 ## Sound-design starting points
 
-These are suggested manual settings, not supplied factory presets. Each was rendered with GAIN at 0 dB (the first six through NeonSynth v1.6.0, the wind through v1.9.0): all of them peak between about −20 and −10 dBFS, below the point where the output soft clipper starts to act, so leave GAIN at 0 dB, keep your monitors modest, and adjust each sound to the recording, notes, and mix you are using.
+These are suggested settings to make by hand, so you can hear what each control adds. The factory presets now include these recipes, some with a v1.11.0 control added (see [The factory bank](#the-factory-bank)): Rounded Bass, Sampled Pad, Frozen Cloud, Drifting Cloud, Random Pluck, Chopped Lead and Wind Sweep. A preset's level and details can differ a little from the recipe here: Rounded Bass adds two slides and GLIDE, Chopped Lead plays mono with LEGATO and GLIDE, and Wind Sweep opens further, with more resonance, than the gusting wind below. Each recipe was rendered with GAIN at 0 dB (the first six through NeonSynth v1.6.0, the wind through v1.9.0): all of them peak between about −20 and −10 dBFS, below the point where the output soft clipper starts to act, so leave GAIN at 0 dB, keep your monitors modest, and adjust each sound to the recording, notes, and mix you are using.
 
 ### Rounded sequencer bass
 
@@ -633,6 +798,13 @@ Work through the signal path rather than changing several settings at once. In s
 - **LFO does nothing:** All three depths (PITCH, CUTOFF, AMP) are at 0, which the dimmed LFO view shows; LFO CUTOFF also needs the filter ON.
 - **Pitch bend or mod wheel has no effect:** Watch the bars beside BEND and VIBRATO while you move the wheel. If they stay still, the messages aren't arriving (check the MIDI routing); if they move, check that BEND or VIBRATO is not at 0.
 - **Only one note plays at a time:** The voice limit is set to MONO; click a higher voice light.
+- **A step that should glide doesn't:** A sequencer step glides only when the step before it has **SLD** set, and only as long as GLIDE is above 0; at GLIDE 0 a slide changes pitch without a new attack but does not glide. Steps without SLD before them never glide, whatever GLIDE is.
+- **LEGATO does nothing:** LEGATO acts only with the voice limit at 1 (MONO); click the first voice light. Overlap the keys: press the new key before letting go of the old one.
+- **Notes keep sounding after I let go:** HOLD is on, or a sustain pedal is down; switch HOLD off.
+- **Ctrl+Z undoes something in the DAW, not the pattern:** Some DAWs keep Ctrl+Z for their own undo. Use the **UNDO** button in the pattern row; it steps back through the last 32 changes to the pattern.
+- **Some steps don't play:** They are beyond LENGTH (drawn faded); set LENGTH back to 16 steps.
+- **A note won't move to where I drag it:** The scale lock is on, so the drag jumps between scale notes; set SCALE to Scale off for every note.
+- **Choosing program 0 in the DAW does nothing:** On a fresh instance the VST3 wrapper ignores it (see [Presets in a DAW](#presets-in-a-daw)); use the preset bar.
 - **The window looks striped or a little dim:** Those are the scanlines; click **SCANLINES** in the header to turn them off.
 
 These are expected behaviours, not faults.
@@ -645,7 +817,7 @@ If a reopened project plays the default pad, reload the intended file and save t
 
 ### Notes overlap, cut short, or sound distorted
 
-A long Release can overlap several sequencer steps, while a very short Release can fade out a one-shot sample before it reaches its end. More than 16 occupied voices requires voice stealing, and high combined levels can engage the output soft clipper.
+A long Release can overlap several sequencer steps, while a very short Release can fade out a one-shot sample before it reaches its end. More notes than the voice limit allows require voice stealing (see [Voices: from mono to 16](#voices-from-mono-to-16) for which voice is taken), and high combined levels can engage the output soft clipper.
 
 Try shortening Release, reducing the number of simultaneous notes, or lowering GAIN. When shaping a sampled sustain, select a steady loop region and compare different crossfade settings before assuming the recording itself is unsuitable.
 
@@ -669,23 +841,28 @@ You do not need to understand the whole application before investigating one par
 
 | Start here | What to look for | Connect it to the instrument |
 |---|---|---|
-| `Oscillator.h` | Waveform generation, phase, band-limiting, and CHOP. | Compare Sine, Triangle, Square, and Sawtooth on the same note. |
-| `Sculpt.h` / `ShapeView.h` | Noise, the oversampled wavefolder, and the SHAPE strip's drawing. | Sweep DRIVE while watching the drawing and the spectrum. |
-| `VoiceEnvelope.h` | Envelope stages and their time/level behaviour. | Move ATTACK, DECAY, SUSTAIN, and RELEASE while watching the graph. |
-| `NeonSynthVoice.h` | One note's source, envelope, filter, and panning. | Follow a note from source generation to stereo placement. |
-| `NeonSynthProcessor.cpp` | Parameter ranges/defaults, MIDI routing, output processing, and state. | Match a displayed control to its stored value and playback effect. |
-| `SampleData.h` / `SampleLoader.h` | File preparation, mono conversion, normalisation, and embedded audio. | Compare an imported recording with its prepared sample. |
-| `SampleReader.h` | Pitch mapping and crossfaded loop playback. | Investigate ROOT, loop boundaries, and XFADE. |
-| `GrainCloud.h` | Grain scheduling, windows, scan positions, and SIMD paths. | Connect SIZE, DENS, and SCAN to individual fragments. |
-| `StepSequencer.h` / `SequencerView.h` | Timing engine versus editable grid. | See how a visual step becomes a timed note event. |
-| `Visualisers.h` / `NeonSynthEditor.h` | Display processing and control attachments. | Understand how sound and parameter state reach the screen. |
+| `src/dsp/Oscillator.h` | Waveform generation, phase, band-limiting, and CHOP. | Compare Sine, Triangle, Square, and Sawtooth on the same note. |
+| `src/dsp/Sculpt.h` / `src/gui/ShapeView.h` | Noise, the oversampled wavefolder, and the SHAPE strip's drawing. | Sweep DRIVE while watching the drawing and the spectrum. |
+| `src/dsp/VoiceEnvelope.h` | Envelope stages and their time/level behaviour. | Move ATTACK, DECAY, SUSTAIN, and RELEASE while watching the graph. |
+| `src/plugin/NeonSynthVoice.h` | One note's source, envelope, filter, panning, and glide. | Follow a note from source generation to stereo placement; set GLIDE and watch it slide. |
+| `src/plugin/PlayingSynthesiser.h` | LEGATO and the sequencer's slides: moving a sounding voice to a new note. | Play overlapping keys at MONO with LEGATO on and off. |
+| `src/plugin/NeonSynthProcessor.cpp` | Parameter ranges/defaults, MIDI routing, HOLD, the internal clock, output processing, and state. | Match a displayed control to its stored value and playback effect. |
+| `src/state/SampleData.h` / `src/state/SampleLoader.h` | File preparation, mono conversion, normalisation, and embedded audio. | Compare an imported recording with its prepared sample. |
+| `src/dsp/SampleReader.h` | Pitch mapping and crossfaded loop playback. | Investigate ROOT, loop boundaries, and XFADE. |
+| `src/dsp/GrainCloud.h` | Grain scheduling, windows, scan positions, and SIMD paths. | Connect SIZE, DENS, and SCAN to individual fragments. |
+| `src/sequencer/StepSequencer.h` / `src/gui/SequencerView.h` | Timing engine, ties and slides, the scale lock, the pattern tools and undo, versus the editable grid. | See how a visual step becomes a timed note event. |
+| `src/gui/PatternRow.h` | The pattern row: LENGTH, KEY, SCALE, TOOLS, ENTER and UNDO wired to the grid. | Follow an ENTER run from a played key to a written step. |
+| `src/state/PresetManager.h` / `src/state/FactoryPresets.h` / `src/gui/PresetBar.h` | Preset files, the factory bank written as data, and the preset bar. | Change a factory preset's value by ear and rebuild. |
+| `src/gui/ScopeView.h` / `src/gui/NeonSynthEditor.h` | Display processing and control attachments. | Understand how sound and parameter state reach the screen. |
 | `tests/` | Focused engine tests and the render benchmark. | Read the expected behaviour before changing its implementation. |
+
+Since v1.11.0 the source files are grouped by what they do: `src/dsp` (sound), `src/sequencer`, `src/state` (samples and presets), `src/gui` (the window) and `src/plugin` (the processor and the voice).
 
 It is an editorial guide, not a requirement to read every file in this order.
 
 ### Make a small change, then test it
 
-A useful first experiment is to change a default envelope time in `createParameterLayout()`, rebuild, and open a fresh instance to hear the result. Existing saved sessions can restore their own settings, so they are not a reliable way to check that a new default has taken effect ([parameter definitions and state restoration](https://github.com/kv244/NeonSynth/blob/v1.10.1/NeonSynthProcessor.cpp)).
+A useful first experiment is to change a default envelope time in `createParameterLayout()` (in `src/plugin/NeonSynthProcessor.cpp`), rebuild, and open a fresh instance to hear the result. Existing saved sessions can restore their own settings, so they are not a reliable way to check that a new default has taken effect ([parameter definitions and state restoration](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/plugin/NeonSynthProcessor.cpp)).
 
 For a deeper exercise, inspect why a waveform change waits for a cycle boundary or how grain size and density affect overlap. Make one change at a time, work on a branch, and run the relevant tests before comparing the result with the original; the developer notes' [Unit tests and benchmark](DEVELOPMENT.md#unit-tests-and-benchmark) section lists what each test checks.
 
@@ -701,22 +878,22 @@ The project identifies Claude-assisted development, but Claude is not a runtime 
 
 ### Signal path
 
-The voice engine places its amplitude envelope before the filter and panner; voices are then summed, followed by output gain and soft clipping. The filter's drive and its limiter scale with the envelope, so the filter behaves as if the envelope came after it. This is the implemented path, rather than a generic synthesis diagram ([voice engine](https://github.com/kv244/NeonSynth/blob/v1.10.1/NeonSynthVoice.h), [filter](https://github.com/kv244/NeonSynth/blob/v1.10.1/CytomicSvf.h), [processor](https://github.com/kv244/NeonSynth/blob/v1.10.1/NeonSynthProcessor.cpp)).
+Keyboard notes pass HOLD on their way in, and the voice allocator (built on JUCE's synthesiser as `PlayingSynthesiser`) moves a sounding voice to a new note for LEGATO and for the sequencer's slides instead of starting another. The voice engine places its amplitude envelope before the filter and panner; voices are then summed, followed by output gain and soft clipping. The filter's drive and its limiter scale with the envelope, so the filter behaves as if the envelope came after it. This is the implemented path, rather than a generic synthesis diagram ([voice engine](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/plugin/NeonSynthVoice.h), [filter](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/dsp/CytomicSvf.h), [processor](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/plugin/NeonSynthProcessor.cpp)).
 
 ![The signal path. Keyboard MIDI and the step sequencer go through MIDI routing to voice allocation (up to 16 voices, set by the VOICES limit). Inside each voice, Oscillator and Random pass through CHOP, Noise and Fold; all four sources then go through velocity times the amp envelope, drive and the filter (bypassed together by the filter's ON switch), and the pitch-based pan. The voices are summed, then tremolo, output gain and the soft clipper lead to the audio output and the displays. A shared modulation stage, worked out once per block, sends the pitch ratio to all four sources, the LFO cutoff to the filter and the tremolo to the mix.](images/fig10-signal-path.png)
 
-Figure 10. The signal path in v1.10.0 (unchanged since v1.9.0). *Explanatory schematic,* drawn from the source code: each box is a stage in the order the [processor](https://github.com/kv244/NeonSynth/blob/v1.10.1/NeonSynthProcessor.cpp) and the [voice](https://github.com/kv244/NeonSynth/blob/v1.10.1/NeonSynthVoice.h) run them. Solid arrows carry audio, dashed ones the shared modulation, which is worked out once per block for all voices. Drive and the filter form one stage: switching the filter OFF bypasses both. The same path in text:
+Figure 10. The signal path in v1.10.0 (unchanged since v1.9.0); v1.11.0 adds HOLD to the MIDI routing, LEGATO and slides to voice allocation, and the glide to each voice's pitch, as the text version below shows. *Explanatory schematic,* drawn from the source code: each box is a stage in the order the [processor](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/plugin/NeonSynthProcessor.cpp) and the [voice](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/plugin/NeonSynthVoice.h) run them. Solid arrows carry audio, dashed ones the shared modulation, which is worked out once per block for all voices. Drive and the filter form one stage: switching the filter OFF bypasses both. The same path in text:
 
 ```text
-MIDI keyboard / DAW notes ─┐
-                          ├─> voice allocation, up to 16 voices
-Internal step sequencer ──┘
+MIDI keyboard / DAW notes → HOLD ─┐
+                                  ├─> voice allocation, up to 16 voices
+Internal step sequencer ──────────┘   (LEGATO and slides move a sounding voice to the new note)
 
 Shared by all voices, once per block:
 LFO, pitch bend, mod wheel vibrato → pitch ratio, LFO cutoff, tremolo
 
 Per voice:
-selected source (pitch × pitch ratio) → (Oscillator and Random only: CHOP → noise → fold) → amplitude envelope → drive → filter (mode, resonance; cutoff + filter envelope + velocity + LFO)/bypass → pitch-based pan
+selected source (pitch × glide × pitch ratio) → (Oscillator and Random only: CHOP → noise → fold) → amplitude envelope → drive → filter (mode, resonance; cutoff + filter envelope + velocity + LFO)/bypass → pitch-based pan
 
 Combined output:
 voice sum → tremolo → output gain → soft clipper → mono/stereo output and visualisers
@@ -733,14 +910,19 @@ voice sum → tremolo → output gain → soft clipper → mono/stereo output an
 | CHOP pattern and COMB | Applied at a cycle boundary; OVERTONE glides over 10 ms. |
 | Filter cutoff, resonance, drive, gain, and panning | Smoothed to reduce abrupt changes. |
 | Filter mode | Crossfaded over 10 ms. |
-| LFO | One for the whole instrument, free-running; shape changes crossfade over 10 ms, depths glide over 20 ms, and jumps are smoothed over 2 ms. |
+| LFO | One for the whole instrument, free-running; shape changes crossfade over 10 ms, depths glide over 20 ms, and jumps are smoothed over 2 ms. Bar divisions follow the host's time signature. |
 | Pitch bend and mod wheel | Read from the incoming MIDI at their exact sample, for every sounding voice; the bend glides over 5 ms, the wheel over 20 ms. |
-| Voices limit | New notes use only the first N voices; voices above the limit finish their notes. |
-| Sequencer events | Scheduled at sample offsets and rendered at their MIDI event positions. |
+| Voices limit | New notes use only the first N voices; voices above the limit finish their notes. Below 16, a full pool steals the oldest voice on the same note, else the oldest released, else the oldest. |
+| GLIDE | Even in pitch (octaves), the same time for any interval; latched by each note that glides. A voice's first note does not glide. |
+| LEGATO and slides | The sounding voice takes the new note: pitch glides, envelopes, source and velocity carry on. |
+| HOLD | Keyboard note-offs are kept back while it is on and sent together, at the start of a block, when it goes off. |
+| Internal clock | Counted in samples since the last tempo change, so it does not drift, even with one-sample blocks. |
+| Sequencer events | Scheduled at sample offsets and rendered at their MIDI event positions; the pattern wraps after LENGTH steps, while swing follows the step's position in time. |
+| Presets | A `.neonpreset` file is a session; loading one goes through the same checks as restoring a session. |
 | Random / granular variation | Seeded for reproducible renders from the same reset state and event sequence. |
 | Imported sample audio | Prepared mono audio; original file is not modified. |
 
-These details follow the [voice engine](https://github.com/kv244/NeonSynth/blob/v1.10.1/NeonSynthVoice.h), [modulation](https://github.com/kv244/NeonSynth/blob/v1.10.1/Modulation.h), [LFO](https://github.com/kv244/NeonSynth/blob/v1.10.1/Lfo.h), [processor](https://github.com/kv244/NeonSynth/blob/v1.10.1/NeonSynthProcessor.cpp), [grain engine](https://github.com/kv244/NeonSynth/blob/v1.10.1/GrainCloud.h), and [sample preparation](https://github.com/kv244/NeonSynth/blob/v1.10.1/SampleData.h).
+These details follow the [voice allocator](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/plugin/PlayingSynthesiser.h), [sequencer](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/sequencer/StepSequencer.h), [presets](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/state/PresetManager.h), the [voice engine](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/plugin/NeonSynthVoice.h), [modulation](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/dsp/Modulation.h), [LFO](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/dsp/Lfo.h), [processor](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/plugin/NeonSynthProcessor.cpp), [grain engine](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/dsp/GrainCloud.h), and [sample preparation](https://github.com/kv244/NeonSynth/blob/v1.11.0/src/state/SampleData.h).
 
 ### Optional MIDI diagnostics
 

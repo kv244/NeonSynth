@@ -28,15 +28,22 @@ lead. [`docs/demo/make_demo.py`](docs/demo/make_demo.py) renders it from the VST
 - **Envelope, filter and output**: an ADSR you can drag on its own graph; a state-variable filter with four
   modes, resonance up to self-oscillation, drive, its own envelope and velocity; up to 16 voices panned by
   pitch (click the voice lights for fewer, down to mono), and a soft clipper that keeps the output under −1 dBFS.
-- **Movement**: one LFO (sine, triangle, square, saw, random; free or synced to the tempo) on pitch, cutoff
-  and level; pitch bend with a range of up to 24 semitones; and a mod-wheel vibrato, all from MIDI.
+- **Movement**: one LFO (sine, triangle, square, saw, random; free or synced to the tempo, with bars that
+  follow the DAW's time signature) on pitch, cutoff and level; pitch bend with a range of up to 24 semitones;
+  and a mod-wheel vibrato, all from MIDI.
+- **Playing**: HOLD keeps your keys sounding (and latches the key in Transpose mode), GLIDE slides each voice
+  to its next note in every source, and LEGATO joins overlapping keys in mono without a new attack.
 - **16-step sequencer**: sample-accurate, synced to the DAW or its own tempo, with swing, gate and three
-  keyboard modes.
+  keyboard modes; a LENGTH of 1 to 16 steps, TIE and SLD (303-style slides) on every step, velocity as the
+  accent, a KEY and SCALE lock with 13 scales, ENTER to fill steps from your keyboard, pattern TOOLS
+  (shift, octave, reverse, randomise in the scale, clear) and 32 levels of UNDO.
+- **Presets**: a preset bar with 16 factory presets in seven categories (also the DAW's program list), and
+  SAVE for your own, as `.neonpreset` files you can send to someone.
 - **You see what you hear**: oscilloscope, spectrum with the filter curve, envelope with a dot per voice,
   the LFO's shape and position, the bend and mod-wheel positions, voice lights and a stereo meter, in a window that scales from 75% to 150%. It looks like an old
   phosphor monitor: glowing traces with a short afterglow, a bezel, and scanlines you can switch off.
 - **Sessions keep everything**: the sample, the sequencer pattern and the CHOP pattern are saved with the
-  DAW project, and every parameter can be automated.
+  DAW project, along with the preset it came from, and every parameter can be automated.
 
 ## How the sound is made
 
@@ -97,9 +104,9 @@ MIDI logging and the layout of the source.
 
 | Version | Date | What changed |
 |---|---|---|
+| [v1.11.0](https://github.com/kv244/NeonSynth/releases/tag/v1.11.0) | 23 Nov 2026 | "Playing": HOLD, GLIDE and LEGATO; the sequencer gains LENGTH, TIE and SLD (303-style slides), a KEY and SCALE lock, ENTER from the keyboard, pattern TOOLS, 32-level UNDO and a draggable velocity bar as the accent; presets, with a preset bar, SAVE and 16 factory presets that are also the DAW's program list; LFO bars follow the time signature. Fixes: two voice-stealing faults below 16 voices (sessions using fewer voices may differ where a note is stolen) and a one-sample drift of the internal clock. New tests for playing, presets, voice stealing and sample-rate and block-size sweeps, and the integrity job |
 | [v1.10.1](https://github.com/kv244/NeonSynth/releases/tag/v1.10.1) | 18 Nov 2026 | Hardening: a damaged or hostile session can no longer crash or hang the plugin (a bad embedded-sample size, parameter values that are not numbers, XML nested hundreds of thousands deep, a relative sample path); the host hears of a background sample load on the message thread; new tests for broken sessions, sessions saved by v1.2 to v1.10, random sequencer and envelope settings, and an ASan/UBSan CI job; SECURITY, CONTRIBUTING and this changelog. No change to controls or sound |
 | [v1.10.0](https://github.com/kv244/NeonSynth/releases/tag/v1.10.0) | 18 Nov 2026 | The retro CRT look: phosphor text and traces on a dark green tube inside a bezel, scope and spectrum afterglow, block meters, arc-ring knobs, the sequencer's steps showing their notes, embedded VT323 and IBM Plex Mono fonts, and a SCANLINES switch saved with the session. The layout and the sound are unchanged: old sessions sound bit-identical |
-| [v1.9.0](https://github.com/kv244/NeonSynth/releases/tag/v1.9.0) | 17 Nov 2026 | Movement: one LFO (five shapes, free or synced) on pitch, cutoff and level; pitch bend and a mod-wheel vibrato from MIDI, for keyboard and sequencer notes alike; click the voice lights to set how many voices play (1 = mono); a vertical GAIN fader beside the meters and a glow around every panel. Old sessions sound bit-identical; projects with recorded bend or mod-wheel data now respond to it |
 
 Every release is in the **[changelog](CHANGELOG.md)**, linked to its GitHub release with the installer
 (and, from v1.6.0, the manual as a PDF).
