@@ -36,6 +36,11 @@ struct ChopSettings
     while it is being corrected; Overtone glides over 10 ms. With Overtone at 0 and
     not gliding, apply() returns its input untouched (bit-identical to no CHOP).
 
+    NAIVE (v1.12.0): with hard edges on (setHardEdges(), which the oscillator calls at
+    its cycle boundary) the gain changes from one sample to the next with no residual
+    and no fade-out as steps shrink, so CHOP's edges alias like the textbook waves.
+    With them off, apply() is the band-limited CHOP above, operation for operation.
+
     Audio thread only; no allocation.
 */
 class Chop
@@ -70,6 +75,9 @@ public:
         comb    = pendingComb;
     }
 
+    /** NAIVE (v1.12.0): hard edges, no residuals. The caller switches it at a cycle boundary. */
+    void setHardEdges (bool hard) noexcept   { hardEdges = hard; }
+
     /**
         Applies CHOP to one band-limited sample x of a wave at phase t (0..1) with
         phase step dt. edgeValue (segment) returns the wave's value at the start of
@@ -87,6 +95,9 @@ public:
         const int   segment  = juce::jmin ((int) position, segments - 1);
         const float local    = position - (float) segment;
         const float segDt    = dt * (float) segments;   // phase step within a segment
+
+        if (hardEdges)   // NAIVE: the textbook cut, no residuals, at any step length
+            return ((pattern >> (segment % stepsPerPattern)) & 1u) != 0 ? chopGain * x : x;
 
         // Full CHOP while a segment lasts four samples or more, none below two.
         const float depth = juce::jlimit (0.0f, 1.0f, (1.0f / juce::jmax (segDt, minSegmentStep) - 2.0f) * 0.5f);
@@ -124,4 +135,5 @@ private:
     juce::uint16 pattern = ChopSettings::defaultPattern, pendingPattern = ChopSettings::defaultPattern;
     int   comb = 1, pendingComb = 1;
     float pendingOvertone = 0.0f;
+    bool  hardEdges = false;   // NAIVE (v1.12.0)
 };

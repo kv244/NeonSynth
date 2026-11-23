@@ -94,7 +94,10 @@ void NeonSynthVoice::setParameters (const Params& p) noexcept
         adsr.setParameters (adsrParams);
 
     oscillator.setWaveform (p.waveform);              // applied at the next cycle boundary
+    oscillator.setNaive (p.naive);                    // v1.12.0: NAIVE and CUSTOM too; a new set of
+    oscillator.setCustom (p.custom, p.harmonics, p.wavetables);   // tables fades in from the old wave
     oscillator.setChop (p.chop);
+    randomOscillator.setNaive (p.naive);
     randomOscillator.setChop (p.chop);
     sculpt.set (p.sculpt);
     cutoff.setTargetValue (clampCutoff (p.cutoffHz));

@@ -8,9 +8,9 @@
     Global operator new/delete are replaced with versions that count calls
     made while the calling thread is inside processBlock. The processor then
     renders a busy session - chords, the sequencer at 1/32, every waveform,
-    every source and loop mode, parameter changes - while a second thread keeps replacing the sample
-    (file loads, the default pad, embedded FLAC via state), as the GUI or a
-    host would. Any allocation or free on the audio thread is a failure.
+    every source and loop mode, parameter changes, CUSTOM and NAIVE (v1.12.0) - while a second
+    thread keeps replacing the sample (file loads, the default pad, embedded FLAC via state) and
+    publishing new CUSTOM spectra, as the GUI or a host would. Any allocation or free on the audio thread is a failure.
 
     It also holds the processor-level check of the filter envelope (v1.8.0),
     since this is the program that already renders the whole processor: a
@@ -232,6 +232,8 @@ int main()
                 default: processor.setStateInformation (stateWithSample.getData(), (int) stateWithSample.getSize()); break;
             }
             processor.setChopStep (swaps.load() % 16, (swaps.load() / 16) % 2 == 0);   // the editor toggling CHOP steps
+            // v1.12.0: the HARMONICS view publishing new spectra (the WavetableBank's builder side).
+            processor.setHarmonicSpectrum (swaps.load() % 2 == 0 ? HarmonicSpectrum::square() : HarmonicSpectrum::saw());
             ++swaps;
         }
     });
@@ -341,6 +343,15 @@ int main()
             setParameter (processor, "hold", (float) ((b / 140) % 2));
         if (b % 110 == 0)
             setParameter (processor, "seqLength", (float) (1 + (b / 110) % 16));
+        // v1.12.0 "Fourier": CUSTOM (the wavetables, their crossfades and the new spectra the
+        // other thread publishes), NAIVE (also on Random and CHOP), HARMONICS stepping.
+        if (b % 75 == 0)
+            setParameter (processor, "custom", (float) ((b / 75) % 2));
+        if (b % 125 == 0)
+            setParameter (processor, "naive", (float) ((b / 125) % 2));
+        if (b % 7 == 0)
+            setParameter (processor, "harmonics", (float) (1 + (b / 7) % 32));
+
         if (b % 45 == 0)
         {
             const int k = (b / 45) % StepSequencer::numSteps;

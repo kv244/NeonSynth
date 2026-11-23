@@ -455,7 +455,7 @@ if(NEONSYNTH_BUILD_TESTS)
     #   PitchTests, MidiModulationTests, PlayingTests, PresetTests, VoiceStealingTests, SweepTests
     #   RouterTests           the MIDI router alone (HOLD, the ENTER queue, the internal clock)
     set(NEONSYNTH_ENGINE_TESTS RealtimeSafetyTests ParameterLayoutTests SessionStateTests StateFuzzTests EditorTests PitchTests MidiModulationTests
-        PlayingTests PresetTests VoiceStealingTests SweepTests RouterTests FourierTests)
+        PlayingTests PresetTests VoiceStealingTests SweepTests RouterTests FourierTests FourierDspTests)
     if(NEONSYNTH_TSAN)
         # RealtimeSafetyTests replaces operator new to catch allocations, and so does TSan's
         # runtime: the two cannot be linked together. The other jobs run it.

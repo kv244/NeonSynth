@@ -22,6 +22,9 @@
       sample 16 - the same 16 notes playing the built-in pad (Source = Sample, looped)
       random 16 - the same 16 notes on the Random source
       sculpt 16 - the same 16 notes on a sawtooth with CHOP, Noise and Fold all on (v1.6.0)
+      saw 16 / custom 16 - the same 16 notes on the band-limited sawtooth, and on CUSTOM's SAW
+                  wavetables with all 32 harmonics (v1.12.0); the custom/saw ratio is printed
+                  (its budget: at most 1.2)
       granular  - the same 16 notes on the granular source at 200 grains/s of 250 ms,
                   so every voice runs its full 32 grains (the worst case)
       dense     - sequencer at 1/32 and 240 BPM plus an 8-note chord every 250 ms
@@ -41,6 +44,9 @@
     times (default 3), and the fastest round of each counts, so a busy moment on the
     machine doesn't decide the result. It says which AVX2 read is faster on this CPU;
     the default (NEONSYNTH_GRAINS_AVX2_GATHER) is chosen from these numbers.
+
+    RenderBenchmark --custom [rounds] (v1.12.0) times only saw 16 and custom 16, taking turns,
+    `rounds` times (default 5), and prints the fastest of each and their ratio (budget 1.2).
 */
 #include "plugin/NeonSynthProcessor.h"
 #include "dsp/GrainCloud.h"
@@ -171,6 +177,34 @@ namespace
         };
     }
 
+    const auto configureSaw = [] (juce::AudioProcessor& p) { setParameter (p, "waveform", 3.0f); };
+    const auto configureCustom = [] (juce::AudioProcessor& p)
+    {
+        setParameter (p, "waveform", 3.0f);
+        setParameter (p, "custom", 1.0f);   // the SAW set, 32 harmonics
+    };
+
+    /** --custom: CUSTOM's wavetables against the band-limited sawtooth, best of `rounds` (v1.12.0). */
+    int benchmarkCustom (int rounds)
+    {
+        std::printf ("CUSTOM against the sawtooth (48 kHz, %d-sample blocks, %.0f s per scenario, best of %d rounds)\n", benchBlockSize, benchSeconds, rounds);
+        double saw = 1.0e300, custom = 1.0e300;
+        for (int round = 1; round <= rounds; ++round)
+        {
+            saw = juce::jmin (saw, render (heldSixteen(), configureSaw));
+            if (! lastRenderFinite) nonFiniteScenarios.add ("saw 16");
+            custom = juce::jmin (custom, render (heldSixteen(), configureCustom));
+            if (! lastRenderFinite) nonFiniteScenarios.add ("custom 16");
+        }
+        std::printf ("  saw 16     %7.0f ms\n  custom 16  %7.0f ms\n  custom / saw: %.3f (budget 1.20)\n", saw, custom, custom / saw);
+        if (! nonFiniteScenarios.isEmpty())
+        {
+            std::printf ("\nFAILED: non-finite output in %s\n", nonFiniteScenarios.joinIntoString (", ").toRawUTF8());
+            return 1;
+        }
+        return 0;
+    }
+
     /** --grains: the granular scenarios on each grain loop, to choose between gather and scalar loads. */
     int benchmarkGrainPaths (int rounds)
     {
@@ -238,6 +272,8 @@ int main (int argc, char* argv[])
 
     if (argc > 1 && std::strcmp (argv[1], "--grains") == 0)
         return benchmarkGrainPaths (argc > 2 ? juce::jlimit (1, 20, std::atoi (argv[2])) : 3);
+    if (argc > 1 && std::strcmp (argv[1], "--custom") == 0)
+        return benchmarkCustom (argc > 2 ? juce::jlimit (1, 20, std::atoi (argv[2])) : 5);
 
     const auto noChange = [] (juce::AudioProcessor&) {};
 
@@ -295,6 +331,15 @@ int main (int argc, char* argv[])
                                      setParameter (p, "foldMix", 100.0f);
                                  }));
     report ("granular", render (heldSixteen(), configureGranular));
+
+    // v1.12.0: CUSTOM's wavetables against the band-limited sawtooth they replace.
+    {
+        const auto saw = render (heldSixteen(), configureSaw);
+        report ("saw 16", saw);
+        const auto custom = render (heldSixteen(), configureCustom);
+        report ("custom 16", custom);
+        std::printf ("  custom / saw: %.2f (budget 1.20)\n", custom / saw);
+    }
 
     // v1.9.0 modulation, on the same 16 held notes.
     const auto sixteen = held ({ 48, 50, 52, 53, 55, 57, 59, 60, 62, 64, 65, 67, 69, 71, 72, 74 }, 127);
