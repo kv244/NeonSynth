@@ -335,6 +335,13 @@ private:
     juce::TextButton customButton { "CUSTOM" }, naiveButton { "NAIVE" }, drawButton { "DRAW" };
     std::unique_ptr<ButtonAttachment> customAttachment, naiveAttachment;
     void setDrawMode (bool on);
+    // v1.12.0: what the SPECTRUM's aliasing marks follow (see aliasSourceNow()).
+    std::atomic<float>* naiveValue = nullptr;
+    std::atomic<float>* customValue = nullptr;
+    std::atomic<float>* harmonicsValue = nullptr;
+    std::atomic<float>* waveformValue = nullptr;
+    std::atomic<float>* sourceValue = nullptr;
+    SpectrumView::AliasSource aliasSourceNow (float lowestHz) const;
     CutoffBand cutoffBand;   // as last drawn under the cutoff slider
 
     // Help
