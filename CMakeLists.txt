@@ -158,6 +158,8 @@ target_sources(NeonSynth
     PRIVATE
         # src/dsp
         src/dsp/Oscillator.h
+        src/dsp/Blep4.h
+        src/dsp/Chop.h
         src/dsp/SampleReader.h
         src/dsp/GrainCloud.h
         src/dsp/CytomicSvf.h
