@@ -158,10 +158,8 @@ public:
         source = spectrum;
     }
 
-    bool isBuilt() const noexcept   { return data != nullptr; }
-
     /** Table n, 1..32 (clamped), tableSize + guardPoints values. */
-    const float* getTable (int n) const noexcept   { return data.get() + (size_t) (juce::jlimit (1, numTables, n) - 1) * stride; }
+    const float* getTable (int n) const noexcept   { return &data[(size_t) (juce::jlimit (1, numTables, n) - 1) * stride]; }
 
     /**
         The value of table n at phase t (0..1), by cubic (Catmull-Rom) interpolation between
@@ -203,7 +201,7 @@ public:
 private:
     static constexpr size_t stride = (size_t) (tableSize + guardPoints);
 
-    float* table (int n) noexcept   { return data.get() + (size_t) (n - 1) * stride; }
+    float* table (int n) noexcept   { return &data[(size_t) (n - 1) * stride]; }
 
     std::unique_ptr<float[]> data;
     float scale = HarmonicSpectrum::seriesGain;

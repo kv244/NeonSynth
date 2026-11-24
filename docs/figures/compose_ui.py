@@ -87,7 +87,7 @@ def px(box):
 # ---------------------------------------------------------------- figure 1
 FIG1_REGIONS = [                     # number, box (design px), marker (design px): on a corner or edge
     (1, (28, 114, 404, 154), (6, 134)),        # with nothing under it, never on a label
-    (2, (28, 214, 404, 610), (6, 400)),
+    (2, (28, 186, 404, 610), (6, 400)),        # from v1.12.0 with the CUSTOM / NAIVE / DRAW row above the strip
     (3, (440, 88, 940, 336), (946, 88)),
     (4, (440, 358, 748, 612), (754, 358)),      # takes in the AMP / FILTER tabs (v1.8.0)
     (5, (782, 362, 940, 626), (946, 362)),      # the whole filter panel, with the LFO band under CUTOFF
@@ -105,8 +105,8 @@ FIG1_REGIONS = [                     # number, box (design px), marker (design p
 FIG1_LEFT = 30                       # white strip left of the capture, capture px: the left markers sit in it
 FIG1_KEY = [
     (1, "Source and waveform. The left menu picks Oscillator, Sample, Granular or Random; the right menu picks the oscillator waveform."),
-    (2, "The strip and its knob row: the SHAPE strip for Oscillator and Random (Figure 3); the sample for Sample and Granular (Figure 6)."),
-    (3, "Display: SCOPE or SPECTRUM view of the mix."),
+    (2, "The strip and its knob row: the SHAPE strip for Oscillator and Random (Figure 3), with CUSTOM, NAIVE and DRAW above it (v1.12.0); the sample for Sample and Granular (Figure 6)."),
+    (3, "Display: SCOPE or SPECTRUM view of the mix, or the HARMONICS view (Figure 11)."),
     (4, "Envelope. AMP or FILTER: drag the four points, or turn ATTACK, DECAY, SUSTAIN and RELEASE."),
     (5, "Filter. ON, CUTOFF, the mode, and RES, DRIVE, ENV and VEL. The green band under CUTOFF is the LFO's sweep."),
     (6, "Output: WIDTH, the GAIN fader and the left and right level meters."),
@@ -150,6 +150,47 @@ def fig03(cap, out):
     ax.imshow(crop, interpolation="none", aspect="auto")
     ax.axis("off")
     return fs.save(fig, out, "fig03-shape-strip")
+
+
+# ------------------------------------------------------------ figures 11 and 13 (v1.12.0)
+DISPLAY_PANEL = (428, 82, 952, 344)  # the display panel (SCOPE / SPECTRUM / HARMONICS), design px
+STRIP_FOOT = 516                     # just below the SHAPE strip (218 + 290), design px
+
+
+def fig11(cap, out):
+    """The HARMONICS view: CUSTOM on, the SAW set, HARMONICS 9."""
+    img = np.asarray(Image.open(cap / "ui-harmonics.png").convert("RGB"))
+    x0, y0, x1, y1 = px(DISPLAY_PANEL)
+    crop = img[int(y0):int(y1), int(x0):int(x1)]
+    width = 120.0
+    fig = fs.figure(width * crop.shape[0] / crop.shape[1])
+    ax = fig.add_axes([(160 - width) / 2 / 160, 0, width / 160, 1])
+    ax.imshow(crop, interpolation="none", aspect="auto")
+    ax.axis("off")
+    return fs.save(fig, out, "fig11-harmonics")
+
+
+def fig13(cap, out):
+    """DRAW: the SOURCE panel down to the strip's foot, beside the HARMONICS view: a drawn cycle
+    (faint) and the wave its first 32 harmonics play, with those harmonics as bars."""
+    img = np.asarray(Image.open(cap / "ui-draw.png").convert("RGB"))
+    sx0, sy0, sx1, _ = px(SOURCE_PANEL)
+    left = img[int(sy0):int(STRIP_FOOT * SCALE), int(sx0):int(sx1)]
+    dx0, dy0, dx1, dy1 = px(DISPLAY_PANEL)
+    right = img[int(dy0):int(dy1), int(dx0):int(dx1)]
+    gap = 4.0                                            # mm between the two panels
+    scale_mm = (160.0 - gap) / (left.shape[1] + right.shape[1])   # one scale for both: mm per capture px
+    h = left.shape[0] * scale_mm
+    fig = fs.figure(h)
+    wl, wr = left.shape[1] * scale_mm, right.shape[1] * scale_mm
+    ax = fig.add_axes([0, 0, wl / 160, 1])
+    ax.imshow(left, interpolation="none", aspect="auto")
+    ax.axis("off")
+    hr = right.shape[0] * scale_mm
+    ax = fig.add_axes([(wl + gap) / 160, 1 - hr / h, wr / 160, hr / h])
+    ax.imshow(right, interpolation="none", aspect="auto")
+    ax.axis("off")
+    return fs.save(fig, out, "fig13-draw")
 
 
 # ------------------------------------------------------------- figure 6
@@ -323,7 +364,7 @@ def main():
     ap.add_argument("--out", type=pathlib.Path, default=here.parent / "images")
     a = ap.parse_args()
     a.out.mkdir(parents=True, exist_ok=True)
-    for fn in (fig01, fig03, fig06a, fig08):
+    for fn in (fig01, fig03, fig06a, fig08, fig11, fig13):
         print(fn.__name__, [p.name for p in fn(a.captures, a.out)])
 
 
