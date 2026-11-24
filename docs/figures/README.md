@@ -4,6 +4,8 @@ The figures in `docs/images/` for [the user manual](../NeonSynth-User-Manual.md)
 
 How the v1.11.0 captures were set up: rather than setting controls with the mouse, the state was written into the Standalone's settings file (`~/.config/NeonSynth.settings`, `filterState`: JUCE's `copyXmlToBinary` of the session XML, in `MemoryBlock::toBase64Encoding`'s format) before starting it, so each capture shows exactly the stated settings. `ui-oscillator-running`: every parameter at its default except Sawtooth, LFO CUTOFF +1.5 oct, LFO RATE 2 Hz and RUN on; the frame with the playhead on step 9. `ui-sequencer`: the Rounded Bass factory preset's settings and pattern (slides on steps 8 and 12), plus a TIE on step 3 and LENGTH 12, RUN on; the frame with the playhead on step 9.
 
+Edition 3.0 (v1.12.0) retakes `ui-oscillator-running` and `ui-shape`, which now show the CUSTOM, NAIVE and DRAW switches above the SHAPE strip and the HARMONICS tab, and adds three figures for the Fourier chapter. The captures were made the same way, but by script: the state is written into the Standalone's settings file from a Pedalboard instance (so `view` 2 and `draw` 1, the editor's own properties, and the `<Harmonics>` and `<Drawing>` children can be set too), the Standalone is started under `Xvfb :99` with a PulseAudio null sink, sized to 1924 × 1324 with `xdotool`, the pointer moved over the window's title and then off it (so no tooltip is left showing), and the plugin area grabbed with ImageMagick's `import` (1920 × 1290 at x 4, y 30). `ui-harmonics`: Sawtooth, CUSTOM on, HARMONICS 9, the SAW set, view 2. `ui-draw`: CUSTOM and DRAW on, view 2, a drawn cycle (high for 45% of the cycle, falling in 1%, then a ramp back up, with its mean removed) and the spectrum DRAW's analysis gives for it. `ui-oscillator-running` is the frame of a burst in which the playhead is on step 9. Figure 12 is rendered with `render_plots.py --only fig12-aliasing`, which keeps the other figures' records.
+
 ## What each figure is
 
 | Figure | File | Kind | Made by |
@@ -18,6 +20,9 @@ How the v1.11.0 captures were set up: rather than setting controls with the mous
 | 8 Step grid and gestures | `fig08-sequencer` | Actual application capture | `compose_ui.py` |
 | 9 The five LFO shapes | `fig09-lfo-shapes` | Plot derived from rendered audio | `render_plots.py` |
 | 10 The signal path | `fig10-signal-path` | Explanatory schematic, drawn from the source code (not from audio) | `signal_flow.py` |
+| 11 The HARMONICS view (v1.12.0) | `fig11-harmonics` | Actual application capture (`ui-harmonics`) | `compose_ui.py` |
+| 12 A sawtooth at C#7, band-limited and NAIVE (v1.12.0) | `fig12-aliasing` | Plot derived from rendered audio | `render_plots.py` |
+| 13 A drawn cycle and what plays (v1.12.0) | `fig13-draw` | Actual application capture (`ui-draw`) | `compose_ui.py` |
 | Cover | `cover` | Drawn artwork in the editor's CRT look, with the version and release date | `cover.py --date "<release date>"` (redraw on every version bump; CI checks the version) |
 
 Every figure is written as an SVG (text as outlines) and a PNG at 300 dpi. All but the cover are drawn 160 mm wide, the print text width, with 9 pt labels and 10 pt panel titles in DejaVu Sans. Lines are told apart by style and label as well as by colour, so they read in grayscale. The captions in the manual carry the same kind label.

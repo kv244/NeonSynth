@@ -28,6 +28,8 @@ and a final pitch bend. [`docs/demo/make_demo.py`](docs/demo/make_demo.py) rende
   a granular cloud of that sample, and Random, a pitched wave of 16 drifting steps.
 - **Waveform sculpting**: CHOP cuts or flips steps of every cycle (after the Roland S-1), NOISE fades the
   wave into white noise, and FOLD folds it back on itself.
+- **Fourier**: build a wave from up to 32 harmonics (and hear it BUILD one harmonic at a time), draw one
+  cycle and hear its harmonics, and switch band-limiting off (NAIVE) to hear and see aliasing.
 - **Envelope, filter and output**: an ADSR you can drag on its own graph; a state-variable filter with four
   modes, resonance up to self-oscillation, drive, its own envelope and velocity; up to 16 voices panned by
   pitch (click the voice lights for fewer, down to mono), and a soft clipper that keeps the output under −1 dBFS.
@@ -42,10 +44,10 @@ and a final pitch bend. [`docs/demo/make_demo.py`](docs/demo/make_demo.py) rende
   (shift, octave, reverse, randomise in the scale, clear) and 32 levels of UNDO.
 - **Presets**: a preset bar with 16 factory presets in seven categories (also the DAW's program list), and
   SAVE for your own, as `.neonpreset` files you can send to someone.
-- **You see what you hear**: oscilloscope, spectrum with the filter curve, envelope with a dot per voice,
+- **You see what you hear**: oscilloscope, spectrum with the filter curve (and NAIVE's folded harmonics in red), the harmonics as bars, envelope with a dot per voice,
   the LFO's shape and position, the bend and mod-wheel positions, voice lights and a stereo meter, in a window that scales from 75% to 150%. It looks like an old
   phosphor monitor: glowing traces with a short afterglow, a bezel, and scanlines you can switch off.
-- **Sessions keep everything**: the sample, the sequencer pattern and the CHOP pattern are saved with the
+- **Sessions keep everything**: the sample, the sequencer pattern, the CHOP pattern and a custom wave are saved with the
   DAW project, along with the preset it came from, and every parameter can be automated.
 
 ## How the sound is made
@@ -111,6 +113,7 @@ MIDI logging and the layout of the source.
 
 | Version | Date | What changed |
 |---|---|---|
+| [v1.12.0](https://github.com/kv244/NeonSynth/releases/tag/v1.12.0) | 24 Nov 2026 | "Fourier": NAIVE to hear aliasing, CUSTOM waves of up to 32 harmonics in a new HARMONICS view with BUILD and ZERO PHASE, and DRAW to draw one cycle; two granular fixes; C++20 and faster builds |
 | [v1.11.1](https://github.com/kv244/NeonSynth/releases/tag/v1.11.1) | 23 Nov 2026 | Refactor release: controls, window and sound unchanged, except that a granular grain bent up past the end of its sample now ends there whatever the block size. The manual's licence and warranty text follows AGPL-3.0-only. JUCE is fetched by CMake when no JUCE_DIR is given; the processor is split by job into smaller files, and a cold build of the plugin and its tests is about five times faster (32 min to 6 min on 2 cores); Python dependencies are pinned with hashes and updated by Dependabot |
 | [v1.11.0](https://github.com/kv244/NeonSynth/releases/tag/v1.11.0) | 23 Nov 2026 | "Playing": HOLD, GLIDE and LEGATO; the sequencer gains LENGTH, TIE and SLD (303-style slides), a KEY and SCALE lock, ENTER from the keyboard, pattern TOOLS, 32-level UNDO and a draggable velocity bar as the accent; presets, with a preset bar, SAVE and 16 factory presets that are also the DAW's program list; LFO bars follow the time signature. Fixes: two voice-stealing faults below 16 voices (sessions using fewer voices may differ where a note is stolen) and a one-sample drift of the internal clock. New tests for playing, presets, voice stealing and sample-rate and block-size sweeps, and the integrity job |
 | [v1.10.1](https://github.com/kv244/NeonSynth/releases/tag/v1.10.1) | 18 Nov 2026 | Hardening: a damaged or hostile session can no longer crash or hang the plugin (a bad embedded-sample size, parameter values that are not numbers, XML nested hundreds of thousands deep, a relative sample path); the host hears of a background sample load on the message thread; new tests for broken sessions, sessions saved by v1.2 to v1.10, random sequencer and envelope settings, and an ASan/UBSan CI job; SECURITY, CONTRIBUTING and this changelog. No change to controls or sound |
