@@ -22,6 +22,8 @@ resonant, driven filter, latched with HOLD), noise hats through the high-pass fi
 through a resonant band-pass, and a looped-sample lead played MONO with LEGATO and GLIDE, the mod wheel's vibrato
 and a final pitch bend. [`docs/demo/make_demo.py`](docs/demo/make_demo.py) renders it from the VST3.
 
+**[Watch it played live](https://youtu.be/wh0MDSjokBQ)**: a video of the author playing NeonSynth with an Arturia MiniLab 3 keyboard.
+
 ## Highlights
 
 - **Four sound sources**: a band-limited oscillator (sine, square, triangle, sawtooth), your own sample,
