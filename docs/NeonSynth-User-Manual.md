@@ -9,7 +9,7 @@ NeonSynth is a learning synthesizer: a place to hear what a waveform sounds like
 For musicians, begin with one note and one waveform, without stacked oscillator layers obscuring what you are hearing. For coders, follow the same sound into the C++ implementation, from waveform generation through envelope, filter, and output; the interface and the code become two views of the same instrument ([voice architecture](https://github.com/kv244/NeonSynth/blob/v1.12.0/src/plugin/NeonSynthVoice.h)).
 
 **Instrument:** NeonSynth by Razvan Julian Petrescu / AudioDSP  
-**Edition:** 3.0, updated 24 November 2026 (v1.12.0 "Fourier": NAIVE, CUSTOM with the HARMONICS view and BUILD, and drawing one cycle, in a new chapter; edition 2.0 covered v1.11.0 "Playing", 2.1 v1.11.1)<br>
+**Edition:** 3.0, updated 27 November 2026 (v1.12.0 "Fourier": NAIVE, CUSTOM with the HARMONICS view and BUILD, and drawing one cycle, in a new chapter; edition 2.0 covered v1.11.0 "Playing", 2.1 v1.11.1)<br>
 **Applies to:** NeonSynth v1.12.0, source tag `v1.12.0`  
 **Formats:** VST3 instrument and standalone application; a Windows installer is supplied for this release ([v1.12.0 release](https://github.com/kv244/NeonSynth/releases/tag/v1.12.0)).
 
