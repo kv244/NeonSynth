@@ -277,6 +277,21 @@ python docs/demo/make_demo.py build/NeonSynth_artefacts/Release/VST3/NeonSynth.v
 
 The Random and Granular parts are random, so two renders differ slightly. For that reason the WAV is not kept in git, where every re-render would add another 8 MB of history. The README links to the single copy on the `demo` release; after a re-render, replace it with `gh release upload demo docs/demo/neonsynth-demo.wav --clobber`.
 
+Three longer compositions by Julian render the same way, one VST3 instance per part, and also write a
+MIDI score of the piece (without `--vst` they write only the score; `--preview` renders shortened stages):
+
+| Script | Piece |
+| --- | --- |
+| `render_machine_remembers.py` | *A Machine Remembers*: the base renderer, with the JUCE-state helpers the other two import |
+| `render_machine_remembers_stereo.py` | The same piece with LFO tremolo, vibrato on CC1, a moving stereo balance and stereo cross-delays; keep it beside the base renderer |
+| `render_phase_transitions.py` | *Phase Transitions*: six minutes in three stages, from Random dust and a chopped square to a sample and granular clouds made from the earlier stages |
+
+```bash
+python docs/demo/render_phase_transitions.py --vst build/NeonSynth_artefacts/Release/VST3/NeonSynth.vst3 --preview --out phase_preview
+```
+
+All three need numpy, mido and pedalboard for audio, and render with the v1.11 and v1.12 VST3s.
+
 ### MIDI Logging
 
 You can enable logging of all received MIDI messages to a text file by passing the `--midilog <file>` option. Timestamps are in seconds of audio time since the plugin started processing, so they stay correct in offline renders that run faster than real time:
@@ -543,7 +558,7 @@ The plugin's sources are grouped by job under `src/` (v1.11.0); includes name th
 | `log_to_midi.py` | Converts a captured `midi.log` into a Standard MIDI File |
 | `docs/NeonSynth-User-Manual.md` | The user manual |
 | `docs/DEVELOPMENT.md` | This file |
-| `docs/demo/` | The demo piece and the script that renders it from the VST3 |
+| `docs/demo/` | The demo piece and the script that renders it from the VST3; three longer compositions and their renderers |
 | `docs/build_manual.py` | Checks the manual against the release (version, cover, links) and prints it to PDF |
 | `docs/figures/` | Scripts that draw the manual's figures and cover, with a README on remaking them |
 | `docs/images/` | The manual's figures and cover (SVG and PNG), and the raw application captures |
