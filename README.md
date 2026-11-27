@@ -12,7 +12,7 @@ by **Razvan Julian Petrescu** / **AudioDSP**.
 NeonSynth is a learning synthesizer for musicians and coders: every control shows what it does to the sound,
 and the **[user manual](docs/NeonSynth-User-Manual.md)** teaches it by ear and maps it to the C++ source.
 
-![NeonSynth v1.10.0 in its retro CRT look, with a sawtooth and the sequencer running](docs/images/captures/ui-oscillator-running.png)
+![NeonSynth v1.12.0 playing a CUSTOM wave of 24 harmonics with scattered phases: the HARMONICS view shows their levels as bars and their phases as rings, and the SHAPE strip one chopped and folded cycle, while the step sequencer runs](docs/images/captures/ui-readme.png)
 
 **[If you want to hear it in action](https://github.com/kv244/NeonSynth/releases/download/demo/neonsynth-demo.wav)**: a 42-second piece (WAV, 8 MB) in which every
 sound is NeonSynth, the drums included. Nine instances play together: a kick, snare and crash made by
