@@ -85,6 +85,11 @@ struct Parameters
     juce::AudioParameterChoice* seqKey        = nullptr;
     juce::AudioParameterChoice* seqScale      = nullptr;
 
+    // v1.12.0 "Fourier": NAIVE, CUSTOM and the number of harmonics CUSTOM plays.
+    juce::AudioParameterBool*   naive         = nullptr;
+    juce::AudioParameterBool*   custom        = nullptr;
+    juce::AudioParameterInt*    harmonics     = nullptr;
+
 private:
     /** The parameter with this ID as its own type; stops the program if there is none (see the .cpp). */
     template <typename ParamType>

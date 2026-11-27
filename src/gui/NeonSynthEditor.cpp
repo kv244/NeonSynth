@@ -20,7 +20,8 @@ namespace
 }
 
 NeonSynthEditor::NeonSynthEditor (NeonSynthProcessor& p)
-    : AudioProcessorEditor (&p), synthProcessor (p), apvts (p.getAPVTS()), sampleView (p, p.getAPVTS()), shapeView (p, p.getAPVTS()), stepGrid (p)
+    : AudioProcessorEditor (&p), synthProcessor (p), apvts (p.getAPVTS()), harmonicsView (p, p.getAPVTS()),
+      sampleView (p, p.getAPVTS()), shapeView (p, p.getAPVTS()), stepGrid (p)
 {
     addAndMakeVisible (content);
     content.setLookAndFeel (&crtLook);   // every control inherits the CRT look (v1.10.0)
@@ -78,6 +79,11 @@ NeonSynthEditor::NeonSynthEditor (NeonSynthProcessor& p)
     bendRangeValue = apvts.getRawParameterValue ("bendRange");
     vibratoValue   = apvts.getRawParameterValue ("vibrato");
     glideValue     = apvts.getRawParameterValue ("glide");   // v1.11.0
+    naiveValue     = apvts.getRawParameterValue ("naive");       // v1.12.0: the SPECTRUM's aliasing marks
+    customValue    = apvts.getRawParameterValue ("custom");
+    harmonicsValue = apvts.getRawParameterValue ("harmonics");
+    waveformValue  = apvts.getRawParameterValue ("waveform");
+    sourceValue    = apvts.getRawParameterValue ("source");
 
     // ── Oscillator ───────────────────────────────────────────────────────
     content.addAndMakeVisible (waveformCombo);
@@ -207,6 +213,11 @@ NeonSynthEditor::NeonSynthEditor (NeonSynthProcessor& p)
             sampleNameLabel.setAlpha (mode == StripMode::shape ? unusedAlpha : 1.0f);
             sampleView.setVisible (mode != StripMode::shape);
             shapeView.setVisible (mode == StripMode::shape);
+            // v1.12.0: CUSTOM, NAIVE and DRAW take the sample name's row while the strip shows the shape.
+            sampleNameLabel.setVisible (mode != StripMode::shape);
+            sampleStatusLabel.setVisible (mode != StripMode::shape);
+            for (auto* b : { &customButton, &naiveButton, &drawButton })
+                b->setVisible (mode == StripMode::shape);
             if (std::exchange (stripMode, mode) != stripMode && getWidth() > 0)
             {
                 layoutKnobRow();
@@ -355,9 +366,10 @@ NeonSynthEditor::NeonSynthEditor (NeonSynthProcessor& p)
     // ── Output: display, meter, gain, width ──────────────────────────────
     content.addChildComponent (oscilloscope);
     content.addChildComponent (spectrum);
+    content.addChildComponent (harmonicsView);   // v1.12.0
     content.addAndMakeVisible (meter);
 
-    for (auto* button : { &scopeButton, &spectrumButton })
+    for (auto* button : { &scopeButton, &spectrumButton, &harmonicsButton })
     {
         button->setClickingTogglesState (true);
         button->setRadioGroupId (1);
@@ -369,9 +381,11 @@ NeonSynthEditor::NeonSynthEditor (NeonSynthProcessor& p)
         content.addAndMakeVisible (button);
     }
     scopeButton.setConnectedEdges (juce::Button::ConnectedOnRight);
-    spectrumButton.setConnectedEdges (juce::Button::ConnectedOnLeft);
-    scopeButton.onClick    = [this] { if (scopeButton.getToggleState())    setView (0); };
-    spectrumButton.onClick = [this] { if (spectrumButton.getToggleState()) setView (1); };
+    spectrumButton.setConnectedEdges (juce::Button::ConnectedOnLeft | juce::Button::ConnectedOnRight);
+    harmonicsButton.setConnectedEdges (juce::Button::ConnectedOnLeft);
+    scopeButton.onClick     = [this] { if (scopeButton.getToggleState())     setView (0); };
+    spectrumButton.onClick  = [this] { if (spectrumButton.getToggleState())  setView (1); };
+    harmonicsButton.onClick = [this] { if (harmonicsButton.getToggleState()) setView (2); };   // v1.12.0
 
     // GAIN: a vertical fader beside the meter, like a mixer's channel strip. The attachment
     // makes a double-click return it to 0 dB; the wheel nudges it.
@@ -570,6 +584,24 @@ NeonSynthEditor::NeonSynthEditor (NeonSynthProcessor& p)
     content.addAndMakeVisible (holdButton);
     holdAttachment = std::make_unique<ButtonAttachment> (apvts, "hold", holdButton);
 
+    // v1.12.0 "Fourier": CUSTOM and NAIVE are parameters; DRAW is the editor's, saved with its view.
+    for (auto* b : { &customButton, &naiveButton, &drawButton })
+    {
+        b->setClickingTogglesState (true);
+        b->setColour (juce::TextButton::buttonColourId,   juce::Colours::transparentBlack);
+        b->setColour (juce::TextButton::buttonOnColourId, neon::cyan.withAlpha (0.25f));
+        b->setColour (juce::TextButton::textColourOffId,  neon::cyan.withAlpha (0.55f));
+        b->setColour (juce::TextButton::textColourOnId,   neon::cyan);
+        b->setColour (juce::ComboBox::outlineColourId,    neon::cyan.withAlpha (0.6f));
+        content.addChildComponent (*b);
+    }
+    customButton.setTooltip ("Custom: play the wave built from up to 32 harmonics (the HARMONICS view) instead of WAVEFORM");
+    naiveButton.setTooltip ("Naive: no band-limiting, so harmonics above half the sample rate fold back as aliasing");
+    drawButton.setTooltip ("Draw: with CUSTOM on, draw one cycle in the strip; off, clicks toggle CHOP's steps");
+    customAttachment = std::make_unique<ButtonAttachment> (apvts, "custom", customButton);
+    naiveAttachment  = std::make_unique<ButtonAttachment> (apvts, "naive", naiveButton);
+    drawButton.onClick = [this] { setDrawMode (drawButton.getToggleState()); };
+
     content.addChildComponent (helpOverlay);   // above every control
     content.addChildComponent (scanlines);     // added last, over everything; clicks pass through it
 
@@ -602,6 +634,8 @@ NeonSynthEditor::NeonSynthEditor (NeonSynthProcessor& p)
         { &adsrView, "adsrView" }, { &filterAdsrView, "filterAdsrView" },
         { &ampEnvButton, "ampEnvButton" }, { &filterEnvButton, "filterEnvButton" }, { &oscilloscope, "scopeView" }, { &spectrum, "spectrumView" },
         { &scopeButton, "scopeButton" }, { &spectrumButton, "spectrumButton" },
+        { &harmonicsButton, "harmonicsButton" }, { &harmonicsView, "harmonicsView" },
+        { &customButton, "custom" }, { &naiveButton, "naive" }, { &drawButton, "drawButton" },
         { &loadButton, "loadButton" }, { &padButton, "padButton" },
         { &voiceLeds, "voiceCount" }, { &helpButton, "helpButton" }, { &helpOverlay, "helpOverlay" },
         { &scanlinesButton, "scanlinesButton" }, { &scanlines, "scanlines" },
@@ -612,6 +646,7 @@ NeonSynthEditor::NeonSynthEditor (NeonSynthProcessor& p)
 
     // The chosen view and envelope tab are GUI state, saved with the plugin's state but not automatable.
     setView ((int) apvts.state.getProperty (viewPropertyId, 0));
+    setDrawMode ((bool) apvts.state.getProperty (drawPropertyId, false));
     setEnvTab ((int) apvts.state.getProperty (envTabPropertyId, 0));
     setScanlines ((bool) apvts.state.getProperty (neon::crt::scanlinesPropertyId, true));
 
@@ -743,13 +778,18 @@ void NeonSynthEditor::layout()
     sampleStatusLabel.setBounds (294, 194, 106, 18);
     sampleView.setBounds (32, 218, 368, 290);
     shapeView.setBounds (32, 218, 368, 290);
+    customButton.setBounds (32, 192, 84, 22);   // v1.12.0: in the sample name's row, which the shape strip doesn't use
+    naiveButton.setBounds (122, 192, 76, 22);
+    drawButton.setBounds (204, 192, 68, 22);
     layoutKnobRow();
 
     // Middle: view (428, 82, 524 x 262), then envelope (428, 356, 330 x 274) and filter (770, 356, 182 x 274)
     scopeButton.setBounds (444, 92, 92, 28);
     spectrumButton.setBounds (536, 92, 110, 28);
+    harmonicsButton.setBounds (646, 92, 120, 28);   // v1.12.0
     oscilloscope.setBounds (444, 128, 492, 204);
     spectrum.setBounds (444, 128, 492, 204);
+    harmonicsView.setBounds (444, 128, 492, 204);
 
     // Envelope: AMP / FILTER tabs in the header, then the view and knobs (each tab's in the same places).
     ampEnvButton.setBounds (630, 363, 52, 22);
@@ -1078,12 +1118,21 @@ void NeonSynthEditor::setScanlines (bool on)
 
 void NeonSynthEditor::setView (int view)
 {
-    view = juce::jlimit (0, 1, view);
+    view = juce::jlimit (0, 2, view);
     oscilloscope.setVisible (view == 0);
     spectrum.setVisible (view == 1);
+    harmonicsView.setVisible (view == 2);   // v1.12.0
     scopeButton.setToggleState (view == 0, juce::dontSendNotification);
     spectrumButton.setToggleState (view == 1, juce::dontSendNotification);
+    harmonicsButton.setToggleState (view == 2, juce::dontSendNotification);
     apvts.state.setProperty (viewPropertyId, view, nullptr);
+}
+
+void NeonSynthEditor::setDrawMode (bool on)
+{
+    drawButton.setToggleState (on, juce::dontSendNotification);
+    shapeView.setDrawMode (on);
+    apvts.state.setProperty (drawPropertyId, on, nullptr);
 }
 
 void NeonSynthEditor::setEnvTab (int tab)
@@ -1227,8 +1276,11 @@ void NeonSynthEditor::timerCallback()
     if (oscilloscope.isVisible())
         oscilloscope.update (history, sampleRate, lowestHz);
     else
+    {
         spectrum.update (history, sampleRate, cutoffValue->load(), filterValue->load() >= 0.5f,
                          juce::roundToInt (filterModeValue->load()), filterResValue->load() * 0.01f);
+        spectrum.setAliasSource (aliasSourceNow (lowestHz));   // v1.12.0
+    }
 
     adsrView.update (attackValue->load(), decayValue->load(), sustainValue->load(), releaseValue->load(), &voices);
     filterAdsrView.update (filterAttackValue->load(), filterDecayValue->load(), filterSustainValue->load(),
@@ -1250,9 +1302,26 @@ void NeonSynthEditor::timerCallback()
     stepGrid.refresh();   // pattern + playhead
     sampleView.refresh(); // sample, markers, playheads
     shapeView.refresh();  // the sculpted cycle, CHOP's steps
+    harmonicsView.refresh();   // v1.12.0
     updateReadouts();
     synthProcessor.freeReplacedSamples();   // a sample replaced while notes played it, once they have ended
     patternRow.forgetHistoryIfStateLoaded();
+}
+
+SpectrumView::AliasSource NeonSynthEditor::aliasSourceNow (float lowestHz) const
+{
+    SpectrumView::AliasSource a;
+    a.shown = naiveValue->load() >= 0.5f && lowestHz > 0.0f
+           && juce::roundToInt (sourceValue->load()) == (int) NeonSynthVoice::Source::oscillator;
+    if (! a.shown)
+        return a;   // nothing else matters: comparing equal, it costs no recomputation
+    a.fundamentalHz = lowestHz;
+    a.custom    = customValue->load() >= 0.5f;
+    a.waveform  = juce::roundToInt (waveformValue->load());
+    a.harmonics = juce::roundToInt (harmonicsValue->load());
+    if (a.custom)
+        a.levels = synthProcessor.getHarmonicSpectrum().levels;
+    return a;
 }
 
 // The processor's editor is made here (v1.11.1), so NeonSynthProcessor.cpp needs no GUI header.

@@ -8,7 +8,7 @@
 #include <vector>
 
 /**
-    The factory bank (v1.11.0): 16 presets compiled into the plugin, which are also the host's
+    The factory bank (v1.11.0): 16 presets compiled into the plugin, 24 from v1.12.0, which are also the host's
     program list (NeonSynthProcessor::getProgramName and friends).
 
     Each preset is written as data, in each parameter's own units (Hz, seconds, %, a choice's
@@ -37,6 +37,9 @@ namespace FactoryPresets
         std::vector<std::pair<const char*, float>> values;   ///< parameter ID, value in the parameter's units
         const char* pattern = nullptr;   ///< nullptr: the default bassline
         const char* chop    = nullptr;   ///< CHOP's 16 steps, "1" = chopped; nullptr: every second step
+        const char* harmonics = nullptr; ///< v1.12.0: CUSTOM's harmonics, "k:level" or "k:level@phase"
+                                         ///< (k 1..32, level 0..1, phase in radians), unlisted ones 0;
+                                         ///< nullptr: the SAW set a new session starts with
     };
 
     inline const std::vector<Preset>& all()
@@ -158,6 +161,51 @@ namespace FactoryPresets
                 { "grDensity", 45.0f }, { "grSpray", 0.25f }, { "grJitter", 12.0f },
                 { "attack", 0.3f }, { "decay", 0.5f }, { "sustain", 0.7f }, { "release", 1.5f },
                 { "width", 0.6f } } },
+
+            // ── v1.12.0 "Fourier": CUSTOM harmonics and NAIVE ─────────────────
+            // Appended, so the host's programs 1-16 keep their numbers.
+            { "Drawbar Organ", "Keys", "CUSTOM: harmonics 1, 2, 3, 4, 6 and 8, like an organ's drawbars; add the mod wheel for vibrato",
+              { { "custom", 1.0f }, { "attack", 0.002f }, { "decay", 0.1f }, { "sustain", 1.0f }, { "release", 0.08f },
+                { "cutoff", 12000.0f }, { "width", 0.4f }, { "gain", -16.0f } },
+              nullptr, nullptr, "1:1 2:0.8 3:0.6 4:0.5 6:0.3 8:0.25" },
+
+            { "Square Ladder", "Keys", "CUSTOM: harmonics 1, 4, 9, 16 and 25 only, a bell that is still in tune; play from C4 up",
+              { { "custom", 1.0f }, { "attack", 0.001f }, { "decay", 2.5f }, { "sustain", 0.0f }, { "release", 1.5f },
+                { "cutoff", 14000.0f }, { "gain", -12.0f } },
+              nullptr, nullptr, "1:1 4:0.5 9:0.35 16:0.25 25:0.18" },
+
+            { "Octave Stack", "Bass", "CUSTOM: harmonics 1, 2, 4 and 8, octaves with no fifths; mono",
+              { { "custom", 1.0f }, { "attack", 0.004f }, { "decay", 0.35f }, { "sustain", 0.6f }, { "release", 0.15f },
+                { "cutoff", 2500.0f }, { "width", 0.0f }, { "voiceCount", 1.0f }, { "gain", -4.0f } },
+              nullptr, nullptr, "1:1 2:0.6 4:0.35 8:0.2" },
+
+            { "Hollow Reed", "Lead", "CUSTOM: odd harmonics only, the hollow tone of a clarinet; slow vibrato",
+              { { "custom", 1.0f }, { "attack", 0.03f }, { "decay", 0.2f }, { "sustain", 0.85f }, { "release", 0.25f },
+                { "cutoff", 4000.0f }, { "lfoRate", 5.0f }, { "lfoPitch", 0.12f }, { "width", 0.2f }, { "gain", -2.5f } },
+              nullptr, nullptr, "1:1 3:0.45 5:0.25 7:0.15 9:0.1 11:0.07" },
+
+            { "Phase Matters", "Lead", "A sawtooth's levels with scattered phases, folded: press ZERO PHASE and the tone changes, though without FOLD it would not",
+              { { "custom", 1.0f }, { "harmonics", 16.0f }, { "foldMix", 80.0f }, { "foldDrive", 3.0f },
+                { "attack", 0.005f }, { "decay", 0.3f }, { "sustain", 0.7f }, { "release", 0.2f },
+                { "cutoff", 7000.0f }, { "width", 0.3f }, { "gain", -4.0f } },
+              nullptr, nullptr,
+              "1:0.5@0.4 2:0.25@2.9 3:0.1667@5.1 4:0.125@1.3 5:0.1@4.4 6:0.0833@0.9 7:0.0714@3.6 8:0.0625@5.8 "
+              "9:0.0556@2.2 10:0.05@4.9 11:0.0455@0.2 12:0.0417@3.1 13:0.0385@5.5 14:0.0357@1.7 15:0.0333@4.0 16:0.03125@6.1" },
+
+            { "Aliased Arcade", "Lead", "NAIVE: a square with no band-limiting, so high notes alias into chiptune grit; play from C6 up",
+              { { "waveform", 1.0f }, { "naive", 1.0f }, { "filterEnabled", 0.0f },
+                { "attack", 0.001f }, { "decay", 0.2f }, { "sustain", 0.5f }, { "release", 0.1f },
+                { "width", 0.2f }, { "gain", -8.0f } } },
+
+            { "Vowel Ah", "Pad", "CUSTOM: a hump at harmonics 6 to 9 over a soft slope, like a sung vowel; best around C3",
+              { { "custom", 1.0f }, { "attack", 0.6f }, { "decay", 0.5f }, { "sustain", 0.8f }, { "release", 2.0f },
+                { "cutoff", 6000.0f }, { "width", 0.7f }, { "gain", -9.5f } },
+              nullptr, nullptr, "1:0.6 2:0.35 3:0.25 4:0.2 5:0.3 6:0.5 7:0.6 8:0.5 9:0.35 10:0.2 11:0.1 12:0.08" },
+
+            { "Fold-back Siren", "FX", "NAIVE: a slowly rising and falling sawtooth whose aliases move the other way; hold a note from C6 up",
+              { { "waveform", 3.0f }, { "naive", 1.0f }, { "filterEnabled", 0.0f },
+                { "attack", 0.5f }, { "sustain", 1.0f }, { "release", 1.5f },
+                { "lfoShape", 1.0f }, { "lfoRate", 0.1f }, { "lfoPitch", 12.0f }, { "width", 0.5f }, { "gain", -1.0f } } },
         };
         return presets;
     }

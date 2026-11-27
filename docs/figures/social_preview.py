@@ -6,7 +6,7 @@
 GitHub shows it when the repository is linked on social sites and chat apps. It is not set
 from the repository: upload it under Settings -> General -> Social preview after a change.
 It carries no version number, so it does not go stale with each release; redraw it when the
-look changes (it uses the Oscillator capture, docs/images/captures/ui-oscillator-running.png).
+look changes (it uses the README's capture, docs/images/captures/ui-readme.png, from v1.12.0).
 
     python docs/figures/social_preview.py
 """
@@ -55,7 +55,7 @@ def main():
     img.paste(tube, (0, 0), mask)
 
     # The window itself, on the right, with a faint phosphor halo around it.
-    shot = Image.open(ROOT / "docs/images/captures/ui-oscillator-running.png").convert("RGBA")
+    shot = Image.open(ROOT / "docs/images/captures/ui-readme.png").convert("RGBA")
     sw = 720
     shot = shot.resize((sw, round(shot.height * sw / shot.width)), Image.LANCZOS)
     sx, sy = W - 40 - 34 - sw, (H - shot.height) // 2
@@ -71,7 +71,7 @@ def main():
     plex, plexBold = font("IBMPlexMono-Regular.ttf", 21), font("IBMPlexMono-SemiBold.ttf", 21)
     d.text((x, 246), "> a learning synthesizer", font=plexBold, fill=PHOSPHOR)
     d.text((x, 276), "  for musicians and coders", font=plexBold, fill=PHOSPHOR)
-    for i, line in enumerate(["Four sources, a filter, an LFO", "and a 16-step sequencer:",
+    for i, line in enumerate(["Four sources, 32 harmonics,", "a filter, an LFO, a sequencer:",
                               "every control shows what", "it does to the sound."]):
         d.text((x, 330 + 28 * i), line, font=plex, fill=PHOSPHOR_DIM)
     d.text((x, 498), "VST3 · STANDALONE · AGPLv3", font=font("VT323-Regular.ttf", 30), fill=AMBER)

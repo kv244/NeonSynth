@@ -402,6 +402,51 @@ int main()
         check (! g.begin (nullptr, 60, 60, rate, cloud (80, 30), 1) && ! g.isActive(), "no sample: begin() refuses and plays nothing");
     }
 
+    std::printf ("\nv1.12.0 fixes: the copy follows Jitter (7b), Size and Density glide (7c)\n");
+    {
+        // 7b. The note sits 2.5 semitones up (below the 3-semitone limit of the full-rate copy);
+        // Jitter of 100 cents pushes some grains past it. Each must then read the half-rate copy,
+        // so no grain steps faster than SampleReader::maxFullRateIncrement.
+        auto twoSeconds = noiseSample (2.0);
+        GrainCloud g;
+        g.begin (twoSeconds.get(), 62, 60, rate, cloud (50, 200, 0.5f, 100.0f), 17);
+        g.setPitchRatio ((float) std::pow (2.0, 0.5 / 12.0));
+        double highest = 0.0;
+        for (int i = 0; i < 48000; ++i)
+        {
+            g.nextSample();
+            highest = std::max (highest, g.getHighestGrainStep());
+        }
+        std::printf ("    highest grain step: %.4f (limit %.4f)\n", highest, SampleReader::maxFullRateIncrement);
+        check (highest <= SampleReader::maxFullRateIncrement + 1.0e-9, "7b: a grain jittered past the limit reads the next band-limited copy");
+        g.end();
+
+        // 7c. Two identical clouds; one has Density jumped from 10 to 200 (overlap gain 1 to 0.25).
+        // Right after the change the grains are still the same in both, so the ratio of the two
+        // outputs is the gain change: it must start near 1 and glide, not drop to 0.25 at once.
+        GrainCloud a, b;
+        a.begin (twoSeconds.get(), 60, 60, rate, cloud (80, 10), 99);
+        b.begin (twoSeconds.get(), 60, 60, rate, cloud (80, 10), 99);
+        for (int i = 0; i < 4800; ++i) { a.nextSample(); b.nextSample(); }
+        a.setSettings (cloud (80, 200));
+        double firstRatio = 0.0, laterRatio = 0.0;
+        for (int i = 0; i < 480; ++i)
+        {
+            const float x = a.nextSample(), y = b.nextSample();
+            if (std::abs (y) > 0.01f)
+            {
+                if (firstRatio == 0.0)
+                    firstRatio = (double) x / (double) y;
+                laterRatio = (double) x / (double) y;
+            }
+        }
+        std::printf ("    gain ratio just after the change: %.4f, 10 ms later: %.4f\n", firstRatio, laterRatio);
+        check (firstRatio > 0.98 && firstRatio <= 1.0, "7c: Density's change does not step the level");
+        check (laterRatio < firstRatio && laterRatio > 0.25, "7c: the level glides towards the new overlap");
+        a.end();
+        b.end();
+    }
+
     std::printf ("\n%s (%d failure%s)\n", failures == 0 ? "ALL PASSED" : "FAILED", failures, failures == 1 ? "" : "s");
     return failures == 0 ? 0 : 1;
 }

@@ -4,6 +4,7 @@
 
 #include "plugin/Parameters.h"
 #include "plugin/NeonSynthProcessor.h"   // numVoices, the range of the Voices parameter
+#include "dsp/Wavetable.h"                // HarmonicSpectrum::numHarmonics, the range of Harmonics
 #include <cstdio>
 #include <cstdlib>
 
@@ -169,6 +170,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout Parameters::createParameterL
                                                          StringArray { "Off", "Major", "Dorian", "Phrygian", "Lydian", "Mixolydian",
                                                                        "Natural minor", "Locrian", "Harmonic minor", "Major pentatonic",
                                                                        "Minor pentatonic", "Blues", "Whole tone" }, 0));   // complete as shipped (roadmap rule 3)
+
+    // v1.12.0 "Fourier" (FourierState, Wavetable.h). A switch beside WAVEFORM rather than a fifth
+    // choice, because a new choice would move the existing ones' normalised values (roadmap
+    // rule 3). Both switches off is the oscillator of v1.11, so older sessions render the same.
+    layout.add (std::make_unique<AudioParameterBool>   (ParameterID { "naive", 1 }, "Naive", false));     // no band-limiting: hear aliasing
+    layout.add (std::make_unique<AudioParameterBool>   (ParameterID { "custom", 1 }, "Custom", false));   // play the 32-harmonic wave instead of WAVEFORM
+    layout.add (std::make_unique<AudioParameterInt>    (ParameterID { "harmonics", 1 }, "Harmonics", 1,
+                                                         HarmonicSpectrum::numHarmonics, HarmonicSpectrum::numHarmonics));   // how many of the 32 play
     return layout;
 }
 
@@ -233,4 +242,7 @@ Parameters::Parameters (juce::AudioProcessorValueTreeState& state)
     seqLength     = getTypedParameter<juce::AudioParameterInt>   (state, "seqLength");
     seqKey        = getTypedParameter<juce::AudioParameterChoice> (state, "seqKey");
     seqScale      = getTypedParameter<juce::AudioParameterChoice> (state, "seqScale");
+    naive         = getTypedParameter<juce::AudioParameterBool>  (state, "naive");
+    custom        = getTypedParameter<juce::AudioParameterBool>  (state, "custom");
+    harmonics     = getTypedParameter<juce::AudioParameterInt>   (state, "harmonics");
 }

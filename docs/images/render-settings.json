@@ -1,5 +1,5 @@
 {
-  "revision": "v1.9.0 (bc56754)",
+  "revision": "3f17c67",
   "pedalboard": "0.9.26",
   "sample_rate": 48000,
   "velocity": 100,
@@ -143,6 +143,40 @@
           "period_s": 0.5
         }
       }
+    },
+    "fig12-aliasing": {
+      "settings": {
+        "note": 97,
+        "seconds": 1.6,
+        "hold": 1.5,
+        "attack": 0.005,
+        "decay": 0.1,
+        "sustain": 1.0,
+        "release": 0.15,
+        "analysis": [
+          1.0,
+          0.5
+        ],
+        "max_harmonic": 60
+      },
+      "measured": {
+        "band_limited": {
+          "strongest_alias_dbfs": -48.8
+        },
+        "naive": {
+          "strongest_alias_dbfs": -38.9
+        },
+        "f0_hz": 2217.46,
+        "first_aliases_hz": [
+          23607.9,
+          21390.5,
+          19173.0,
+          16955.5,
+          14738.1,
+          12520.6
+        ]
+      },
+      "revision": "3f17c67"
     }
   }
 }

@@ -11,6 +11,7 @@
 #include "dsp/GrainCloud.h"
 #include "dsp/CytomicSvf.h"
 #include "dsp/Modulation.h"
+#include "dsp/Wavetable.h"
 #include "sequencer/StepSequencer.h"
 
 class NeonSynthSound : public juce::SynthesiserSound
@@ -24,7 +25,8 @@ public:
     One synth voice: sound source -> ADSR (VoiceEnvelope) -> TPT low-pass -> pan.
 
     The source is chosen per note (see Source): the band-limited oscillator
-    or the Random step wave (Oscillator.h), the loaded sample
+    (or, v1.12.0, CUSTOM's wavetables and NAIVE's textbook waves, both inside
+    it) or the Random step wave (Oscillator.h), the loaded sample
     (SampleReader.h) or grains of it (GrainCloud.h). Sources plug in at nextSourceSample(), so nothing after
     it changes. A voice retriggered or stolen while playing the sample
     crossfades from its old read position to the new one over 2 ms; grains
@@ -111,6 +113,12 @@ public:
         SculptSettings sculpt;                    // Oscillator and Random: Noise, then Fold
 
         float glideSeconds = 0.0f;                // v1.11.0, GLIDE: time to slide to a new note; 0 = jump (v1.10.1)
+
+        // v1.12.0 "Fourier" (Oscillator source; NAIVE also Random and CHOP). Both off = v1.11's path.
+        bool  naive = false;                      // NAIVE: no band-limiting, so harmonics above Nyquist alias
+        bool  custom = false;                     // CUSTOM: the wavetable wave instead of `waveform`
+        int   harmonics = HarmonicSpectrum::numHarmonics;   // CUSTOM: how many of the 32 play
+        const WavetableSet* wavetables = nullptr; // CUSTOM: this block's tables (FourierState::acquireForAudio)
     };
 
     /** What the editor's visualisers need to know about this voice. */

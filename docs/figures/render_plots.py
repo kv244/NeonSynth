@@ -11,6 +11,7 @@ Figures written (SVG + 300 dpi PNG):
     fig07-sample-granular-schematic  sample and granular guide (schematic over the
                                       built-in pad's rendered waveform)
     fig09-lfo-shapes                  the five LFO shapes, as tremolo on a held sine
+    fig12-aliasing                    a sawtooth at C7, band-limited and NAIVE (v1.12.0)
 
 Every render: 48 kHz, a fresh plugin instance (reset), velocity 100, GAIN 0 dB,
 WIDTH 0% (both channels identical; the left one is analysed), RUN off.
@@ -457,21 +458,86 @@ def fig09(vst, out):
     return fs.save(fig, out, "fig09-lfo-shapes"), meas
 
 
+# ---------------------------------------------------------------- figure 12
+FIG12 = dict(note=97, seconds=1.6, hold=1.5, attack=0.005, decay=0.100, sustain=1.0, release=0.150,
+             analysis=(1.0, 0.5), max_harmonic=60)
+
+
+def fig12(vst, out):
+    """A sawtooth at C#7 (2217 Hz; 48 kHz is 21.6 cycles of it, so the folded partials fall between the
+    harmonics, not on them): band-limited, then NAIVE. Linear frequency axis to Nyquist, so the
+    folding is visible: harmonic k of f0 above Nyquist lands at |k f0 - m fs|."""
+    p = FIG12
+    f0 = 440.0 * 2 ** ((p["note"] - 69) / 12)
+    nyq = SR / 2
+    a0 = int(p["analysis"][0] * SR)
+    renders = {}
+    for naive in (False, True):
+        s = dict(waveform="Sawtooth", naive=naive, attack=p["attack"], decay=p["decay"], sustain=p["sustain"],
+                 release=p["release"], filter_enabled=False)
+        x = render(vst, s, [(p["note"], 0.0, p["hold"])], p["seconds"])
+        renders[naive] = x[a0: a0 + int(SR * p["analysis"][1])]
+
+    def folded(k):
+        f = (k * f0) % SR
+        return SR - f if f > nyq else f
+
+    aliases = [(k, folded(k)) for k in range(1, p["max_harmonic"] + 1) if k * f0 > nyq]
+    meas = {}
+    fig = fs.figure(130)
+    gs = fig.add_gridspec(2, 1, hspace=0.55, left=0.115, right=0.985, top=0.90, bottom=0.10)
+    for row, naive in enumerate((False, True)):
+        f, d = spectrum_dbfs(renders[naive])
+        ax = fig.add_subplot(gs[row, 0])
+        ax.plot(f / 1000, d, color=fs.INK, lw=0.7)
+        for k in range(1, int(nyq // f0) + 1):                      # the note's own harmonics
+            ax.axvline(k * f0 / 1000, color=fs.LIGHT, lw=0.6, zorder=0)
+        # The strongest alias: the highest peak that is not within 50 Hz of a harmonic.
+        harmonic = np.zeros_like(f, dtype=bool)
+        for k in range(1, int(nyq // f0) + 1):
+            harmonic |= np.abs(f - k * f0) < 50.0
+        worst = float(np.max(d[~harmonic & (f > 30)]))
+        meas["naive" if naive else "band_limited"] = dict(strongest_alias_dbfs=round(worst, 1))
+        if naive:
+            for k, fa in aliases[:12]:
+                ax.annotate(f"{k}", (fa / 1000, -8), ha="center", fontsize=7.5)
+                ax.plot([fa / 1000], [-14], marker="v", color=fs.INK, ms=4)
+        ax.set_xlim(0, nyq / 1000)
+        ax.set_ylim(-120, 0)
+        ax.set_yticks([-120, -90, -60, -30, 0])
+        ax.set_ylabel("dBFS")
+        ax.set_xlabel("Frequency (kHz), linear to Nyquist (24 kHz)")
+        title = ("NAIVE: harmonics above 24 kHz fold back (numbered)" if naive
+                 else "Band-limited (NAIVE off)")
+        ax.set_title(title, loc="left")
+    fig.suptitle(f"Sawtooth at C#7 ({f0:.0f} Hz), velocity {VELOCITY}, filter off; grey lines: the note's own harmonics",
+                 x=0.09, ha="left", y=0.985, fontsize=9, fontweight="normal")
+    meas["f0_hz"] = round(f0, 2)
+    meas["first_aliases_hz"] = [round(fa, 1) for _, fa in aliases[:6]]
+    return fs.save(fig, out, "fig12-aliasing"), meas
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--vst3", required=True)
     ap.add_argument("--out", default=str(pathlib.Path(__file__).resolve().parents[1] / "images"))
     ap.add_argument("--revision", default="unknown", help="git revision of the plugin build, recorded in the JSON")
+    ap.add_argument("--only", nargs="*", help="figure names to remake (default: all); the others keep their JSON records")
     args = ap.parse_args()
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     record = dict(revision=args.revision, pedalboard=pedalboard.__version__, sample_rate=SR, velocity=VELOCITY,
                   common=BASE, figures={})
+    previous = out / "render-settings.json"
+    if args.only and previous.exists():
+        record["figures"] = json.loads(previous.read_text()).get("figures", {})
     for name, fn, settings in [("fig02-waveforms", fig02, FIG2), ("fig04-envelope", fig04, FIG4),
                                ("fig05-filter", fig05, FIG5), ("fig07-sample-granular-schematic", fig06, FIG6),
-                               ("fig09-lfo-shapes", fig09, FIG9)]:
+                               ("fig09-lfo-shapes", fig09, FIG9), ("fig12-aliasing", fig12, FIG12)]:
+        if args.only and name not in args.only:
+            continue
         files, meas = fn(args.vst3, out)
-        record["figures"][name] = dict(settings=settings, measured=meas)
+        record["figures"][name] = dict(settings=settings, measured=meas, revision=args.revision)
         print(name, json.dumps(meas))
     (out / "render-settings.json").write_text(json.dumps(record, indent=2) + "\n")
 

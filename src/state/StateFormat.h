@@ -16,6 +16,8 @@
             <Pattern><Step on="1" note="48" velocity="110" [tie="1"] [slide="1"]/> x16</Pattern>
             <Chop pattern="0101010101010101"/>                    (v1.6.0+, step 1 first, "1" = chopped)
             <Sample default="1"/> or <Sample name path hash [flac]/>   (v1.5.0+)
+            [<Harmonics levels="32 numbers" phases="32 numbers"/>]    (v1.12.0+, only when not the default)
+            [<Drawing points="256 numbers"/>]                          (v1.12.0+, only when there is one)
         </Parameters>
 */
 namespace StateFormat
@@ -31,6 +33,8 @@ namespace StateFormat
                  states load with the default pattern (every second step).
                  v1.11.0 adds optional attributes only (tie, slide, preset, category,
                  program), whose absence means what older releases did, so it stays 4.
+                 v1.12.0 adds the optional Harmonics and Drawing children (FourierState),
+                 whose absence means a new session's, so it stays 4.
     */
     inline const juce::Identifier stateVersionId { "stateVersion" };
     constexpr int currentStateVersion = 4;
@@ -56,4 +60,10 @@ namespace StateFormat
     inline const juce::Identifier samplePathId    { "path" };
     inline const juce::Identifier sampleHashId    { "hash" };
     inline const juce::Identifier sampleFlacId    { "flac" };
+
+    inline const juce::Identifier harmonicsId      { "Harmonics" };   // v1.12.0 (FourierState)
+    inline const juce::Identifier harmonicLevelsId { "levels" };
+    inline const juce::Identifier harmonicPhasesId { "phases" };
+    inline const juce::Identifier drawingId        { "Drawing" };
+    inline const juce::Identifier drawingPointsId  { "points" };
 }

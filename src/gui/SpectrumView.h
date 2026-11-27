@@ -5,6 +5,9 @@
 #pragma once
 #include <JuceHeader.h>
 #include "dsp/CytomicSvf.h"
+#include "dsp/Oscillator.h"
+#include "dsp/Wavetable.h"
+#include <vector>
 #include "gui/NeonStyle.h"
 #include "gui/SignalHistory.h"
 
@@ -18,6 +21,11 @@
     instant a knob does and shows the response the audio uses, the
     resonant peak included. Drive and the resonance limiter are not linear,
     so they have no curve; the analyser above shows what they do.
+
+    v1.12.0: with NAIVE on and the Oscillator playing, red marks show where the
+    harmonics above Nyquist of the lowest sounding note land once they fold back
+    (see aliasMarks()), at the height their series gives them relative to the
+    loudest peak on screen, so they sit on the aliased peaks the analyser shows.
 */
 class SpectrumView : public juce::Component
 {
@@ -98,6 +106,108 @@ public:
             repaint();
     }
 
+    //==========================================================================
+    // v1.12.0: the aliasing marks
+
+    /** What decides the aliasing marks: the editor fills one from the parameters and the voices each tick. */
+    struct AliasSource
+    {
+        bool  shown = false;          ///< NAIVE on, the Oscillator source, and a note sounding
+        bool  custom = false;         ///< CUSTOM: the harmonics below, else WAVEFORM's series
+        int   waveform = PolyBlepOscillator::sine;
+        int   harmonics = HarmonicSpectrum::numHarmonics;   ///< CUSTOM's count
+        float fundamentalHz = 0.0f;   ///< the lowest sounding note
+        std::array<float, HarmonicSpectrum::numHarmonics> levels {};   ///< CUSTOM's levels
+
+        bool operator== (const AliasSource& o) const noexcept
+        {
+            return shown == o.shown && custom == o.custom && waveform == o.waveform && harmonics == o.harmonics
+                && fundamentalHz == o.fundamentalHz && levels == o.levels;
+        }
+    };
+
+    /** One harmonic above Nyquist, where it lands after folding, and its level relative to the loudest partial heard. */
+    struct AliasMark
+    {
+        int    harmonic = 0;
+        double hz = 0.0;
+        float  relativeLevel = 0.0f;   ///< 0..1 (linear), against the loudest harmonic below Nyquist
+    };
+
+    static constexpr int maxAliasMarks = 48;   ///< the first 48 aliased partials: enough to see the pattern, few enough to read
+
+    /** Where a frequency lands after sampling at `sampleRate`: folded into 0 .. sampleRate / 2. */
+    static double foldedFrequency (double hz, double sampleRate) noexcept
+    {
+        double f = std::fmod (std::abs (hz), sampleRate);
+        if (f > 0.5 * sampleRate)
+            f = sampleRate - f;
+        return f;
+    }
+
+    /**
+        The aliased partials of a note: every harmonic k with k f0 above Nyquist that the wave has,
+        folded back (f = |k f0 - m fs| in 0 .. fs/2), lowest k first, at most maxAliasMarks.
+        Which k and how loud: CUSTOM, k up to HARMONICS with a level above 0, at that level; otherwise
+        WAVEFORM's series: saw every k at 1/k, square every odd k at 1/k, triangle every odd k at
+        1/k squared, sine none. Levels are relative to the loudest harmonic below Nyquist.
+    */
+    static std::vector<AliasMark> aliasMarks (const AliasSource& source, double sampleRate)
+    {
+        std::vector<AliasMark> marks;
+        const double f0 = source.fundamentalHz, nyquist = 0.5 * sampleRate;
+        if (! source.shown || f0 <= 0.0 || sampleRate <= 0.0)
+            return marks;
+
+        // The level of harmonic k in the wave's series (0 if the wave has none).
+        const auto levelOf = [&source] (int k) -> double
+        {
+            if (source.custom)
+                return k <= juce::jlimit (1, HarmonicSpectrum::numHarmonics, source.harmonics) ? (double) source.levels[(size_t) (k - 1)] : 0.0;
+            switch (source.waveform)
+            {
+                case PolyBlepOscillator::sawtooth: return 1.0 / k;
+                case PolyBlepOscillator::square:   return (k % 2) == 1 ? 1.0 / k : 0.0;
+                case PolyBlepOscillator::triangle: return (k % 2) == 1 ? 1.0 / ((double) k * k) : 0.0;
+                default:                           return 0.0;   // a sine has no harmonics to alias
+            }
+        };
+        const int lastK = source.custom ? HarmonicSpectrum::numHarmonics
+                                        : (int) std::ceil (nyquist / f0) + 2 * maxAliasMarks + 1;   // odd series reach 48 within this
+
+        double loudest = 0.0;   // among the harmonics heard where they belong
+        for (int k = 1; k <= lastK && k * f0 <= nyquist; ++k)
+            loudest = juce::jmax (loudest, levelOf (k));
+        if (loudest <= 0.0)     // nothing below Nyquist (or all of it at 0): compare with the loudest overall
+            for (int k = 1; k <= lastK; ++k)
+                loudest = juce::jmax (loudest, levelOf (k));
+        if (loudest <= 0.0)
+            return marks;
+
+        for (int k = 1; k <= lastK && (int) marks.size() < maxAliasMarks; ++k)
+            if (const double level = levelOf (k); k * f0 > nyquist && level > 0.0)
+                marks.push_back ({ k, foldedFrequency (k * f0, sampleRate), (float) (level / loudest) });
+        return marks;
+    }
+
+    /** The marks to draw (none while source.shown is false). Message thread; repaints if they changed. */
+    void setAliasSource (const AliasSource& source)
+    {
+        if (source == aliasSource && sampleRate == aliasRate)
+            return;
+        aliasSource = source;
+        aliasRate = sampleRate;
+        auto marks = aliasMarks (source, sampleRate);
+        const bool changed = marks.size() != aliases.size()
+                          || ! std::equal (marks.begin(), marks.end(), aliases.begin(),
+                                           [] (const AliasMark& a, const AliasMark& b) { return a.harmonic == b.harmonic && a.hz == b.hz && a.relativeLevel == b.relativeLevel; });
+        aliases = std::move (marks);
+        if (changed)
+            repaint();
+    }
+
+    const std::vector<AliasMark>& getAliasMarks() const noexcept   { return aliases; }
+
     void resized() override
     {
         afterglow.clear();
@@ -152,6 +262,8 @@ public:
         afterglow.paint (g, neon::cyan, 1.6f);
         neon::strokeGlow (g, outline, neon::cyan, 1.1f);
 
+        paintAliasMarks (g, area);
+
         // Filter response, from the same coefficients as the voices' filter
         const float fc = juce::jlimit (20.0f, 0.45f * (float) sampleRate, cutoffHz);
         CytomicSvf svf;
@@ -201,6 +313,46 @@ public:
     const neon::crt::CachedPainter& getBackdrop() const noexcept { return backdrop; }
 
 private:
+    /**
+        v1.12.0: the aliasing marks, a small red diamond on a short stem at each folded harmonic,
+        as high as its series puts it below the loudest peak now on screen (so a mark sits on the
+        aliased peak it explains), and the legend.
+    */
+    void paintAliasMarks (juce::Graphics& g, juce::Rectangle<float> area) const
+    {
+        if (aliases.empty())
+            return;
+        const float peakDb = *std::max_element (levels.begin(), levels.end());
+        constexpr float silentDb = -90.0f;   // nothing on screen to measure against: no marks
+        if (peakDb <= silentDb)
+            return;
+
+        bool drawn = false;
+        for (const auto& mark : aliases)
+        {
+            if (mark.hz < minHz || mark.hz > maxHz())
+                continue;   // off the axis
+            const float db = peakDb + juce::Decibels::gainToDecibels (mark.relativeLevel, minDb);
+            if (db <= minDb)
+                continue;
+            const float x = std::round (xFor (area, (float) mark.hz)) + 0.5f;
+            const float y = yFor (area, db);
+            g.setColour (neon::red.withAlpha (0.35f));
+            g.fillRect (juce::Rectangle<float> (x - 0.5f, y, 1.0f, juce::jmin (14.0f, area.getBottom() - y)));   // the stem, down from the mark
+            juce::Path diamond;
+            diamond.addQuadrilateral (x, y - 4.0f, x + 3.5f, y, x, y + 4.0f, x - 3.5f, y);
+            g.setColour (neon::red.withAlpha (0.25f));
+            g.fillEllipse (juce::Rectangle<float> (12.0f, 12.0f).withCentre ({ x, y }));   // halo
+            g.setColour (neon::red);
+            g.fillPath (diamond);
+            drawn = true;
+        }
+        if (drawn)
+            neon::crt::drawGlowText (g, "red: harmonics folded back from above Nyquist",
+                                     juce::Rectangle<float> (area.getX() + 40.0f, area.getY() + 16.0f, area.getWidth() - 44.0f, 14.0f),   // under the filter's 0 dB line and label
+                                     neon::red, neon::font (12.0f), juce::Justification::left, 0.3f);
+    }
+
     juce::Rectangle<float> plotArea() const
     {
         auto area = getLocalBounds().toFloat().reduced (8.0f);
@@ -275,6 +427,10 @@ private:
     bool   filterOn = true;
     int    filterMode = 0;          // CytomicSvf::Mode
     float  resonance = 0.0f;        // 0..1
+
+    AliasSource aliasSource;        // v1.12.0: what the marks were made from
+    double aliasRate = 0.0;
+    std::vector<AliasMark> aliases;
 
     juce::Path outline;             // the frame on screen
     neon::Afterglow afterglow;      // the frames before it, fading

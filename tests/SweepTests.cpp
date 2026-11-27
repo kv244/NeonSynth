@@ -44,13 +44,14 @@ namespace
             ++failures;
     }
 
-    // Under AddressSanitizer (the sanitizers CI job, a Debug build) the full sweep takes longer
-    // than the job may run, so it covers the extremes: two rates and three block plans, still
-    // including one-sample blocks and the varying plan. The normal build sweeps everything.
-   #if defined (__SANITIZE_ADDRESS__)
+    // Under AddressSanitizer or ThreadSanitizer (the sanitizers and TSan CI jobs, Debug builds)
+    // the full sweep takes longer than the job may run, so it covers the extremes: two rates and
+    // three block plans, still including one-sample blocks and the varying plan. The normal build
+    // sweeps everything.
+   #if defined (__SANITIZE_ADDRESS__) || defined (__SANITIZE_THREAD__)
     #define NEONSYNTH_QUICK_SWEEP 1
    #elif defined (__has_feature)
-    #if __has_feature (address_sanitizer)
+    #if __has_feature (address_sanitizer) || __has_feature (thread_sanitizer)
      #define NEONSYNTH_QUICK_SWEEP 1
     #endif
    #endif

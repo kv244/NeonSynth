@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)   # JUCE 9.0.0 needs 3.22
-project(NeonSynth VERSION 1.11.1 LANGUAGES C CXX)
+project(NeonSynth VERSION 1.12.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -108,6 +108,30 @@ if(NEONSYNTH_SANITIZE)
     target_link_options(neonsynth_sanitize INTERFACE ${neonsynth_sanitize_flags})
 endif()
 
+# ThreadSanitizer build (v1.12.0, off by default): the CI job that runs the unit tests with
+# -fsanitize=thread, so a data race between the audio thread and the message thread (the
+# wavetable hand-off, the scope FIFO, the sample slot) fails the tests. It cannot be combined
+# with NEONSYNTH_SANITIZE (ASan and TSan exclude each other). Configure with Debug.
+option(NEONSYNTH_TSAN "Build NeonSynth and its tests with ThreadSanitizer (GCC/Clang)" OFF)
+if(NEONSYNTH_TSAN)
+    if(MSVC OR NEONSYNTH_SANITIZE)
+        message(FATAL_ERROR "NEONSYNTH_TSAN needs GCC or Clang, and not NEONSYNTH_SANITIZE")
+    endif()
+    target_compile_options(neonsynth_sanitize INTERFACE -fsanitize=thread -fno-omit-frame-pointer)
+    target_link_options(neonsynth_sanitize INTERFACE -fsanitize=thread)
+endif()
+
+# Code coverage (v1.12.0, off by default): Clang's source-based coverage for the coverage CI job,
+# which merges the unit tests' profiles and reports line coverage per file of src/.
+option(NEONSYNTH_COVERAGE "Clang only: instrument NeonSynth and its tests for llvm-cov" OFF)
+if(NEONSYNTH_COVERAGE)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        message(FATAL_ERROR "NEONSYNTH_COVERAGE needs Clang")
+    endif()
+    target_compile_options(neonsynth_sanitize INTERFACE -fprofile-instr-generate -fcoverage-mapping)
+    target_link_options(neonsynth_sanitize INTERFACE -fprofile-instr-generate)
+endif()
+
 # Link-time optimisation for the plugin (v1.11.1), Release builds only. The default is ON, so a
 # plain configure builds what ships; releases and the CI job that runs the compare test and
 # pluginval always use it. For faster local builds, and in the other CI jobs, configure with
@@ -192,7 +216,7 @@ if(NEONSYNTH_SPLIT_DWARF AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_CXX_CO
 endif()
 
 juce_add_plugin(NeonSynth
-    VERSION                     1.11.1
+    VERSION                     1.12.0
     COMPANY_NAME                "AudioDSP"
     COMPANY_WEBSITE             "https://github.com/kv244/NeonSynth"   # until a company site is decided (A12)
     BUNDLE_ID                   "com.audiodsp.neonsynth"
@@ -235,6 +259,7 @@ target_sources(NeonSynth
         src/dsp/Lfo.h
         src/dsp/Modulation.h
         src/dsp/Sculpt.h
+        src/dsp/Wavetable.h
         # src/sequencer
         src/sequencer/StepSequencer.h
         # src/state
@@ -244,6 +269,7 @@ target_sources(NeonSynth
         src/state/PresetManager.h
         src/state/FactoryPresets.h
         src/state/SessionState.h
+        src/state/FourierState.h
         src/state/SessionState.cpp
         # src/gui
         src/gui/NeonSynthEditor.h
@@ -260,6 +286,7 @@ target_sources(NeonSynth
         src/gui/VoiceLights.h
         src/gui/SampleView.h
         src/gui/ShapeView.h
+        src/gui/HarmonicsView.h
         src/gui/LfoView.h
         src/gui/SequencerView.h
         src/gui/HelpOverlay.h
@@ -415,7 +442,7 @@ if(NEONSYNTH_BUILD_TESTS)
     endif()
 
     # Unit tests of single classes: one program per file, linking only JUCE.
-    set(NEONSYNTH_UNIT_TESTS StepSequencerTests VoiceEnvelopeTests OscillatorTests ChopTests SculptTests SampleDataTests SampleReaderTests GranularTests FilterTests LfoTests ModulationTests)
+    set(NEONSYNTH_UNIT_TESTS StepSequencerTests VoiceEnvelopeTests OscillatorTests ChopTests SculptTests SampleDataTests SampleReaderTests GranularTests FilterTests LfoTests ModulationTests CycleAnalysisTests)
 
     # Programs that drive the whole processor directly (no host, no Python), linking the engine:
     #   RenderBenchmark       times processBlock for a few load scenarios (not run by ctest)
@@ -428,7 +455,12 @@ if(NEONSYNTH_BUILD_TESTS)
     #   PitchTests, MidiModulationTests, PlayingTests, PresetTests, VoiceStealingTests, SweepTests
     #   RouterTests           the MIDI router alone (HOLD, the ENTER queue, the internal clock)
     set(NEONSYNTH_ENGINE_TESTS RealtimeSafetyTests ParameterLayoutTests SessionStateTests StateFuzzTests EditorTests PitchTests MidiModulationTests
-        PlayingTests PresetTests VoiceStealingTests SweepTests RouterTests)
+        PlayingTests PresetTests VoiceStealingTests SweepTests RouterTests FourierTests FourierDspTests)
+    if(NEONSYNTH_TSAN)
+        # RealtimeSafetyTests replaces operator new to catch allocations, and so does TSan's
+        # runtime: the two cannot be linked together. The other jobs run it.
+        list(REMOVE_ITEM NEONSYNTH_ENGINE_TESTS RealtimeSafetyTests)
+    endif()
 
     foreach(program ${NEONSYNTH_UNIT_TESTS} ${NEONSYNTH_ENGINE_TESTS} RenderBenchmark)
         add_executable(${program} tests/${program}.cpp)
@@ -481,6 +513,11 @@ if(NEONSYNTH_BUILD_TESTS)
         get_property(neonsynth_all_tests DIRECTORY PROPERTY TESTS)
         set_tests_properties(${neonsynth_all_tests} PROPERTIES ENVIRONMENT
             "ASAN_OPTIONS=strict_string_checks=1:detect_stack_use_after_return=1:check_initialization_order=1;UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1:suppressions=${CMAKE_CURRENT_LIST_DIR}/tests/sanitizer-suppressions.txt")
+    endif()
+    if(NEONSYNTH_TSAN)
+        get_property(neonsynth_all_tests DIRECTORY PROPERTY TESTS)
+        set_tests_properties(${neonsynth_all_tests} PROPERTIES ENVIRONMENT
+            "TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1:suppressions=${CMAKE_CURRENT_LIST_DIR}/tests/tsan-suppressions.txt")
     endif()
 endif()
 

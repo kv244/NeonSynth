@@ -1,0 +1,3 @@
+# ThreadSanitizer suppressions for the TSan CI job (v1.12.0, NEONSYNTH_TSAN).
+# Only reports inside JUCE's own code may be listed here, each with the reason it is not a
+# NeonSynth bug. A report in NeonSynth's code (src/) always fails the job.

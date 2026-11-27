@@ -6,16 +6,16 @@
 
 NeonSynth is a learning synthesizer: a place to hear what a waveform sounds like, see what changes when you shape it, and explore the code that makes it happen. Its oscillator, sample, random, and granular engines provide different starting points for that exploration, with source code available to read, build, and modify ([NeonSynth project](https://github.com/kv244/NeonSynth)).
 
-For musicians, begin with one note and one waveform, without stacked oscillator layers obscuring what you are hearing. For coders, follow the same sound into the C++ implementation, from waveform generation through envelope, filter, and output; the interface and the code become two views of the same instrument ([voice architecture](https://github.com/kv244/NeonSynth/blob/v1.11.1/src/plugin/NeonSynthVoice.h)).
+For musicians, begin with one note and one waveform, without stacked oscillator layers obscuring what you are hearing. For coders, follow the same sound into the C++ implementation, from waveform generation through envelope, filter, and output; the interface and the code become two views of the same instrument ([voice architecture](https://github.com/kv244/NeonSynth/blob/v1.12.0/src/plugin/NeonSynthVoice.h)).
 
 **Instrument:** NeonSynth by Razvan Julian Petrescu / AudioDSP  
-**Edition:** 2.1, updated 23 November 2026 (v1.11.1: the granular fix, the licence and warranty text, and the source and build notes for the reorganised code; edition 2.0 covered v1.11.0 "Playing": HOLD, GLIDE and LEGATO, the sequencer's new tools and presets)<br>
-**Applies to:** NeonSynth v1.11.1, source tag `v1.11.1`  
-**Formats:** VST3 instrument and standalone application; a Windows installer is supplied for this release ([v1.11.1 release](https://github.com/kv244/NeonSynth/releases/tag/v1.11.1)).
+**Edition:** 3.0, updated 27 November 2026 (v1.12.0 "Fourier": NAIVE, CUSTOM with the HARMONICS view and BUILD, and drawing one cycle, in a new chapter; edition 2.0 covered v1.11.0 "Playing", 2.1 v1.11.1)<br>
+**Applies to:** NeonSynth v1.12.0, source tag `v1.12.0`  
+**Formats:** VST3 instrument and standalone application; a Windows installer is supplied for this release ([v1.12.0 release](https://github.com/kv244/NeonSynth/releases/tag/v1.12.0)).
 
 ### About this manual
 
-The instructions were checked against the v1.11.1 source code. Every recipe in the sound-design chapter was rendered through the plugin, to confirm that it sounds, releases cleanly to silence and stays clear of the output soft clipper: the first six through v1.6.0, which v1.7.0 to v1.11.1 keep bit-identical at the settings they use (each version's new controls start neutral), as the project's compare test checks; the wind recipe through v1.9.0, which v1.10.0 to v1.11.1 keep bit-identical. The 16 factory presets of v1.11.0 are checked by the project's preset test: each one loads, renders below −6 dBFS, under the output soft clipper, and ends in silence. This is not a certification of compatibility with every audio device or DAW.
+The instructions were checked against the v1.12.0 source code. Every recipe in the sound-design chapter was rendered through the plugin, to confirm that it sounds, releases cleanly to silence and stays clear of the output soft clipper: the first six through v1.6.0, which v1.7.0 to v1.11.1 keep bit-identical at the settings they use (each version's new controls start neutral), as the project's compare test checks; the wind recipe through v1.9.0, which v1.10.0 to v1.11.1 keep bit-identical. The 16 factory presets of v1.11.0 are checked by the project's preset test: each one loads, renders below −6 dBFS, under the output soft clipper, and ends in silence. This is not a certification of compatibility with every audio device or DAW.
 
 Each figure is labelled by how it was made: **Actual application capture** (a screenshot of the running instrument, with numbered callouts added), **Plot derived from rendered audio** (measured from sound the plugin produced, with the settings stated), or **Explanatory schematic** (a drawing that explains an idea and is not a measurement). How to regenerate them is in [figures/README.md](figures/README.md).
 
@@ -24,6 +24,17 @@ The sound-design settings are starting points to set by hand; most of them are a
 ## What's new in this version
 
 Each release adds its entry at the top of this section; the full history, fixes and internal changes included, is in the [CHANGELOG](https://github.com/kv244/NeonSynth/blob/master/CHANGELOG.md).
+
+### v1.12.0 "Fourier"
+
+- **A new chapter, [Fourier: hearing the harmonics](#fourier-hearing-the-harmonics),** with three new switches above the SHAPE strip, for the Oscillator source:
+  - **NAIVE** switches band-limiting off, so you hear aliasing; the SPECTRUM marks in red where the folded harmonics land.
+  - **CUSTOM** plays a wave built from up to 32 harmonics, which you set as bars in the new **HARMONICS** view. Presets give the textbook waves, **BUILD** adds the harmonics one at a time, and **ZERO PHASE** shows that the ear ignores phase. **HARMONICS** sets how many play and can be automated.
+  - **DRAW** lets you draw one cycle in the SHAPE strip; it plays as its first 32 harmonics, clean at any pitch.
+- **Granular:** a grain whose pitch JITTER raises it past a band-limit now reads the next band-limited copy of the sample, so it no longer aliases; SIZE and DENSITY glide over 20 ms when you turn or automate them, instead of stepping the level. Sessions that never move them during a note, or use no JITTER, sound as before.
+- **Eight new factory presets** (programs 16 to 23) show the new switches: Drawbar Organ, Square Ladder, Octave Stack, Hollow Reed, Phase Matters, Aliased Arcade, Vowel Ah and Fold-back Siren. See [The factory bank](#the-factory-bank).
+- **Everything else sounds as it did:** with the three switches off, sessions from earlier versions render identically.
+- **For builders:** the code is now C++20, and rebuilds after an edit are two to three times faster (precompiled JUCE headers, the mold linker). See [Building from source](#building-from-source).
 
 ### v1.11.1
 
@@ -51,6 +62,7 @@ Earlier versions: [CHANGELOG](https://github.com/kv244/NeonSynth/blob/master/CHA
 - [Finding your way around](#finding-your-way-around)
 - [Choosing a sound source](#choosing-a-sound-source)
 - [Sculpting a waveform](#sculpting-a-waveform)
+- [Fourier: hearing the harmonics](#fourier-hearing-the-harmonics)
 - [Shaping a sound](#shaping-a-sound)
 - [Movement: LFO, pitch bend and mod wheel](#movement-lfo-pitch-bend-and-mod-wheel)
 - [Playing: HOLD, GLIDE and LEGATO](#playing-hold-glide-and-legato)
@@ -152,9 +164,9 @@ Only after those differences become familiar should you add chords, sequencing, 
 
 ## Finding your way around
 
-![The NeonSynth window with fourteen numbered regions: 1 source and waveform menus, 2 the strip and its knobs, 3 scope or spectrum, 4 envelope graph and knobs with the AMP and FILTER tabs, 5 filter, 6 output with the width slider, gain fader and meters, 7 modulation, 8 voice lights, 9 the help button, 10 the step sequencer, 11 the preset bar, 12 HOLD, 13 GLIDE and LEGATO, 14 the sequencer's pattern row.](images/fig01-interface.png)
+![The NeonSynth window with fourteen numbered regions: 1 source and waveform menus, 2 the strip with the CUSTOM, NAIVE and DRAW switches above it and its knobs, 3 the display with its SCOPE, SPECTRUM and HARMONICS tabs, 4 envelope graph and knobs with the AMP and FILTER tabs, 5 filter, 6 output with the width slider, gain fader and meters, 7 modulation, 8 voice lights, 9 the help button, 10 the step sequencer, 11 the preset bar, 12 HOLD, 13 GLIDE and LEGATO, 14 the sequencer's pattern row.](images/fig01-interface.png)
 
-Figure 1. The main window (v1.11.0 at 150%, Source set to Oscillator, Sawtooth, with the sequencer running, and LFO CUTOFF at +1.5 octaves at 2 Hz, so the green band under CUTOFF and the dot in the LFO view show). *Actual application capture; the numbered outlines and the key below the picture were added.* Regions 1–14 are explained in the key, and the window is described panel by panel in the table below. Regions 11 to 14 are new in v1.11.0: 11, the preset bar in the header; 12, HOLD beside it; 13, the GLIDE knob and the LEGATO switch in the second row of the MODULATION panel; 14, the pattern row across the top of the step grid (LENGTH, KEY, SCALE, TOOLS, ENTER, UNDO).
+Figure 1. The main window (v1.12.0 at 150%, Source set to Oscillator, Sawtooth, with the sequencer running, and LFO CUTOFF at +1.5 octaves at 2 Hz, so the green band under CUTOFF and the dot in the LFO view show). *Actual application capture; the numbered outlines and the key below the picture were added.* Regions 1–14 are explained in the key, and the window is described panel by panel in the table below. Regions 11 to 14 are new in v1.11.0: 11, the preset bar in the header; 12, HOLD beside it; 13, the GLIDE knob and the LEGATO switch in the second row of the MODULATION panel; 14, the pattern row across the top of the step grid (LENGTH, KEY, SCALE, TOOLS, ENTER, UNDO).
 
 The window looks like an old computer monitor: glowing phosphor text and traces on a dark green screen, behind a grey bezel, with faint scanlines across it. It has six panels, each outlined in its own colour. SOURCE, on the left, is where the sound starts: what plays, and how it is shaped before the envelope. The middle column shows the sound (scope or spectrum) above the envelope and filter. On the right, OUTPUT sets and measures the level, and MODULATION below it makes the sound move. SEQUENCER runs along the bottom. Above them all, the header holds the preset bar, HOLD, SCANLINES, the voice lights and the help button. Colours carry the same meaning everywhere: cyan for the source and output, amber for the envelope and sequencer, magenta for the filter and the granular controls, and green for modulation.
 
@@ -216,7 +228,7 @@ With **Source** set to **Oscillator** or **Random**, three stages can reshape th
 
 ![The SOURCE panel with a sawtooth: in the SHAPE strip every second step is shaded amber and cut to the centre line at OVERTONE 100%, the wave between them is folded at FOLD 100%, and the five sculpting knobs are below.](images/fig03-shape-strip.png)
 
-Figure 3. The SOURCE panel with the SHAPE strip: a sawtooth, OVERTONE 100% and FOLD 100% (v1.10.0 at 150%). *Actual application capture.* The shaded steps are chopped, so the wave is cut to the centre line there; the folded curve between them is the sawtooth after FOLD. Every second step is chopped, which is the pattern a new instance starts with.
+Figure 3. The SOURCE panel with the SHAPE strip: a sawtooth, OVERTONE 100% and FOLD 100% (v1.12.0 at 150%; the CUSTOM, NAIVE and DRAW switches above the strip are new in v1.12.0). *Actual application capture.* The shaded steps are chopped, so the wave is cut to the centre line there; the folded curve between them is the sawtooth after FOLD. Every second step is chopped, which is the pattern a new instance starts with.
 
 ### The SHAPE strip
 
@@ -273,6 +285,75 @@ Play C3 with the filter bypassed, the spectrum showing, and Source set to Oscill
 ### Not in this version
 
 Every voice shares one chop pattern; there are no per-voice patterns. Pattern edits can't be undone, the noise is white only, and the three stages do not apply to Sample or Granular.
+
+## Fourier: hearing the harmonics
+
+Every pitched sound is a sum of sine waves at whole multiples of its note: the **harmonics**. A sawtooth has all of them, each quieter than the last; a square has only the odd ones. This chapter turns that idea into three things you can hear and see, all on the **Oscillator** source (v1.12.0):
+
+- **NAIVE** switches band-limiting off, so you hear what happens to harmonics above half the sample rate.
+- **CUSTOM** plays a wave you build from up to 32 harmonics, in the **HARMONICS** view.
+- **DRAW** lets you draw one cycle in the SHAPE strip; NeonSynth plays it as its first 32 harmonics.
+
+The three switches sit in the row above the SHAPE strip, where the sample's name is shown for the Sample source. All three start off, so a session that never uses them sounds exactly as it did.
+
+![The HARMONICS view: the SINE, SAW, SQUARE, TRIANGLE, ZERO PHASE and BUILD buttons along the top, a row of rings each with its phase dot on the left (180 degrees), and 32 bars falling away like a sawtooth's, the first nine lit and the rest dimmed, with the HARMONICS slider reading 9 of 32.](images/fig11-harmonics.png)
+
+Figure 11. The HARMONICS view with CUSTOM on, the SAW set and HARMONICS at 9, as BUILD passes through it (v1.12.0 at 150%). *Actual application capture.* Only the first nine harmonics play; the dimmed bars wait for their turn. Every phase dot is on the left: the SAW set's harmonics all start at 180°.
+
+### NAIVE: hear aliasing
+
+A digital oscillator can only represent frequencies below half its sample rate, the **Nyquist** frequency: 24 kHz at 48 kHz. A textbook sawtooth or square jumps instantly, and an instant jump has harmonics without end. Those above Nyquist do not disappear: they fold back down, to |k × note − m × sample rate|, as tones that are not harmonics of the note at all. That is **aliasing**. NeonSynth's oscillators normally smooth every jump and corner so that almost nothing folds back (band-limiting, since v1.6.0); **NAIVE** turns that off.
+
+- With NAIVE on, Square, Sawtooth and Triangle are the textbook shapes, and Random's steps and CHOP's cuts are hard edges. Sine has no harmonics to fold, so it is unchanged. With CUSTOM on, all the harmonics you set play, even those above Nyquist.
+- The level does not change, so you can switch back and forth and compare.
+- The switch takes effect at the start of the next cycle, so it never clicks.
+- The wavefolder and the filter's DRIVE keep their own anti-aliasing, so NAIVE is about the oscillator alone.
+
+With NAIVE on, the **SPECTRUM** marks in red where the harmonics above Nyquist land after folding, for the lowest note sounding: a red diamond for each, at the level that harmonic has. The red marks line up with the extra peaks in the analyser, the ones that are not on the note's harmonics.
+
+![Two spectra of a sawtooth at C#7 (2217 Hz) on a linear frequency axis up to 24 kHz. Above, band-limited: the note's ten harmonics, and folded traces no higher than −48 dBFS. Below, NAIVE: the same harmonics plus a dense comb of folded partials between them, the strongest at about −39 dBFS, with harmonics 11 to 22 numbered where they land.](images/fig12-aliasing.png)
+
+Figure 12. A sawtooth at C#7 (2217 Hz), band-limited and NAIVE. *Plot derived from rendered audio* (48 kHz; grey lines mark the note's own harmonics). With NAIVE on, harmonic 11 (24.4 kHz) folds to 23.6 kHz, harmonic 12 to 21.4 kHz, and so on down, each between two of the note's harmonics. Band-limiting leaves small traces too, but 10 dB and more lower, and mostly near the top of the range, where the ear is least sensitive.
+
+### CUSTOM and the HARMONICS view
+
+**CUSTOM** replaces the WAVEFORM menu with a wave made of up to 32 harmonics. Choose **HARMONICS** beside SCOPE and SPECTRUM to see and set them (Figure 11):
+
+| Control | What it does |
+|---|---|
+| Bars 1–32 | The level of each harmonic, 0–100%. Drag a bar, or drag across several to set each one the pointer passes; double-click a bar to set it to 0. Bars beyond the HARMONICS count are dimmed. |
+| Phase rings | The ring above each bar shows its phase as a dot on a circle: right is 0°, top is 90°. Phases come from the presets and from a drawn cycle; the bars do not change them. |
+| SINE, SAW, SQUARE, TRIANGLE | Set the textbook levels and phases of that wave. |
+| ZERO PHASE | Sets every phase to 0 and keeps the levels. |
+| BUILD | Steps HARMONICS from 1 up to 32, about three a second, lighting each bar as it joins; click again to stop. |
+| HARMONICS | How many of the 32 play, counted from the fundamental. It is a host parameter, so a DAW can automate it or record a BUILD. |
+
+A level of 100% is the fundamental of a full-height square wave, so the SQUARE preset plays at the same level as the Square waveform. The SAW preset's fundamental is 50%: a sawtooth's fundamental is half a square's.
+
+**Clean at any pitch.** The custom wave is played from 32 wavetables, one for each number of harmonics. Each voice plays the table that stops below Nyquist at its pitch, and crossfades over 5 ms to the next when the pitch moves (a glide, a bend, vibrato or the LFO), so a custom wave never aliases unless NAIVE is on. A change to HARMONICS crossfades the same way, and a change to the levels or phases glides over 5 ms, so neither clicks. Switching CUSTOM on or off takes effect at the next cycle, as a WAVEFORM change does.
+
+Everything after the oscillator treats a custom wave like any other: CHOP, NOISE, FOLD, the filter and the envelopes. The SHAPE strip draws the custom wave. The 32 levels and phases are saved with the session (they are not host parameters); a session saved before v1.12.0 loads with the SAW set and CUSTOM off.
+
+### DRAW: draw one cycle
+
+With **CUSTOM** and **DRAW** on, the pointer draws in the SHAPE strip instead of setting CHOP's steps. Drag across the strip to draw one cycle; a quick drag fills in the points it skipped. When you let go, NeonSynth measures the drawing's first 32 harmonics, sets the bars to them and plays them. Double-click the strip to start again from a sine.
+
+![On the left, the SOURCE panel with CUSTOM and DRAW on and the caption "Draw one cycle; it plays as its first 32 harmonics": a cycle that stays high, falls almost at once and ramps back up, played with ripples beside the fall and a rounded overshoot at its foot. On the right, the HARMONICS view with the 32 levels that drawing produced.](images/fig13-draw.png)
+
+Figure 13. A drawn cycle and what plays (v1.12.0 at 150%). *Actual application capture.* The drawing falls in about 1% of the cycle; 32 harmonics cannot make a fall that steep, so the wave that plays rings beside it and overshoots at its foot, the Gibbs ripple again. The drawn line, faint magenta, shows only where the two differ.
+
+What plays is the 32-harmonic version of your drawing, not the drawing itself. A smooth shape comes back almost unchanged; a sharp corner comes back rounded, with ripples beside it. The strip shows your line faintly behind the wave that plays, so you can see the difference. Changing the bars, a preset or ZERO PHASE afterwards drops the drawing, since it no longer describes what plays. The drawing is saved with the session.
+
+With DRAW off, or CUSTOM off, clicks in the strip set CHOP's steps as before.
+
+### Listening exercise: build, break and draw a wave
+
+Play C4 with the filter off, Source set to Oscillator.
+
+1. **Build a sawtooth.** Switch CUSTOM on, choose HARMONICS, click SAW, then BUILD. The first bar alone is a pure sine; each harmonic that joins makes the tone brighter and the cycle in the SHAPE strip more like a ramp. At 32 the readout says *Gibbs: 9% overshoot at the jump*: the ripple beside each jump never goes away, however many harmonics you add. That is the Gibbs phenomenon, and it is why a band-limited sawtooth is never quite straight.
+2. **Hear that phase does not matter.** Click SQUARE, listen, then click ZERO PHASE. The cycle in the strip changes shape completely; the sound does not. The ear hears the harmonics' levels, not how they line up.
+3. **Make it alias.** Click SAW again and play high, around C7, with the SPECTRUM showing. Switch NAIVE on and play a slow rising run: the note goes up, but the red folded partials move down, a whistle against the melody. Switch NAIVE off and they are gone.
+4. **Draw a wave.** Switch DRAW on and draw a shape with a flat top and a steep fall. When you let go, the bars show its harmonics and the faint line shows how far 32 harmonics are from your drawing. Draw a smooth hill and it comes back almost exactly.
 
 ## Shaping a sound
 
@@ -631,7 +712,8 @@ WIDTH is not chorus, delay, or a stereo image restored from an imported recordin
 ### Scope, spectrum, voices, and meters
 
 - **SCOPE:** Displays the output waveform and uses the lowest active note as its pitch reference.
-- **SPECTRUM:** Displays frequency content with the filter's response curve for the current mode, cutoff and resonance. When resonance raises a peak above the top of the display, the curve is lowered so the peak stays in view.
+- **SPECTRUM:** Displays frequency content with the filter's response curve for the current mode, cutoff and resonance. When resonance raises a peak above the top of the display, the curve is lowered so the peak stays in view. With NAIVE on, red marks show where harmonics above Nyquist fold back to (see [NAIVE: hear aliasing](#naive-hear-aliasing)).
+- **HARMONICS:** CUSTOM's 32 harmonic levels and phases, its presets and BUILD (see [CUSTOM and the HARMONICS view](#custom-and-the-harmonics-view)).
 - **VOICES:** Provides one light per voice, with brightness following its envelope. Click a light to set how many voices can play (see [Voices: from mono to 16](#voices-from-mono-to-16)); the lights above the limit are drawn as faint dots.
 - **Envelope graph:** Shows the note shape with moving voice-position dots.
 - **L/R meter:** Shows output levels, peak hold, and a clip indicator; click to reset the meter.
@@ -644,7 +726,7 @@ The output soft clipper leaves signals below −6 dBFS unchanged and constrains 
 
 ### The preset bar
 
-The preset bar in the header (region 11 in Figure 1) shows the current preset and its category. **<** and **>** step through the 16 factory presets, then your own, and wrap around. Click the name for the menu:
+The preset bar in the header (region 11 in Figure 1) shows the current preset and its category. **<** and **>** step through the 24 factory presets, then your own, and wrap around. Click the name for the menu:
 
 - **FACTORY**: the factory bank, grouped by category;
 - **USER**: your presets, sorted by name;
@@ -653,7 +735,7 @@ The preset bar in the header (region 11 in Figure 1) shows the current preset an
 
 A new instance, or a session saved before v1.11.0, shows **DEFAULT**: no preset has been loaded.
 
-A preset changes the sound, not the window: loading one never changes SCOPE or SPECTRUM, the envelope tab or SCANLINES. It sets every parameter, the pattern and CHOP's pattern; a parameter a factory preset does not list goes to its initial value, so each preset sounds the same whatever was loaded before it. Factory presets use the built-in pad, so loading one replaces a sample you had loaded; the Sequence and Percussion presets switch RUN on, and the others switch it off.
+A preset changes the sound, not the window: loading one never changes SCOPE or SPECTRUM, the envelope tab or SCANLINES. It sets every parameter, the pattern, CHOP's pattern and CUSTOM's harmonics (the SAW set for a preset that does not use CUSTOM); a parameter a factory preset does not list goes to its initial value, so each preset sounds the same whatever was loaded before it. Factory presets use the built-in pad, so loading one replaces a sample you had loaded; the Sequence and Percussion presets switch RUN on, and the others switch it off.
 
 ### Save your own
 
@@ -665,7 +747,7 @@ A preset file is an ordinary NeonSynth session, so you can send one to someone, 
 
 ### Presets in a DAW
 
-The 16 factory presets are also the DAW's program list, so a host's program menu can choose them. A saved project remembers which preset it came from and shows it in the preset bar when it opens; whatever you changed after loading the preset is kept, because the project saves the sound itself.
+The 24 factory presets are also the DAW's program list, so a host's program menu can choose them. A saved project remembers which preset it came from and shows it in the preset bar when it opens; whatever you changed after loading the preset is kept, because the project saves the sound itself.
 
 On a fresh instance, choosing program 0 (Glass Bell) from a DAW's program list does nothing until another program has been chosen: the VST3 plugin wrapper ignores a change to the program it takes to be current already. Use the preset bar instead, or choose another program first.
 
@@ -689,8 +771,16 @@ On a fresh instance, choosing program 0 (Glass Bell) from a DAW's program list d
 | 13 | Wind Sweep | FX | Band-passed noise that rises into a whistle, with Random LFO gusts; hold low notes. |
 | 14 | Gale | FX | Wind Sweep louder and wilder: a howling, gritty storm; add a fifth above. |
 | 15 | Drifting Cloud | FX | 100 ms grains scanning forward through the pad: a moving atmosphere. |
+| 16 | Drawbar Organ | Keys | CUSTOM: harmonics 1, 2, 3, 4, 6 and 8, like an organ's drawbars; add the mod wheel for vibrato. |
+| 17 | Square Ladder | Keys | CUSTOM: harmonics 1, 4, 9, 16 and 25 only, a bell that is still in tune; play from C4 up. |
+| 18 | Octave Stack | Bass | CUSTOM: harmonics 1, 2, 4 and 8, octaves with no fifths; mono. |
+| 19 | Hollow Reed | Lead | CUSTOM: odd harmonics only, the hollow tone of a clarinet, with a slow LFO vibrato. |
+| 20 | Phase Matters | Lead | A sawtooth's 16 levels with scattered phases, folded at 80%. Press ZERO PHASE in the HARMONICS view: the tone changes, because FOLD hears the shape; with FOLD at 0% it would not. |
+| 21 | Aliased Arcade | Lead | NAIVE: a square with no band-limiting and the filter off, so high notes alias into chiptune grit; play from C6 up and watch the red marks in the SPECTRUM. |
+| 22 | Vowel Ah | Pad | CUSTOM: a hump at harmonics 6 to 9 over a soft slope, like a sung vowel; it moves with the note, so it sounds most like a voice around C3. |
+| 23 | Fold-back Siren | FX | NAIVE: a sawtooth swept an octave up and down by the LFO; as it rises, the aliased harmonics fall. Hold a note from C6 up. |
 
-The numbers are the DAW's program numbers.
+The numbers are the DAW's program numbers. Presets 16 to 23 are new in v1.12.0; they were added after the first 16, so those keep their numbers.
 
 ## Saving, automation, and MIDI
 
@@ -864,6 +954,8 @@ You do not need to understand the whole application before investigating one par
 |---|---|---|
 | `src/dsp/Oscillator.h` / `src/dsp/Chop.h` | Waveform generation, phase and band-limiting; CHOP in a file of its own. | Compare Sine, Triangle, Square, and Sawtooth on the same note. |
 | `src/dsp/Sculpt.h` / `src/gui/ShapeView.h` | Noise, the oversampled wavefolder, and the SHAPE strip's drawing. | Sweep DRIVE while watching the drawing and the spectrum. |
+| `src/dsp/Wavetable.h` / `src/dsp/CycleAnalysis.h` / `src/state/FourierState.h` | CUSTOM's Fourier series: 32 tables summed from sines, handed lock-free to the audio thread; a drawn cycle analysed into harmonics (v1.12.0). | BUILD a square and watch the table count climb; draw a corner and see the Gibbs ripple. |
+| `src/gui/HarmonicsView.h` | The HARMONICS view: bars, phase rings, presets, BUILD. | Click ZERO PHASE and compare what you see with what you hear. |
 | `src/dsp/VoiceEnvelope.h` | Envelope stages and their time/level behaviour. | Move ATTACK, DECAY, SUSTAIN, and RELEASE while watching the graph. |
 | `src/plugin/NeonSynthVoice.h` / `src/plugin/NeonSynthVoice.cpp` | One note's source, envelope, filter, panning, and glide: the per-sample rendering in the header, note start and stop and the parameter plumbing in the `.cpp`. | Follow a note from source generation to stereo placement; set GLIDE and watch it slide. |
 | `src/plugin/PlayingSynthesiser.h` | LEGATO and the sequencer's slides: moving a sounding voice to a new note. | Play overlapping keys at MONO with LEGATO on and off. |
@@ -887,7 +979,7 @@ It is an editorial guide, not a requirement to read every file in this order.
 
 ### Make a small change, then test it
 
-A useful first experiment is to change a default envelope time in `createParameterLayout()` (in `src/plugin/Parameters.cpp`), rebuild, and open a fresh instance to hear the result. Existing saved sessions can restore their own settings, so they are not a reliable way to check that a new default has taken effect ([parameter definitions](https://github.com/kv244/NeonSynth/blob/v1.11.1/src/plugin/Parameters.cpp), [state restoration](https://github.com/kv244/NeonSynth/blob/v1.11.1/src/state/SessionState.cpp)).
+A useful first experiment is to change a default envelope time in `createParameterLayout()` (in `src/plugin/Parameters.cpp`), rebuild, and open a fresh instance to hear the result. Existing saved sessions can restore their own settings, so they are not a reliable way to check that a new default has taken effect ([parameter definitions](https://github.com/kv244/NeonSynth/blob/v1.12.0/src/plugin/Parameters.cpp), [state restoration](https://github.com/kv244/NeonSynth/blob/v1.12.0/src/state/SessionState.cpp)).
 
 For a deeper exercise, inspect why a waveform change waits for a cycle boundary or how grain size and density affect overlap. Make one change at a time, work on a branch, and run the relevant tests before comparing the result with the original; the developer notes' [Unit tests and benchmark](DEVELOPMENT.md#unit-tests-and-benchmark) section lists what each test checks.
 
@@ -903,11 +995,11 @@ The project identifies Claude-assisted development, but Claude is not a runtime 
 
 ### Signal path
 
-Keyboard notes pass HOLD on their way in, and the voice allocator (built on JUCE's synthesiser as `PlayingSynthesiser`) moves a sounding voice to a new note for LEGATO and for the sequencer's slides instead of starting another. The voice engine places its amplitude envelope before the filter and panner; voices are then summed, followed by output gain and soft clipping. The filter's drive and its limiter scale with the envelope, so the filter behaves as if the envelope came after it. This is the implemented path, rather than a generic synthesis diagram ([voice engine](https://github.com/kv244/NeonSynth/blob/v1.11.1/src/plugin/NeonSynthVoice.h), [filter](https://github.com/kv244/NeonSynth/blob/v1.11.1/src/dsp/CytomicSvf.h), [MIDI routing](https://github.com/kv244/NeonSynth/blob/v1.11.1/src/plugin/MidiRouter.cpp), [processor](https://github.com/kv244/NeonSynth/blob/v1.11.1/src/plugin/NeonSynthProcessor.cpp)).
+Keyboard notes pass HOLD on their way in, and the voice allocator (built on JUCE's synthesiser as `PlayingSynthesiser`) moves a sounding voice to a new note for LEGATO and for the sequencer's slides instead of starting another. The voice engine places its amplitude envelope before the filter and panner; voices are then summed, followed by output gain and soft clipping. The filter's drive and its limiter scale with the envelope, so the filter behaves as if the envelope came after it. This is the implemented path, rather than a generic synthesis diagram ([voice engine](https://github.com/kv244/NeonSynth/blob/v1.12.0/src/plugin/NeonSynthVoice.h), [filter](https://github.com/kv244/NeonSynth/blob/v1.12.0/src/dsp/CytomicSvf.h), [MIDI routing](https://github.com/kv244/NeonSynth/blob/v1.12.0/src/plugin/MidiRouter.cpp), [processor](https://github.com/kv244/NeonSynth/blob/v1.12.0/src/plugin/NeonSynthProcessor.cpp)).
 
-![The signal path. Keyboard MIDI and the step sequencer go through MIDI routing to voice allocation (up to 16 voices, set by the VOICES limit). Inside each voice, Oscillator and Random pass through CHOP, Noise and Fold; all four sources then go through velocity times the amp envelope, drive and the filter (bypassed together by the filter's ON switch), and the pitch-based pan. The voices are summed, then tremolo, output gain and the soft clipper lead to the audio output and the displays. A shared modulation stage, worked out once per block, sends the pitch ratio to all four sources, the LFO cutoff to the filter and the tremolo to the mix.](images/fig10-signal-path.png)
+![The signal path. Keyboard MIDI and the step sequencer go through MIDI routing to voice allocation (up to 16 voices, set by the VOICES limit). Inside each voice, the Oscillator plays band-limited (BLEP) or, with CUSTOM, from 32 harmonic tables handed over lock-free (NAIVE: no BLEP); Oscillator and Random pass through CHOP, Noise and Fold; all four sources then go through velocity times the amp envelope, drive and the filter (bypassed together by the filter's ON switch), and the pitch-based pan. The voices are summed, then tremolo, output gain and the soft clipper lead to the audio output and the displays. A shared modulation stage, worked out once per block, sends the pitch ratio to all four sources, the LFO cutoff to the filter and the tremolo to the mix.](images/fig10-signal-path.png)
 
-Figure 10. The signal path in v1.10.0 (unchanged since v1.9.0); v1.11.0 adds HOLD to the MIDI routing, LEGATO and slides to voice allocation, and the glide to each voice's pitch, as the text version below shows. *Explanatory schematic,* drawn from the source code: each box is a stage in the order the [processor](https://github.com/kv244/NeonSynth/blob/v1.11.1/src/plugin/NeonSynthProcessor.cpp) and the [voice](https://github.com/kv244/NeonSynth/blob/v1.11.1/src/plugin/NeonSynthVoice.h) run them. Solid arrows carry audio, dashed ones the shared modulation, which is worked out once per block for all voices. Drive and the filter form one stage: switching the filter OFF bypasses both. The same path in text:
+Figure 10. The signal path in v1.12.0: the Oscillator plays its waveform band-limited (BLEP), or with CUSTOM on the 32 harmonic tables built from the HARMONICS view or a drawn cycle, handed to the voices without locks (grey arrow); NAIVE drops the band-limiting. HOLD (in the MIDI routing), LEGATO and slides (in voice allocation) and the glide (in each voice's pitch) are in the text version below. *Explanatory schematic,* drawn from the source code: each box is a stage in the order the [processor](https://github.com/kv244/NeonSynth/blob/v1.12.0/src/plugin/NeonSynthProcessor.cpp) and the [voice](https://github.com/kv244/NeonSynth/blob/v1.12.0/src/plugin/NeonSynthVoice.h) run them. Solid arrows carry audio, dashed ones the shared modulation, which is worked out once per block for all voices. Drive and the filter form one stage: switching the filter OFF bypasses both. The same path in text:
 
 ```text
 MIDI keyboard / DAW notes → HOLD ─┐
@@ -918,7 +1010,7 @@ Shared by all voices, once per block:
 LFO, pitch bend, mod wheel vibrato → pitch ratio, LFO cutoff, tremolo
 
 Per voice:
-selected source (pitch × glide × pitch ratio) → (Oscillator and Random only: CHOP → noise → fold) → amplitude envelope → drive → filter (mode, resonance; cutoff + filter envelope + velocity + LFO)/bypass → pitch-based pan
+selected source (pitch × glide × pitch ratio; the Oscillator plays WAVEFORM or, with CUSTOM, its wavetable; NAIVE drops band-limiting) → (Oscillator and Random only: CHOP → noise → fold) → amplitude envelope → drive → filter (mode, resonance; cutoff + filter envelope + velocity + LFO)/bypass → pitch-based pan
 
 Combined output:
 voice sum → tremolo → output gain → soft clipper → mono/stereo output and visualisers
@@ -947,7 +1039,7 @@ voice sum → tremolo → output gain → soft clipper → mono/stereo output an
 | Random / granular variation | Seeded for reproducible renders from the same reset state and event sequence. |
 | Imported sample audio | Prepared mono audio; original file is not modified. |
 
-These details follow the [voice allocator](https://github.com/kv244/NeonSynth/blob/v1.11.1/src/plugin/PlayingSynthesiser.h) and its [voice limit](https://github.com/kv244/NeonSynth/blob/v1.11.1/src/plugin/VoiceAllocator.h), the [MIDI router](https://github.com/kv244/NeonSynth/blob/v1.11.1/src/plugin/MidiRouter.cpp) (HOLD and the internal clock), [sequencer](https://github.com/kv244/NeonSynth/blob/v1.11.1/src/sequencer/StepSequencer.h), [presets](https://github.com/kv244/NeonSynth/blob/v1.11.1/src/state/PresetManager.h), the [voice engine](https://github.com/kv244/NeonSynth/blob/v1.11.1/src/plugin/NeonSynthVoice.h), [modulation](https://github.com/kv244/NeonSynth/blob/v1.11.1/src/dsp/Modulation.h), [LFO](https://github.com/kv244/NeonSynth/blob/v1.11.1/src/dsp/Lfo.h), [processor](https://github.com/kv244/NeonSynth/blob/v1.11.1/src/plugin/NeonSynthProcessor.cpp), [grain engine](https://github.com/kv244/NeonSynth/blob/v1.11.1/src/dsp/GrainCloud.h), and [sample preparation](https://github.com/kv244/NeonSynth/blob/v1.11.1/src/state/SampleData.h).
+These details follow the [voice allocator](https://github.com/kv244/NeonSynth/blob/v1.12.0/src/plugin/PlayingSynthesiser.h) and its [voice limit](https://github.com/kv244/NeonSynth/blob/v1.12.0/src/plugin/VoiceAllocator.h), the [MIDI router](https://github.com/kv244/NeonSynth/blob/v1.12.0/src/plugin/MidiRouter.cpp) (HOLD and the internal clock), [sequencer](https://github.com/kv244/NeonSynth/blob/v1.12.0/src/sequencer/StepSequencer.h), [presets](https://github.com/kv244/NeonSynth/blob/v1.12.0/src/state/PresetManager.h), the [voice engine](https://github.com/kv244/NeonSynth/blob/v1.12.0/src/plugin/NeonSynthVoice.h), [modulation](https://github.com/kv244/NeonSynth/blob/v1.12.0/src/dsp/Modulation.h), [LFO](https://github.com/kv244/NeonSynth/blob/v1.12.0/src/dsp/Lfo.h), [processor](https://github.com/kv244/NeonSynth/blob/v1.12.0/src/plugin/NeonSynthProcessor.cpp), [grain engine](https://github.com/kv244/NeonSynth/blob/v1.12.0/src/dsp/GrainCloud.h), and [sample preparation](https://github.com/kv244/NeonSynth/blob/v1.12.0/src/state/SampleData.h).
 
 ### Optional MIDI diagnostics
 

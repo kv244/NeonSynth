@@ -5,8 +5,8 @@
 % The version below must match project(NeonSynth VERSION ...) in CMakeLists.txt; the build script checks it.
 \documentclass[11pt,letterpaper]{article}
 
-\newcommand{\NSVersion}{1.11.0}
-\newcommand{\NSDate}{23 November 2026}
+\newcommand{\NSVersion}{1.12.0}
+\newcommand{\NSDate}{27 November 2026}
 
 % ---------------------------------------------------------------- fonts and page
 \usepackage[T1]{fontenc}
@@ -103,7 +103,6 @@
 
 % ================================================================ title page
 \thispagestyle{titlepage}
-\vspace*{0.1in}
 
 \begin{tcolorbox}[colback=navy, colframe=accent, boxrule=0pt, bottomrule=3pt,
                   arc=4pt, outer arc=4pt, left=20pt, right=20pt, top=14pt, bottom=16pt]
@@ -114,29 +113,33 @@
   {\itshape\large\textcolor{white!85!navy}{A Supplement to ``The DSP Behind NeonSynth''}\par}
 \end{tcolorbox}
 
-\vspace{0.14in}
+\vspace{0.08in}
 
 \begin{tcolorbox}[colback=boxbg, colframe=accent, coltitle=accent, colbacktitle=boxbg,
                   boxrule=0pt, leftrule=3.5pt, arc=0pt, outer arc=0pt,
                   left=10pt, right=8pt, top=3pt, bottom=7pt, toptitle=5pt, bottomtitle=2pt,
                   titlerule=0pt, fonttitle=\sffamily\bfseries\small, title={Scope \& Edition Notes}]
-This compendium presents the core mathematical formulations underlying eight digital signal processing
+This compendium presents the core mathematical formulations underlying nine digital signal processing
 subsystems in \textbf{NeonSynth v\NSVersion} (released \NSDate): 4-point cubic B-spline BLEP/BLAMP
 anti-aliasing, trapezoidal topology-preserving state-variable filtering, quadrature van der Pol self-oscillation
 limiting, double-precision antiderivative anti-aliasing (ADAA) drive, polynomial-windowed granular synthesis,
-prefiltered Catmull--Rom sample resampling, the per-sample LFO, pitch-bend and vibrato modulation new in v1.9.0,
-and the glide, internal clock and time-signature arithmetic new in v1.11.0.\\
+prefiltered Catmull--Rom sample resampling, the LFO, pitch-bend and vibrato modulation (v1.9.0),
+glide, clock and time-signature arithmetic (v1.11.0), and Fourier series,
+wavetables and cycle analysis (v1.12.0).\\
 All equations, boundary conditions, and numerical thresholds are aligned with the NeonSynth v\NSVersion{} implementation
-(\code{src/dsp}, \code{src/state}, \code{src/plugin}). This edition adds Section~8.
+(\code{src/dsp}, \code{src/state}, \code{src/plugin}). This edition adds Section~9 and two granular refinements in Section~5.
 \end{tcolorbox}
 
-\vspace{0.08in}
+\vspace{0.04in}
 {\sffamily\bfseries\large\color{navy}Contents\par}
 \vspace{2pt}
 {\color{accent}\hrule height 0.8pt}
-\vspace{6pt}
+\vspace{3pt}
 
 \noindent
+\begingroup
+% Tighter rules so all nine sections fit on the title page.
+\setlength{\aboverulesep}{0.15ex}\setlength{\belowrulesep}{0.35ex}
 \begin{tabular*}{\textwidth}{@{}p{0.45in}@{}p{5.85in}@{\extracolsep{\fill}}r@{}}
 \contentsrow{1}{Band-Limited Edge Correction (BLEP \& BLAMP)}
   {Phase accumulation, waveform latching, cubic B-spline residuals, and treble compensation}{sec:blep}
@@ -154,7 +157,10 @@ All equations, boundary conditions, and numerical thresholds are aligned with th
   {LFO shapes and phase, slew limiter, pitch ratio, tremolo, per-source pitch, and bit-identity}{sec:mod}
 \contentsrow{8}{Glide, the Internal Clock and Bar Length}
   {Constant-time exponential glide, rounding error of a running sum versus a product, and beats per bar}{sec:play}
+\contentsrow{9}{Fourier Series, Folding and Wavetables}
+  {Series presets, Gibbs overshoot, folding, cumulative tables, Catmull--Rom reads, and cycle analysis}{sec:fourier}
 \end{tabular*}
+\endgroup
 
 % ================================================================ 1
 \newpage
@@ -406,6 +412,15 @@ avoid periodic ringing, and pitch jitter of $\delta$ cents scales per-grain play
 at 32 simultaneous voices; when all 32 slots are occupied, new grain onsets are skipped rather than truncating active
 grains.
 
+Since v1.12.0 the size $S$ and density $\rho$ in eq.~\eqref{eq:gscale} glide linearly over $T = 20$\,ms when changed during a
+note, and the gain follows them sample by sample: from $G_0 = G(S_0,\rho_0)$ at the block's start to $G_1 = G(S_1,\rho_1)$ at its end,
+\begin{equation}\label{eq:gglide}
+  G[n] = G_0 + \frac{n}{N}\,(G_1 - G_0), \qquad 0 \le n < N,
+\end{equation}
+while with neither moving the constant gain of eq.~\eqref{eq:gscale} is used unchanged. The prefiltered copy (Section~\ref{sec:smp}) is
+chosen from the grain's rate \emph{including} its jitter, $r = r_{\mathrm{note}}\,r_{\mathrm{pitch}}\,2^{\delta/1200}$, so that $r/2^{\ell} \le 2^{3/12}$ on
+copy $\ell$ for every grain; a grain whose jitter does not change $\ell$ keeps the pre-v1.12 arithmetic.
+
 \subsection{Fixed-Point Position Stepping and SIMD Consistency}
 
 Grain read positions advance using 32.32 fixed-point arithmetic (32 integer bits and 32 fractional bits in a 64-bit
@@ -618,6 +633,94 @@ every bar line whatever the count.
 \begin{callout}{Defaults Leave the Arithmetic Untouched}
 At GLIDE 0, with LEGATO off and no slides in the pattern, the offset is $o \equiv 0$ and the voice never evaluates eq.~\eqref{eq:glideratio}; in 4/4, $\beta = 4$ and eq.~\eqref{eq:bar} gives the
 v1.10.1 lengths exactly. Sessions that do not use the new controls therefore render as they did in v1.10.1.
+\end{callout}
+
+
+% ================================================================ 9
+\newpage
+\section{Fourier Series, Folding and Wavetables}\label{sec:fourier}
+
+Version 1.12.0 makes the harmonic description of a wave playable. CUSTOM sums a Fourier series from 32 tables, NAIVE removes
+the band-limiting of Section~\ref{sec:blep} so that folding can be heard, and DRAW analyses a drawn cycle into the series
+(\code{Wavetable.h}, \code{CycleAnalysis.h}).
+
+\subsection{The Series and its Presets}
+
+With levels $a_k \in [0,1]$ and phases $\varphi_k \in [0, 2\pi)$, the custom wave over one cycle $t \in [0,1)$ is
+\begin{equation}\label{eq:series}
+  x(t) = g \sum_{k=1}^{n} a_k \sin(2\pi k t + \varphi_k), \qquad g = \frac{4}{\pi},
+\end{equation}
+so that $a_k = 1/k$ on odd $k$ gives the unit square wave. The presets are the classical series rewritten in this form:
+\begin{align}
+  \text{square:}\quad & \frac{4}{\pi}\sum_{k\ \mathrm{odd}} \frac{\sin 2\pi k t}{k} &&\Rightarrow a_k = \frac{1}{k},\ \varphi_k = 0 \label{eq:sq}\\
+  \text{saw } (2t-1):\quad & -\frac{2}{\pi}\sum_{k\ge 1} \frac{\sin 2\pi k t}{k} &&\Rightarrow a_k = \frac{1}{2k},\ \varphi_k = \pi \label{eq:saw}\\
+  \text{triangle:}\quad & -\frac{8}{\pi^2}\sum_{k\ \mathrm{odd}} \frac{\cos 2\pi k t}{k^2} &&\Rightarrow a_k = \frac{2}{\pi k^2},\ \varphi_k = \tfrac{3\pi}{2} \label{eq:tri}
+\end{align}
+using $-\sin\theta = \sin(\theta+\pi)$ and $-\cos\theta = \sin(\theta + \tfrac{3\pi}{2})$; the sine preset is $a_1 = \pi/4$.
+
+\subsection{The Gibbs Overshoot}
+
+The partial sums of eq.~\eqref{eq:sq} converge pointwise but not uniformly. Near the jump at $t=0$ the maximum of the
+$N$-term partial sum tends to
+\begin{equation}\label{eq:gibbs}
+  \frac{2}{\pi}\operatorname{Si}(\pi) = \frac{2}{\pi}\int_0^{\pi} \frac{\sin u}{u}\,du \approx 1.17898,
+\end{equation}
+an overshoot of $0.179$ on a plateau of 1, or $8.95\%$ of the jump of 2, independent of $N$; only its width, about $1/(2N)$
+of a cycle, shrinks. NeonSynth's 32-harmonic square peaks at $1.1793$ (\code{FourierTests}).
+
+\subsection{Folding}
+
+A sampled partial at $f$ cannot be told from one at $f - mF_s$ for integer $m$. The alias that appears in $[0, F_s/2]$ is
+\begin{equation}\label{eq:fold}
+  f_{\mathrm{a}} = \bigl|\,k f_0 - m F_s\,\bigr|, \qquad m = \operatorname{round}\!\left(\frac{k f_0}{F_s}\right),
+\end{equation}
+so as $f_0$ rises with $k f_0$ just above $F_s/2$, $f_{\mathrm{a}} = F_s - k f_0$ falls. For $f_0 = 2217.46$\,Hz at $F_s = 48$\,kHz,
+$k = 11$ folds to $23\,607.9$\,Hz and $k = 12$ to $21\,390.5$\,Hz.
+
+\subsection{Cumulative Tables and Band-Limiting by Selection}
+
+The 32 tables of $L = 2048$ points hold the partial sums,
+\begin{equation}\label{eq:tables}
+  T_n[i] = s \sum_{k=1}^{n} a_k \sin\!\left(\frac{2\pi k i}{L} + \varphi_k\right), \qquad
+  s = \min\!\left(\frac{4}{\pi},\ \frac{2}{\max_i \lvert \sum_{k=1}^{32} a_k \sin(2\pi k i / L + \varphi_k) \rvert}\right),
+\end{equation}
+and a voice with phase step $\Delta t$ cycles per sample plays
+\begin{equation}\label{eq:nplay}
+  n_{\mathrm{play}} = \min\!\left(H,\ \left\lceil \frac{1}{2\Delta t} \right\rceil - 1\right),
+\end{equation}
+where $H$ is HARMONICS (NAIVE: $n_{\mathrm{play}} = H$). Every harmonic $k \le n_{\mathrm{play}}$ then satisfies $k\,\Delta t < \tfrac12$, so the table is
+alias-free at that pitch; one set serves every pitch and sample rate. Table changes are crossfaded linearly over 5\,ms; a new
+set is entered with the decaying offset $d\,(1 - n/N_{5\,\mathrm{ms}})$, $d = y_{\mathrm{last}} - T'_n(t)$, so the old set is never read again.
+
+\subsection{Catmull--Rom Reads}
+
+With $f$ the fraction between points $y_1$ and $y_2$,
+\begin{equation}\label{eq:cr}
+  y(f) = y_1 + \tfrac12(y_2 - y_0)f + \bigl(y_0 - \tfrac52 y_1 + 2y_2 - \tfrac12 y_3\bigr)f^2 + \bigl(\tfrac12(y_3 - y_0) + \tfrac32(y_1 - y_2)\bigr)f^3 .
+\end{equation}
+For a sinusoid sampled at $P$ points per cycle its error falls as $P^{-4}$: harmonic 32 of a 2048-point table has $P = 64$ and a
+worst error of $1.5\times10^{-5}$ of its amplitude ($-96$\,dB), the fundamental ($P = 2048$) below $-180$\,dB.
+
+\subsection{Analysing a Drawn Cycle}
+
+For a drawn cycle $x[i]$, $i = 0,\dots,M-1$, $M = 256$:
+\begin{equation}\label{eq:dft}
+  c_k = \frac{2}{M}\sum_{i} x[i]\cos\frac{2\pi k i}{M}, \quad s_k = \frac{2}{M}\sum_{i} x[i]\sin\frac{2\pi k i}{M}, \quad
+  A_k = \sqrt{c_k^2 + s_k^2}, \quad \varphi_k = \operatorname{atan2}(c_k, s_k),
+\end{equation}
+so that $c_k\cos\theta + s_k\sin\theta = A_k\sin(\theta+\varphi_k)$, and $a_k = A_k / g$ for $k = 1,\dots,32$, all scaled by
+$1/\max_k a_k$ if that exceeds 1. The mean ($k = 0$) is dropped. A cycle made of harmonics $1,\dots,32$ alone is recovered
+within $10^{-5}$ (\code{CycleAnalysisTests}).
+
+\begin{callout}{Phase Deafness and its Limit}
+Steady harmonics are heard by their levels $a_k$, not their phases: ZERO PHASE sets every $\varphi_k = 0$ and changes the drawn cycle
+but not the sound, because $s$ in eq.~\eqref{eq:tables} depends on the phases only when a wave would peak above 2. A nonlinearity after
+the oscillator (FOLD, DRIVE, the soft clipper) responds to the waveform itself, so there the phases matter again.
+\end{callout}
+
+\begin{callout}{Defaults Leave the Arithmetic Untouched}
+With NAIVE and CUSTOM off the oscillator runs its v1.11 code path, and sessions without \code{<Harmonics>} or \code{<Drawing>}
+render exactly as before.
 \end{callout}
 
 \end{document}

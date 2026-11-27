@@ -110,6 +110,12 @@ public:
     static constexpr double minSizeSecondsDouble = 0.005;
     static constexpr double maxSizeSecondsDouble = 0.5;
 
+    /**
+        Size and Density glide to a new value over 20 ms (v1.12.0, fix 7c), like the other knobs:
+        before, a turned or automated knob stepped the level (the overlap gain) once per block.
+    */
+    static constexpr double sizeDensityGlideSeconds = 0.02;
+
     /** Per-block settings from the Grain parameters. */
     struct Settings
     {
@@ -159,6 +165,10 @@ public:
         noteRatio = ratio;
 
         settings = finiteOr (newSettings, settings);
+        sizeGlide.reset (hostRate, sizeDensityGlideSeconds);        // a new note starts at the settings,
+        densityGlide.reset (hostRate, sizeDensityGlideSeconds);     // not gliding from the last note's
+        sizeGlide.setCurrentAndTargetValue (settings.sizeSeconds);
+        densityGlide.setCurrentAndTargetValue (settings.density);
         scanOffset = 0.0;
         samplesToNextGrain = 0;   // the first grain starts at once
         spawning = true;
@@ -181,8 +191,13 @@ public:
             pitchRatio = ratio;
     }
 
-    /** Settings for the grains that start from now on (Position and Scan act immediately). */
-    void setSettings (const Settings& newSettings) noexcept   { settings = finiteOr (newSettings, settings); }
+    /** Settings for the grains that start from now on (Position and Scan act immediately; Size and Density glide over 20 ms). */
+    void setSettings (const Settings& newSettings) noexcept
+    {
+        settings = finiteOr (newSettings, settings);
+        sizeGlide.setTargetValue (settings.sizeSeconds);
+        densityGlide.setTargetValue (settings.density);
+    }
 
     /** The settings set last: begin() takes them for a new note. */
     const Settings& getSettings() const noexcept   { return settings; }
@@ -201,6 +216,15 @@ public:
     int getNumActiveGrains() const noexcept  { return numActive; }
     juce::int64 getGrainsStarted() const noexcept   { return grainsStarted; }
     int getLevel() const noexcept            { return level; }
+
+    /** The highest playback step (source samples per output sample, on its copy) of the sounding grains (tests, v1.12.0). */
+    double getHighestGrainStep() const noexcept
+    {
+        double highest = 0.0;
+        for (int i = 0; i < numActive; ++i)
+            highest = juce::jmax (highest, (double) grains[(size_t) i].step * (1.0 / fixedPointOne));
+        return highest;
+    }
 
     /** Read position (0..1) of up to `max` sounding grains, for display; returns how many. */
     int getGrainPositions (float* dest, int max) const noexcept
@@ -232,13 +256,18 @@ public:
         // halfway, and the atomic is read once rather than once per grain and segment.
         const SimdPath path = activeSimdPath();
 
+        // v1.12.0 (7c): while Size or Density glides, onsets, grain lengths and the gain follow
+        // the glide; otherwise they use the settings exactly as before.
+        const bool gliding = sizeGlide.isSmoothing() || densityGlide.isSmoothing();
+        const float gainStart = gliding ? overlapGain (sizeGlide.getCurrentValue(), densityGlide.getCurrentValue()) : 1.0f;
+
         int pos = 0;
         while (pos < numSamples)
         {
             if (spawning && samplesToNextGrain <= 0)
             {
                 startGrain();
-                const double interval = hostRate / (double) juce::jlimit (minDensity, maxDensity, settings.density);
+                const double interval = hostRate / (double) juce::jlimit (minDensity, maxDensity, currentDensity());
                 samplesToNextGrain = juce::jmax (1, (int) (interval * (minOnsetScale + onsetScaleRange * random01())));
             }
 
@@ -258,12 +287,27 @@ public:
 
             samplesToNextGrain -= segment;
             pos += segment;
+            if (gliding)
+            {
+                sizeGlide.skip (segment);
+                densityGlide.skip (segment);
+            }
         }
 
-        const float overlap = juce::jlimit (minSizeSeconds, maxSizeSeconds, settings.sizeSeconds) * juce::jlimit (minDensity, maxDensity, settings.density);
-        const float gain = 1.0f / std::sqrt (juce::jmax (1.0f, overlap));
-        for (int i = 0; i < numSamples; ++i)
-            out[i] *= gain;
+        if (! gliding)
+        {
+            const float gain = overlapGain (settings.sizeSeconds, settings.density);   // as before v1.12.0, bit for bit
+            for (int i = 0; i < numSamples; ++i)
+                out[i] *= gain;
+        }
+        else
+        {
+            // Size or Density is gliding: the gain moves from the block's first value to its last.
+            const float gainEnd = overlapGain (sizeGlide.getCurrentValue(), densityGlide.getCurrentValue());
+            const float step = (gainEnd - gainStart) / (float) numSamples;
+            for (int i = 0; i < numSamples; ++i)
+                out[i] *= gainStart + step * (float) i;
+        }
     }
 
     /** One sample (for tests; the voice renders whole blocks). */
@@ -615,6 +659,9 @@ private:
         if (numActive >= maxGrains)
             return;   // all busy: skip this onset rather than cut a grain off
 
+        // Jitter first (the random draws keep their order: jitter, then spray).
+        const double jitter = std::pow (2.0, (double) (settings.jitterCents * (2.0f * random01() - 1.0f)) / 1200.0);
+
         // The copy and rate for this grain: the note's, or under pitch modulation the
         // ones that suit the note's ratio times the current pitch ratio.
         int grainLevel = level;
@@ -622,16 +669,24 @@ private:
         if (pitchRatio != 1.0f)
         {
             const double ratio = noteRatio * (double) pitchRatio;
-            grainLevel = 0;
-            while (grainLevel < SampleData::numLevels - 1 && ratio / (double) (1 << grainLevel) > SampleReader::maxFullRateIncrement)
-                ++grainLevel;
+            grainLevel = levelFor (ratio);
             grainIncrement = ratio / (double) (1 << grainLevel);
         }
 
-        const int length = sample->getLength (grainLevel);
-        const int sizeSamples = juce::jmax (minGrainSamples, (int) (juce::jlimit (minSizeSecondsDouble, maxSizeSecondsDouble, (double) settings.sizeSeconds) * hostRate));
+        // v1.12.0 (7b): the copy is chosen for the grain's pitch including Jitter. Before, a grain
+        // jittered up read the copy chosen for the note alone, so its top octave could alias. Only
+        // a grain whose jitter moves it to another copy changes; the others are computed as before.
+        double increment = grainIncrement * jitter;
+        if (jitter > 1.0)
+            if (const double jittered = noteRatio * (double) pitchRatio * jitter; levelFor (jittered) != grainLevel)
+            {
+                grainLevel = levelFor (jittered);
+                increment = jittered / (double) (1 << grainLevel);
+            }
 
-        double increment = grainIncrement * std::pow (2.0, (double) (settings.jitterCents * (2.0f * random01() - 1.0f)) / 1200.0);
+        const int length = sample->getLength (grainLevel);
+        const int sizeSamples = juce::jmax (minGrainSamples, (int) (juce::jlimit (minSizeSecondsDouble, maxSizeSecondsDouble, (double) currentSize()) * hostRate));
+
         const double span = (double) sizeSamples * increment;   // source samples the grain will read
         if (span >= (double) length - interpolationMargin)
             increment = juce::jmax (0.0, ((double) length - interpolationMargin) / (double) sizeSamples);   // longer than the file: slow it to fit
@@ -657,6 +712,26 @@ private:
         grains[(size_t) numActive++] = g;
         ++grainsStarted;
     }
+
+    /** The band-limited copy for a playback ratio on the full-rate copy: the first that keeps the step at most SampleReader::maxFullRateIncrement. */
+    static int levelFor (double ratio) noexcept
+    {
+        int l = 0;
+        while (l < SampleData::numLevels - 1 && ratio / (double) (1 << l) > SampleReader::maxFullRateIncrement)
+            ++l;
+        return l;
+    }
+
+    /** Grains overlap by about Size x Density; their sum is scaled by 1 / sqrt (overlap). */
+    static float overlapGain (float sizeSeconds, float density) noexcept
+    {
+        const float overlap = juce::jlimit (minSizeSeconds, maxSizeSeconds, sizeSeconds) * juce::jlimit (minDensity, maxDensity, density);
+        return 1.0f / std::sqrt (juce::jmax (1.0f, overlap));
+    }
+
+    /** Size and Density now: the glide's value while gliding, else the setting itself (bit-identical to before v1.12.0). */
+    float currentSize() const noexcept      { return sizeGlide.isSmoothing() ? sizeGlide.getCurrentValue() : settings.sizeSeconds; }
+    float currentDensity() const noexcept   { return densityGlide.isSmoothing() ? densityGlide.getCurrentValue() : settings.density; }
 
     /** `s`, with each setting that is not a finite number taken from `previous` instead. */
     static Settings finiteOr (const Settings& s, const Settings& previous) noexcept
@@ -691,6 +766,7 @@ private:
     float  pitchRatio = 1.0f;    // from setPitchRatio()
     int level = 0, samplesToNextGrain = 0;
     bool spawning = false;
+    juce::SmoothedValue<float> sizeGlide { 0.08f }, densityGlide { 30.0f };   // v1.12.0 (7c)
     juce::uint32 rng = 1;
     juce::int64 grainsStarted = 0;
 };

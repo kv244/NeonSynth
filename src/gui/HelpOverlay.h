@@ -231,6 +231,10 @@ private:
             "OVERTONE: how far the shaded steps are cut (100% silences them, 200% turns them upside down). COMB repeats the pattern within each cycle.",
             "NOISE fades the wave into white noise. FOLD folds it back on itself for brighter harmonics; DRIVE sets how hard." } }, neon::cyan);
 
+        addSection (0, { "FOURIER (above the strip; v1.12)", {
+            "CUSTOM plays a wave built from 32 harmonics, set as bars in the HARMONICS view; HARMONICS sets how many play. BUILD adds them one by one.",
+            "NAIVE switches band-limiting off: harmonics above half the sample rate fold back down (red on the SPECTRUM). DRAW: draw one cycle in the strip." } }, neon::cyan);
+
         addSection (0, { "MOVEMENT (MODULATION panel)", {
             "LFO: a slow wave (Sine, Triangle, Square, Saw, or Random: a new level each cycle). RATE sets its speed in Hz; with SYNC it is a note length that follows the tempo.",
             "PITCH, CUTOFF and AMP set how far it moves the pitch (semitones), the filter (octaves; the green band under CUTOFF) and the level (tremolo). At 0 it does nothing.",

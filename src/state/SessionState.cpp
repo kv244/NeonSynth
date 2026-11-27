@@ -48,8 +48,10 @@ namespace
 }
 
 SessionState::SessionState (juce::AudioProcessor& processorToNotify, juce::AudioProcessorValueTreeState& parameterState,
-                            StepSequencer& patternSequencer, std::atomic<juce::uint16>& chopPatternBits)
-    : apvts (parameterState), sequencer (patternSequencer), chopPattern (chopPatternBits), hostNotifier (processorToNotify)
+                            StepSequencer& patternSequencer, std::atomic<juce::uint16>& chopPatternBits,
+                            FourierState& fourierState)
+    : apvts (parameterState), sequencer (patternSequencer), chopPattern (chopPatternBits), fourier (fourierState),
+      hostNotifier (processorToNotify)
 {
     publishSample (SampleLoader::makeDefaultSample());
 }
@@ -193,6 +195,8 @@ void SessionState::save (juce::MemoryBlock& destData)
     chop.setProperty (chopPatternId, chopPatternToString (chopPattern.load()), nullptr);
     state.appendChild (chop, nullptr);
 
+    fourier.writeTo (state);   // v1.12.0: Harmonics and Drawing, only when not a new session's
+
     juce::ValueTree sampleTree (sampleId);
     sampleSlot.withCurrent ([&] (const SampleData* sample)
     {
@@ -282,7 +286,8 @@ void SessionState::load (const void* data, int sizeInBytes)
     // the Sample child can carry about 13 MB of base64 FLAC that would otherwise stay in memory.
     auto parameters = tree.createCopy();   // cheap: juce::String values are shared, not copied
     for (int i = parameters.getNumChildren(); --i >= 0;)
-        if (const auto type = parameters.getChild (i).getType(); type == patternId || type == chopId || type == sampleId)
+        if (const auto type = parameters.getChild (i).getType(); type == patternId || type == chopId || type == sampleId
+                                                                       || type == harmonicsId || type == drawingId)
             parameters.removeChild (i, nullptr);
 
     // A value that is not a finite number ("nan" parses as NaN and the APVTS passes it through
@@ -318,6 +323,8 @@ void SessionState::load (const void* data, int sizeInBytes)
     // CHOP's pattern; states from before v1.6.0 have none and get the default.
     chopPattern.store (chopPatternFromString (tree.getChildWithName (chopId).getProperty (chopPatternId).toString(),
                                               ChopSettings().pattern));
+
+    fourier.readFrom (tree);   // v1.12.0; states without them get the SAW set and no drawing
 
     restoreSample (tree.getChildWithName (sampleId));
     loads.fetch_add (1, std::memory_order_release);   // v1.11.0: the editor's pattern undo starts afresh

@@ -4,7 +4,9 @@
 
 #pragma once
 #include <JuceHeader.h>
+#include <optional>
 #include "state/FactoryPresets.h"
+#include "state/FourierState.h"
 #include "state/StateFormat.h"
 
 /**
@@ -16,7 +18,7 @@
     (its name). Loading one goes through setStateInformation(), so a preset file gets every check
     a session gets: it is untrusted input, a file someone may have sent.
 
-    The bank is the 16 factory presets (FactoryPresets.h, compiled in) followed by the user's
+    The bank is the 24 factory presets (FactoryPresets.h, compiled in; 16 until v1.12.0) followed by the user's
     files in Documents/NeonSynth/Presets (created on the first save). Previous and next step
     through both in that order and wrap around. The factory presets are the host's program list.
 
@@ -43,7 +45,7 @@ class PresetManager : public juce::ChangeBroadcaster,
 {
 public:
     static constexpr const char* fileExtension = ".neonpreset";
-    static constexpr int numFactoryPresets = 16;
+    static constexpr int numFactoryPresets = 24;   // 16 in v1.11; v1.12.0 appended 8
 
     /** Largest preset file read: a session with the largest embedded sample is about 14 MB. */
     static constexpr juce::int64 maxFileBytes = juce::int64 { 32 } * 1024 * 1024;
@@ -158,6 +160,13 @@ public:
         }
         if (preset.chop != nullptr)
             xml->createNewChildElement (StateFormat::chopId)->setAttribute (StateFormat::chopPatternId, preset.chop);
+        if (preset.harmonics != nullptr)   // v1.12.0: CUSTOM's harmonics, as a session saves them
+        {
+            const auto spectrum = parseHarmonics (preset.harmonics);
+            jassert (spectrum.has_value());   // PresetTests checks every factory harmonics string parses
+            if (spectrum.has_value())
+                xml->addChildElement (FourierState::harmonicsTree (*spectrum).createXml().release());
+        }
         xml->createNewChildElement (StateFormat::sampleId)->setAttribute (StateFormat::sampleDefaultId, 1);
         return xml;
     }
@@ -195,6 +204,43 @@ public:
         parsed.note = 12 * (octave.getIntValue() + 1) + pitchClass + (sharp ? 1 : 0);
         parsed.valid = juce::isPositiveAndBelow (parsed.note, 128) && parsed.velocity >= 1 && parsed.velocity <= 127;
         return parsed;
+    }
+
+    /**
+        A factory preset's harmonics (v1.12.0): "k:level" or "k:level@phase", separated by spaces,
+        k 1..32, level 0..1, phase in radians 0..2 pi. Unlisted harmonics are 0. Empty if any
+        token is malformed or out of range, or a harmonic is listed twice.
+    */
+    static std::optional<HarmonicSpectrum> parseHarmonics (const char* text)
+    {
+        HarmonicSpectrum s;   // all levels and phases 0
+        std::array<bool, HarmonicSpectrum::numHarmonics> seen {};
+        int count = 0;
+        for (const auto& token : juce::StringArray::fromTokens (text, " ", ""))
+        {
+            if (token.isEmpty())
+                continue;
+            const auto number = token.upToFirstOccurrenceOf (":", false, false);
+            auto rest = token.fromFirstOccurrenceOf (":", false, false);
+            const auto levelText = rest.upToFirstOccurrenceOf ("@", false, false);
+            const auto phaseText = rest.containsChar ('@') ? rest.fromFirstOccurrenceOf ("@", false, false) : juce::String ("0");
+            if (! token.containsChar (':') || number.isEmpty() || ! number.containsOnly ("0123456789")
+                || levelText.isEmpty() || ! levelText.containsOnly ("0123456789.")
+                || phaseText.isEmpty() || ! phaseText.containsOnly ("0123456789."))
+                return std::nullopt;
+            const int k = number.getIntValue();
+            const float level = levelText.getFloatValue(), phase = phaseText.getFloatValue();
+            if (k < 1 || k > HarmonicSpectrum::numHarmonics || seen[(size_t) (k - 1)]
+                || level < 0.0f || level > 1.0f || phase < 0.0f || phase >= juce::MathConstants<float>::twoPi)
+                return std::nullopt;
+            seen[(size_t) (k - 1)] = true;
+            s.levels[(size_t) (k - 1)] = level;
+            s.phases[(size_t) (k - 1)] = phase;
+            ++count;
+        }
+        if (count == 0)
+            return std::nullopt;
+        return s;
     }
 
     static std::vector<PatternStep> parsePattern (const char* text)
