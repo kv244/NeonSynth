@@ -40,7 +40,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MANUAL = ROOT / "docs" / "NeonSynth-User-Manual.md"
-HELP = ROOT / "src" / "gui" / "HelpOverlay.h"
+HELP = ROOT / "src" / "gui" / "HelpOverlay.cpp"   # buildColumns() moved here in v1.13.0
 LAYOUT = ROOT / "tests" / "parameter-layout.txt"
 REPO_URL = "https://github.com/kv244/NeonSynth/"
 
@@ -212,9 +212,9 @@ def check_version():
 
 # ---------------------------------------------------------------------------------------------
 def help_page_text():
-    """The help page's text: the string literals in HelpOverlay.h's buildColumns()."""
+    """The help page's text: the string literals in HelpOverlay.cpp's buildColumns()."""
     source = read(HELP)
-    start = source.find("void buildColumns()")
+    start = source.find("void HelpOverlay::buildColumns()")
     body = source[start:] if start >= 0 else source
     return "\n".join(m.group(1) for m in re.finditer(r'"((?:[^"\\]|\\.)*)"', body))
 
@@ -326,13 +326,13 @@ CPPCHECK_IGNORED_IDS = {
     "missingIncludeSystem": "JUCE and the standard library are not given to cppcheck",
 }
 CPPCHECK_SUPPRESSIONS = [
-    ("containerOutOfBounds", "src/gui/SpectrumView.h", "curve has numPoints + 1 entries; cppcheck takes it for numPoints"),
+    ("containerOutOfBounds", "src/gui/SpectrumView.cpp", "curve has numPoints + 1 entries; cppcheck takes it for numPoints"),
     ("badBitmaskCheck", "src/plugin/MidiRouter.cpp", "keyboardChannel - 1 is 0 on purpose: the channel bits are replaced"),
     ("knownConditionTrueFalse", "tests/EditorTests.cpp", "the page cache's count changes inside paint calls cppcheck does not follow"),
     ("knownConditionTrueFalse", "tests/SampleDataTests.cpp", "where no hash was recorded for the platform, the pad is compared with itself"),
     ("knownConditionTrueFalse", "tests/PresetTests.cpp", "the host's counters change inside pumpMessages(), on the message thread, which cppcheck does not follow"),
     ("knownArgument", "tests/PresetTests.cpp", "the same: the counter is read again after pumpMessages()"),
-    ("unusedFunction", "src/state/PresetManager.h", "compareElements is the comparator juce::Array::sort calls by name"),
+    ("unusedFunction", "src/state/PresetManager.cpp", "compareElements is the comparator juce::Array::sort calls by name"),
     ("suspiciousFloatingPointCast", "tests/FilterTests.cpp", "the float round trip is the point: the filter holds its coefficient as a float"),
 ]
 JUCE_ENTRY_POINTS = {"createPluginFilter", "createEditor"}   # called by JUCE's plugin wrappers

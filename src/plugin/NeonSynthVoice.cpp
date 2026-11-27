@@ -315,3 +315,147 @@ void NeonSynthVoice::resetSeeds() noexcept
     glideOctaves = glideTargetOctaves = 0.0f;
     glideRatio = 1.0f;
 }
+
+bool NeonSynthVoice::canPlaySound (juce::SynthesiserSound* s)
+{
+    return dynamic_cast<NeonSynthSound*> (s) != nullptr;
+}
+
+void NeonSynthVoice::renderNextBlock (juce::AudioBuffer<float>& output, int startSample, int numSamples)
+{
+    // Where the block stands after this call: a note started before the next call sets its
+    // filter coefficients there, with the LFO cutoff of that sample (v1.9.0).
+    const int nextModulationIndex = startSample + numSamples;
+
+    if (! adsr.isActive())
+    {
+        modulationIndex = nextModulationIndex;
+        return;
+    }
+
+    auto* left  = output.getWritePointer (0);
+    auto* right = output.getNumChannels() > 1 ? output.getWritePointer (1) : nullptr;
+
+    // The grain cloud renders the whole stretch up front (block-wise is several times
+    // cheaper than per sample); the loop below reads it like any other source.
+    const bool cloudSounds = cloud.isActive();
+    if (cloudSounds)
+        renderCloud (startSample, numSamples);
+
+    // Pitch modulation ended (or never started) with the sample on another copy than
+    // the note's own: go back to it. Never happens without pitch modulation.
+    if (modulation.pitchRatio == nullptr && ! glideActive())   // (v1.11.0: nor a glide)
+        settleSampleCopy (1.0f, false);
+
+    const bool steady = ! level.isSmoothing() && ! cutoff.isSmoothing() && ! filterMix.isSmoothing() && ! pan.isSmoothing()
+                     && ! resonance.isSmoothing() && ! drive.isSmoothing() && ! modeFade.isSmoothing()
+                     && ! filterEnvelopeMovesCutoff() && ! filterUpdatePending();
+    // The filter envelope advances one step per sample whichever version renders, so its
+    // timing never depends on which one ran - also at amount 0, so it is in step if the
+    // amount is turned up mid-note. A constant envelope (sustaining, or idle) is skipped:
+    // getNextSample() would change nothing, and it stays constant for the whole call (it
+    // only starts to move at a note-on or note-off, or with new parameters, all between
+    // calls). The gliding version steps it inside its loop, where the coefficient updates
+    // read it. The steady version never reads it (it runs only while the envelope is
+    // constant or its amount is 0), so it is stepped here, after the loop: the steady
+    // loop stays exactly what it was before the filter envelope existed.
+    const bool stepFilterEnvelopeAfter = steady && ! filterEnvelope.isConstant();
+
+    const int rendered = steady ? renderSamples<true>  (left, right, startSample, numSamples, cloudSounds)
+                                : renderSamples<false> (left, right, startSample, numSamples, cloudSounds);
+
+    if (stepFilterEnvelopeAfter && adsr.isActive())   // (a voice that ended has reset it)
+        for (int n = 0; n < rendered; ++n)
+            filterEnvelope.getNextSample();
+
+    // The gliding version counts down per sample; the steady one skips ahead here.
+    if (steady)
+        coefficientCountdown = (coefficientCountdown - 1 + coefficientInterval - rendered % coefficientInterval)
+                                   % coefficientInterval + 1;
+
+    samplesSinceOn += rendered;
+    if (samplesSinceOff >= 0)
+        samplesSinceOff += rendered;
+    modulationIndex = nextModulationIndex;
+
+    if (rendered > 0)
+    {
+        sampleNoteFresh = false;
+        shownPitchRatio = isPitchModulated() ? pitchRatioAt (startSample + rendered - 1, 0) : 1.0f;
+    }
+}
+
+void NeonSynthVoice::endVoice() noexcept
+{
+    if (isVoiceActive())
+        clearCurrentNote();
+    finishGlide();   // v1.11.0: the next note glides from where this one was going
+    filter.reset();
+    filterEnvelope.reset();
+    modeFade.setCurrentAndTargetValue (1.0f);
+    lastEnvelope = 0.0f;
+    reader.end();          // silent now: let go of the sample
+    fadingReader.end();
+    fadingSamplesLeft = 0;
+    fadingCopy = false;
+    cloud.end();
+}
+
+void NeonSynthVoice::setFilterCoefficients() noexcept
+{
+    coefficientCutoffHz  = modulatedCutoffHz();
+    coefficientResonance = resonance.getCurrentValue();
+    if (coefficientDrive != drive.getCurrentValue())
+    {
+        coefficientDrive = drive.getCurrentValue();
+        driveSettings = CytomicSvf::makeDrive (coefficientDrive);
+    }
+    filter.setCoefficients (coefficientCutoffHz, CytomicSvf::resonanceToK (coefficientResonance));
+    coefficientCountdown = coefficientInterval;
+}
+
+void NeonSynthVoice::renderCloud (int firstIndex, int numSamples) noexcept
+{
+    cloudSamples = juce::jmin (numSamples, (int) cloudBuffer.size());
+    if (! isPitchModulated())
+    {
+        cloud.setPitchRatio (1.0f);   // grains started under modulation glide back to the note's pitch
+        cloud.render (cloudBuffer.data(), cloudSamples);
+    }
+    else
+    {
+        for (int done = 0; done < cloudSamples;)
+        {
+            const int chunk = juce::jmin (cloudChunk, cloudSamples - done);
+            cloud.setPitchRatio (pitchRatioAt (firstIndex + done, done));
+            cloud.render (cloudBuffer.data() + done, chunk);
+            done += chunk;
+        }
+    }
+    cloudRead = 0;
+    if (! cloud.isSounding())
+        cloud.end();
+}
+
+void NeonSynthVoice::settleSampleCopy (float ratio, bool withHysteresis) noexcept
+{
+    if (source != Source::sample || ! reader.isActive() || reader.hasFinished())
+        return;
+
+    const int wanted = reader.levelFor (ratio, withHysteresis);
+    if (wanted == reader.getLevel())
+        return;
+
+    if (sampleNoteFresh)
+    {
+        reader.moveToLevel (wanted);
+        return;
+    }
+    if (fadingSamplesLeft > 0)
+        return;
+
+    reader.copyNoteTo (fadingReader);   // the old copy, fading out from where the note is now
+    reader.moveToLevel (wanted);
+    fadingSamplesLeft = fadingSamplesTotal = juce::jmax (1, (int) (sampleCrossfadeSeconds * sampleRate));
+    fadingCopy = true;
+}

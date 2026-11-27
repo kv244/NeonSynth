@@ -246,6 +246,29 @@ juce_add_binary_data(NeonSynthFonts
         fonts/IBMPlexMono-Regular.ttf
         fonts/IBMPlexMono-SemiBold.ttf)
 
+# Every .cpp file of the plugin, in one list: the plugin, the tests' engine library and the
+# integrity build all compile the same files (v1.13.0, when message-thread code left the headers).
+set(neonsynth_cpp_sources
+    src/state/SessionState.cpp
+    src/state/PresetManager.cpp
+    src/sequencer/StepSequencer.cpp
+    src/gui/NeonSynthEditor.cpp
+    src/gui/CrtLookAndFeel.cpp
+    src/gui/SpectrumView.cpp
+    src/gui/HarmonicsView.cpp
+    src/gui/ShapeView.cpp
+    src/gui/SequencerView.cpp
+    src/gui/AdsrView.cpp
+    src/gui/PatternRow.cpp
+    src/gui/PresetBar.cpp
+    src/gui/HelpOverlay.cpp
+    src/gui/SampleView.cpp
+    src/plugin/NeonSynthProcessor.cpp
+    src/plugin/Parameters.cpp
+    src/plugin/MidiRouter.cpp
+    src/plugin/NeonSynthVoice.cpp
+    src/plugin/MidiLogger.cpp)
+
 target_sources(NeonSynth
     PRIVATE
         # src/dsp
@@ -262,11 +285,13 @@ target_sources(NeonSynth
         src/dsp/Wavetable.h
         # src/sequencer
         src/sequencer/StepSequencer.h
+        src/sequencer/StepSequencer.cpp
         # src/state
         src/state/SampleData.h
         src/state/SampleLoader.h
         src/state/SampleSlot.h
         src/state/PresetManager.h
+        src/state/PresetManager.cpp
         src/state/FactoryPresets.h
         src/state/SessionState.h
         src/state/FourierState.h
@@ -277,20 +302,31 @@ target_sources(NeonSynth
         src/gui/CrtTheme.h
         src/gui/CrtFrame.h
         src/gui/CrtLookAndFeel.h
+        src/gui/CrtLookAndFeel.cpp
         src/gui/NeonStyle.h
         src/gui/SignalHistory.h
         src/gui/ScopeView.h
         src/gui/SpectrumView.h
+        src/gui/SpectrumView.cpp
         src/gui/LevelMeter.h
         src/gui/AdsrView.h
+        src/gui/AdsrView.cpp
         src/gui/VoiceLights.h
         src/gui/SampleView.h
+        src/gui/SampleView.cpp
         src/gui/ShapeView.h
+        src/gui/ShapeView.cpp
         src/gui/HarmonicsView.h
+        src/gui/HarmonicsView.cpp
         src/gui/LfoView.h
         src/gui/SequencerView.h
+        src/gui/SequencerView.cpp
+        src/gui/PatternRow.h
+        src/gui/PatternRow.cpp
         src/gui/HelpOverlay.h
+        src/gui/HelpOverlay.cpp
         src/gui/PresetBar.h
+        src/gui/PresetBar.cpp
         # src/plugin
         src/plugin/NeonSynthProcessor.h
         src/plugin/NeonSynthProcessor.cpp
@@ -420,14 +456,7 @@ if(NEONSYNTH_BUILD_TESTS)
 #endif
 ")
 
-    add_library(neonsynth_engine STATIC
-        src/plugin/NeonSynthProcessor.cpp
-        src/plugin/Parameters.cpp
-        src/plugin/MidiRouter.cpp
-        src/plugin/MidiLogger.cpp
-        src/plugin/NeonSynthVoice.cpp
-        src/state/SessionState.cpp
-        src/gui/NeonSynthEditor.cpp)
+    add_library(neonsynth_engine STATIC ${neonsynth_cpp_sources})
     target_include_directories(neonsynth_engine PUBLIC ${CMAKE_CURRENT_LIST_DIR}/src)
     target_link_libraries(neonsynth_engine
         PUBLIC
@@ -478,6 +507,8 @@ if(NEONSYNTH_BUILD_TESTS)
     foreach(test ${NEONSYNTH_UNIT_TESTS})
         target_link_libraries(${test} PRIVATE neonsynth_test_juce)
     endforeach()
+    # Unit tests whose class has a .cpp of its own (v1.13.0) compile it in, still without the engine.
+    target_sources(StepSequencerTests PRIVATE src/sequencer/StepSequencer.cpp)
 
     # One precompiled header for all the test programs, built by this small target with the
     # same flags they use (a precompiled header only fits a compile with matching flags).
@@ -523,8 +554,6 @@ endif()
 
 if(NEONSYNTH_INTEGRITY)
     file(GLOB neonsynth_test_sources CONFIGURE_DEPENDS ${CMAKE_CURRENT_LIST_DIR}/tests/*.cpp)
-    set_source_files_properties(src/plugin/NeonSynthProcessor.cpp src/plugin/Parameters.cpp src/plugin/MidiRouter.cpp
-                                src/plugin/MidiLogger.cpp src/plugin/NeonSynthVoice.cpp src/state/SessionState.cpp
-                                src/gui/NeonSynthEditor.cpp ${neonsynth_test_sources}
+    set_source_files_properties(${neonsynth_cpp_sources} ${neonsynth_test_sources}
         PROPERTIES COMPILE_OPTIONS "${neonsynth_integrity_flags}")
 endif()

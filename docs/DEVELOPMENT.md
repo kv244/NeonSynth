@@ -471,7 +471,7 @@ The source files are listed in [Project Structure](#project-structure).
 
 ## Project Structure
 
-The plugin's sources are grouped by job under `src/` (v1.11.0); includes name the folder, as in `#include "dsp/Oscillator.h"`. Code that runs for every sample is header-only, so the compiler sees it inline; setup, per-note work and the GUI are in `.cpp` files (v1.11.1): `NeonSynthProcessor.cpp`, `Parameters.cpp`, `MidiRouter.cpp`, `MidiLogger.cpp`, `NeonSynthVoice.cpp`, `SessionState.cpp` and `NeonSynthEditor.cpp`.
+The plugin's sources are grouped by job under `src/` (v1.11.0); includes name the folder, as in `#include "dsp/Oscillator.h"`. Code that runs for every sample is header-only, so the compiler sees it inline; setup, per-note and per-block work and the GUI are in `.cpp` files (v1.11.1; v1.13.0 moved the views, the look and feel, the sequencer's per-block code, the preset manager and the rest of the voice's per-note code out of their headers too, so editing a method body recompiles one file). The list is `neonsynth_cpp_sources` in `CMakeLists.txt`; the plugin, the tests' engine library and the integrity build all compile it.
 
 | Folder | What lives there |
 |---|---|
@@ -494,32 +494,32 @@ The plugin's sources are grouped by job under `src/` (v1.11.0); includes name th
 | `src/dsp/CytomicSvf.h` | The state-variable filter (low-pass, high-pass, band-pass, notch) with drive |
 | `src/dsp/Lfo.h` / `src/dsp/Modulation.h` | The LFO and the shared per-block modulation buffers (pitch, cutoff, tremolo), pitch bend and the mod wheel |
 | `src/dsp/VoiceEnvelope.h` | The voice's ADSR envelope (slewed sustain, release rate fixed at note-off) |
-| `src/sequencer/StepSequencer.h` | Step sequencer engine — timing, swing, gate, LENGTH, ties and slides, the scale lock, note-off queue, lock-free pattern; the pattern tools, undo history and step entry |
+| `src/sequencer/StepSequencer.h`, `.cpp` | Step sequencer engine — timing, swing, gate, LENGTH, ties and slides, the scale lock, note-off queue, lock-free pattern; the pattern tools, undo history and step entry |
 | `src/state/SampleData.h` | A prepared sample: mono, normalised, 24-bit grid, with 1/2- and 1/4-rate copies |
 | `src/state/SampleSlot.h` | Lock-free hand-off of the current sample to the audio thread; frees replaced samples only when safe |
 | `src/state/SampleLoader.h` | Loads WAV, AIFF and FLAC files and embedded FLAC; renders the built-in pad |
-| `src/state/PresetManager.h` | Presets (v1.11.0): `.neonpreset` files (the session's XML with a category and a name), the user folder, the bank order, the host's program list, and what a session remembers of its preset |
+| `src/state/PresetManager.h`, `.cpp` | Presets (v1.11.0): `.neonpreset` files (the session's XML with a category and a name), the user folder, the bank order, the host's program list, and what a session remembers of its preset |
 | `src/state/SessionState.h`, `.cpp` | The saved session (v1.11.1, moved from the processor): writing and reading the state the host stores (its layout is in `StateFormat.h`), the embedded sample and its status, CHOP's pattern string, the nesting check |
 | `src/state/FourierState.h` | CUSTOM's levels and phases and the drawn cycle (v1.12.0): saved as `<Harmonics>` and `<Drawing>` only when used, and the `WavetableBank` the voices read |
 | `src/state/FactoryPresets.h` | The 24 factory presets (16 until v1.12.0), written as data in each parameter's own units, with their patterns, CHOP steps and CUSTOM harmonics |
-| `src/gui/ShapeView.h` | The SHAPE strip's drawing of one cycle, with CHOP step editing; with CUSTOM and DRAW on (v1.12.0), drawing a cycle |
-| `src/gui/HarmonicsView.h` | The HARMONICS view (v1.12.0): the 32 bars, phase rings, presets, BUILD and ZERO PHASE |
-| `src/gui/SampleView.h` | The sample's waveform in the editor, with draggable markers and live playheads |
+| `src/gui/ShapeView.h`, `.cpp` | The SHAPE strip's drawing of one cycle, with CHOP step editing; with CUSTOM and DRAW on (v1.12.0), drawing a cycle |
+| `src/gui/HarmonicsView.h`, `.cpp` | The HARMONICS view (v1.12.0): the 32 bars, phase rings, presets, BUILD and ZERO PHASE |
+| `src/gui/SampleView.h`, `.cpp` | The sample's waveform in the editor, with draggable markers and live playheads |
 | `src/gui/NeonSynthEditor.h`, `.cpp` | The editor — layout, controls, resizing, the 30 Hz timer that feeds the visualisers, the SCANLINES switch; the `.cpp` also defines `NeonSynthProcessor::createEditor()`, so the processor does not include the GUI |
 | `src/gui/CrtTheme.h` | The retro CRT look's shared pieces (v1.10.0): palette, the embedded VT323 and IBM Plex Mono fonts, glow text, `CachedPainter` (draw once at the screen's pixel scale, then copy) and the scanline overlay |
 | `src/gui/CrtFrame.h` | The CRT frame: bezel, tube glass, panels and their titles, the GAIN fader's groove and dB marks |
-| `src/gui/CrtLookAndFeel.h` | How every stock control is drawn in the CRT look: knobs, sliders, buttons, combo boxes and pop-up menus |
+| `src/gui/CrtLookAndFeel.h`, `.cpp` | How every stock control is drawn in the CRT look: knobs, sliders, buttons, combo boxes and pop-up menus |
 | `src/gui/LfoView.h` | The LFO's drawing in the MODULATION panel |
-| `src/gui/SequencerView.h` | The 16-step grid in the editor (editing, the velocity bar, the TIE / SLD markers, the faded steps beyond LENGTH, the ENTER cursor, the playhead) |
-| `src/gui/PatternRow.h` | The sequencer's pattern row (v1.11.0): LENGTH, KEY, SCALE, TOOLS, ENTER and UNDO |
-| `src/gui/PresetBar.h` | The preset bar in the header (v1.11.0): <, the name and category with the preset menu, >, SAVE |
-| `src/gui/HelpOverlay.h` | Quick-help page opened by the editor's ? button |
+| `src/gui/SequencerView.h`, `.cpp` | The 16-step grid in the editor (editing, the velocity bar, the TIE / SLD markers, the faded steps beyond LENGTH, the ENTER cursor, the playhead) |
+| `src/gui/PatternRow.h`, `.cpp` | The sequencer's pattern row (v1.11.0): LENGTH, KEY, SCALE, TOOLS, ENTER and UNDO |
+| `src/gui/PresetBar.h`, `.cpp` | The preset bar in the header (v1.11.0): <, the name and category with the preset menu, >, SAVE |
+| `src/gui/HelpOverlay.h`, `.cpp` | Quick-help page opened by the editor's ? button |
 | `src/gui/NeonStyle.h` | The neon palette and the drawing helpers the views share: panel inset, graticule, phosphor glow, afterglow, readout formats |
 | `src/gui/SignalHistory.h` | The newest output samples from the scope FIFO, and the display window's scaling with the sample rate |
 | `src/gui/ScopeView.h` | The triggered oscilloscope, with afterglow |
-| `src/gui/SpectrumView.h` | The spectrum analyser and the filter's response curve, with afterglow |
+| `src/gui/SpectrumView.h`, `.cpp` | The spectrum analyser and the filter's response curve, with afterglow |
 | `src/gui/LevelMeter.h` | The block L/R meter with peak hold and the clip light |
-| `src/gui/AdsrView.h` | The envelope graph with its draggable points and the voices' positions |
+| `src/gui/AdsrView.h`, `.cpp` | The envelope graph with its draggable points and the voices' positions |
 | `src/gui/VoiceLights.h` | The 16 voice lights; clicking one sets the voice limit |
 | `src/plugin/NeonSynthProcessor.h`, `.cpp` | `AudioProcessor` — `processBlock` (modulation, the voices, output gain, the soft clipper), the voice views, the scope FIFO, programs, and the glue between the parts below |
 | `src/plugin/Parameters.h`, `.cpp` | The host parameters (v1.11.1): `createParameterLayout()`, every range and default, and the typed parameter pointers the processor reads each block |
