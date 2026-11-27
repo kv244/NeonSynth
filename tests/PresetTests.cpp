@@ -5,7 +5,7 @@
 /*
     Presets (v1.11.0): PresetManager.h, FactoryPresets.h, PresetBar.h and the host program list.
 
-      - The factory data: 16 presets, unique names, known categories, every parameter ID real and
+      - The factory data: 24 presets (v1.12.0 appended 8), unique names, known categories, every parameter ID real and
         every value inside its range, patterns of 16 valid steps (a slide always into a step that
         plays), CHOP text of 16 steps.
       - Every factory preset loads: each parameter at the preset's value or its default, the
@@ -17,7 +17,7 @@
         that is not one of ours is dropped; the window's view settings are kept across a load.
       - The user folder is created on the first save, listed sorted; previous and next run
         through the factory bank, then the user's presets, and wrap; a damaged file is skipped.
-      - Programs: 16 names, setCurrentProgram loads, the host is told (programChanged) on the
+      - Programs: 24 names, setCurrentProgram loads, the host is told (programChanged) on the
         message thread, and a restored session reports the same program (so a VST3 host's own
         copy of the program number does not load a preset over it).
       - Broken preset files are refused and change nothing.
@@ -129,10 +129,11 @@ namespace
         std::printf ("Factory data\n");
         NeonSynthProcessor p;
         const auto& presets = FactoryPresets::all();
-        check (presets.size() == (size_t) PresetManager::numFactoryPresets, "16 factory presets");
+        check (presets.size() == (size_t) PresetManager::numFactoryPresets, "24 factory presets (16 until v1.12.0, 8 appended)");
 
         std::set<juce::String> names;
-        bool categoriesKnown = true, idsKnown = true, valuesInRange = true, patternsValid = true, slidesPlay = true, chopValid = true;
+        bool categoriesKnown = true, idsKnown = true, valuesInRange = true, patternsValid = true, slidesPlay = true, chopValid = true,
+             harmonicsValid = true, customHasHarmonics = true;
         juce::String problem;
         for (const auto& preset : presets)
         {
@@ -168,6 +169,12 @@ namespace
             }
             if (preset.chop != nullptr)
                 chopValid = chopValid && juce::String (preset.chop).length() == 16 && juce::String (preset.chop).containsOnly ("01");
+            if (preset.harmonics != nullptr)
+                harmonicsValid = harmonicsValid && PresetManager::parseHarmonics (preset.harmonics).has_value();
+            bool custom = false;
+            for (const auto& [id, value] : preset.values)
+                custom = custom || (juce::String (id) == "custom" && value > 0.5f);
+            customHasHarmonics = customHasHarmonics && custom == (preset.harmonics != nullptr);
         }
         if (problem.isNotEmpty())
             std::printf ("        %s\n", problem.toRawUTF8());
@@ -178,6 +185,18 @@ namespace
         check (patternsValid, "every pattern has 16 valid steps");
         check (slidesPlay, "every slide is on a playing step and slides into one");
         check (chopValid, "every CHOP pattern has 16 steps of 0 and 1");
+        check (harmonicsValid, "every harmonics list parses (k 1..32 once each, level 0..1, phase 0..2 pi)");
+        check (customHasHarmonics, "a preset sets harmonics exactly when it turns CUSTOM on");
+
+        const auto parsed = PresetManager::parseHarmonics ("1:1 3:0.5@1.5");
+        check (parsed.has_value() && parsed->levels[0] == 1.0f && parsed->levels[2] == 0.5f && parsed->phases[2] == 1.5f
+                   && parsed->levels[1] == 0.0f && parsed->phases[0] == 0.0f,
+               "the harmonics notation: 1:1 3:0.5@1.5 sets harmonic 1 and harmonic 3 (phase 1.5), the rest 0");
+        check (! PresetManager::parseHarmonics ("0:1").has_value() && ! PresetManager::parseHarmonics ("33:1").has_value()
+                   && ! PresetManager::parseHarmonics ("1:1.5").has_value() && ! PresetManager::parseHarmonics ("1:1 1:0.5").has_value()
+                   && ! PresetManager::parseHarmonics ("1:1@7").has_value() && ! PresetManager::parseHarmonics ("x").has_value()
+                   && ! PresetManager::parseHarmonics ("").has_value(),
+               "a harmonic out of 1..32, a level above 1, a repeat, a phase past 2 pi, or junk is refused");
 
         const auto step = PresetManager::parseStep ("-D#3:90/");
         check (! step.on && step.note == 51 && step.velocity == 90 && step.slide && ! step.tie && step.valid,
@@ -197,6 +216,10 @@ namespace
             { "Warm Sub", { 36 } }, { "Folded Growl", { 36 } }, { "Chopped Lead", { 60 } },
             { "Sampled Pad", { 48, 55, 60, 64 } }, { "Shimmer Cloud", { 60, 67, 72 } }, { "Frozen Cloud", { 48, 55, 60 } },
             { "Wind Sweep", { 36 } }, { "Gale", { 36, 43 } }, { "Drifting Cloud", { 48, 55, 60 } },
+            // v1.12.0: chords where the preset is played in chords; NAIVE ones high, where they alias
+            { "Drawbar Organ", { 48, 60, 64, 67 } }, { "Square Ladder", { 60, 67, 72 } }, { "Octave Stack", { 36 } },
+            { "Hollow Reed", { 60 } }, { "Phase Matters", { 48 } }, { "Aliased Arcade", { 84, 88, 91 } },
+            { "Vowel Ah", { 48, 55, 60 } }, { "Fold-back Siren", { 84 } },
         };
         const auto found = notes.find (name);
         return found != notes.end() ? found->second : std::vector<int> {};
@@ -269,7 +292,8 @@ namespace
         for (auto* parameter : p.getParameters())
             parameter->setValueNotifyingHost (0.77f);
 
-        bool valuesRight = true, allFinite = true, allUnderClipper = true, allSilent = true, programsRight = true, padLoaded = true;
+        bool valuesRight = true, allFinite = true, allUnderClipper = true, allSilent = true, programsRight = true, padLoaded = true,
+             spectrumRight = true;
         std::printf ("        %-16s %-11s %9s %12s\n", "preset", "category", "peak dBFS", "tail dBFS");
         for (int index = 0; index < PresetManager::numFactoryPresets; ++index)
         {
@@ -294,6 +318,15 @@ namespace
                     valuesRight = false;
                     std::printf ("        %s: %s is %g, expected %g\n", preset.name, ranged->getParameterID().toRawUTF8(), actual, expected);
                 }
+            }
+            // v1.12.0: the preset's harmonics, sanitised as any spectrum is; without any, the SAW set.
+            auto expectedSpectrum = preset.harmonics != nullptr ? *PresetManager::parseHarmonics (preset.harmonics)
+                                                                : HarmonicSpectrum::defaultSpectrum();
+            expectedSpectrum.sanitise();
+            if (p.getHarmonicSpectrum() != expectedSpectrum)
+            {
+                spectrumRight = false;
+                std::printf ("        %s: the wrong harmonics after loading\n", preset.name);
             }
             padLoaded = padLoaded && p.withCurrentSample ([] (const SampleData* s) { return s != nullptr && s->getOrigin().isDefault; });
             if (preset.pattern != nullptr)
@@ -327,6 +360,7 @@ namespace
         check (programsRight, "each loads as the current program, with its name and category");
         check (valuesRight, "each sets every parameter to its value or its default, and its pattern");
         check (padLoaded, "each plays the built-in pad");
+        check (spectrumRight, "each loads its harmonics, or the SAW set when it has none (so a CUSTOM preset leaves nothing behind)");
         check (allFinite, "each renders finite audio");
         check (allUnderClipper, "each sounds, and peaks under the output soft clipper (-6 dBFS)");
         check (allSilent, "each ends in silence once released (sequenced ones: once the sequencer stops)");
@@ -472,7 +506,7 @@ namespace
         bool namesRight = p.getNumPrograms() == PresetManager::numFactoryPresets;
         for (int i = 0; i < p.getNumPrograms(); ++i)
             namesRight = namesRight && p.getProgramName (i) == FactoryPresets::all()[(size_t) i].name;
-        check (namesRight, "16 programs, named after the factory presets");
+        check (namesRight, "24 programs, named after the factory presets");
         check (p.getCurrentProgram() == 0 && p.getPresetManager().getCurrentName().isEmpty(), "a new instance has no preset (program 0)");
 
         pumpMessages();

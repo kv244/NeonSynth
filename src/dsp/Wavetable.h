@@ -199,7 +199,7 @@ public:
     const HarmonicSpectrum& getSpectrum() const noexcept   { return source; }
 
 private:
-    static constexpr size_t stride = (size_t) (tableSize + guardPoints);
+    static constexpr size_t stride = (size_t) tableSize + (size_t) guardPoints;
 
     float* table (int n) noexcept   { return &data[(size_t) (n - 1) * stride]; }
 

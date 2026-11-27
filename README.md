@@ -44,7 +44,7 @@ and a final pitch bend. [`docs/demo/make_demo.py`](docs/demo/make_demo.py) rende
   keyboard modes; a LENGTH of 1 to 16 steps, TIE and SLD (303-style slides) on every step, velocity as the
   accent, a KEY and SCALE lock with 13 scales, ENTER to fill steps from your keyboard, pattern TOOLS
   (shift, octave, reverse, randomise in the scale, clear) and 32 levels of UNDO.
-- **Presets**: a preset bar with 16 factory presets in seven categories (also the DAW's program list), and
+- **Presets**: a preset bar with 24 factory presets in seven categories (also the DAW's program list), and
   SAVE for your own, as `.neonpreset` files you can send to someone.
 - **You see what you hear**: oscilloscope, spectrum with the filter curve (and NAIVE's folded harmonics in red), the harmonics as bars, envelope with a dot per voice,
   the LFO's shape and position, the bend and mod-wheel positions, voice lights and a stereo meter, in a window that scales from 75% to 150%. It looks like an old
@@ -115,7 +115,7 @@ MIDI logging and the layout of the source.
 
 | Version | Date | What changed |
 |---|---|---|
-| [v1.12.0](https://github.com/kv244/NeonSynth/releases/tag/v1.12.0) | 24 Nov 2026 | "Fourier": NAIVE to hear aliasing, CUSTOM waves of up to 32 harmonics in a new HARMONICS view with BUILD and ZERO PHASE, and DRAW to draw one cycle; two granular fixes; C++20 and faster builds |
+| [v1.12.0](https://github.com/kv244/NeonSynth/releases/tag/v1.12.0) | 24 Nov 2026 | "Fourier": NAIVE to hear aliasing, CUSTOM waves of up to 32 harmonics in a new HARMONICS view with BUILD and ZERO PHASE, and DRAW to draw one cycle; eight new factory presets that use them; two granular fixes; C++20 and faster builds |
 | [v1.11.1](https://github.com/kv244/NeonSynth/releases/tag/v1.11.1) | 23 Nov 2026 | Refactor release: controls, window and sound unchanged, except that a granular grain bent up past the end of its sample now ends there whatever the block size. The manual's licence and warranty text follows AGPL-3.0-only. JUCE is fetched by CMake when no JUCE_DIR is given; the processor is split by job into smaller files, and a cold build of the plugin and its tests is about five times faster (32 min to 6 min on 2 cores); Python dependencies are pinned with hashes and updated by Dependabot |
 | [v1.11.0](https://github.com/kv244/NeonSynth/releases/tag/v1.11.0) | 23 Nov 2026 | "Playing": HOLD, GLIDE and LEGATO; the sequencer gains LENGTH, TIE and SLD (303-style slides), a KEY and SCALE lock, ENTER from the keyboard, pattern TOOLS, 32-level UNDO and a draggable velocity bar as the accent; presets, with a preset bar, SAVE and 16 factory presets that are also the DAW's program list; LFO bars follow the time signature. Fixes: two voice-stealing faults below 16 voices (sessions using fewer voices may differ where a note is stolen) and a one-sample drift of the internal clock. New tests for playing, presets, voice stealing and sample-rate and block-size sweeps, and the integrity job |
 | [v1.10.1](https://github.com/kv244/NeonSynth/releases/tag/v1.10.1) | 18 Nov 2026 | Hardening: a damaged or hostile session can no longer crash or hang the plugin (a bad embedded-sample size, parameter values that are not numbers, XML nested hundreds of thousands deep, a relative sample path); the host hears of a background sample load on the message thread; new tests for broken sessions, sessions saved by v1.2 to v1.10, random sequencer and envelope settings, and an ASan/UBSan CI job; SECURITY, CONTRIBUTING and this changelog. No change to controls or sound |

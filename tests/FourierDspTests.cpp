@@ -447,7 +447,7 @@ namespace
         bl.setWaveform (PolyBlepOscillator::square);
         bl.setFrequency (exactHz, rate);
         const auto sq = render (bl, 4 * cycle);
-        check (std::abs (sq[(size_t) (2 * cycle + cycle / 4)] - 1.0f) < 1.0e-3f, "the band-limited square sits at the same level (1) between its edges");
+        check (std::abs (sq[(size_t) cycle * 2 + (size_t) cycle / 4] - 1.0f) < 1.0e-3f, "the band-limited square sits at the same level (1) between its edges");
 
         std::puts ("NAIVE: CHOP's edges are hard");
         for (const float hz : { exactHz, (float) (rate / 16.0) })   // 187.5 Hz, and 3 kHz: one sample per segment
@@ -821,7 +821,7 @@ namespace
             const int settled = (int) (PolyBlepOscillator::spectrumFadeSeconds * rate) + 2;
             double worst = 0.0;
             phase.advance (settled);
-            for (size_t i = (size_t) (before + settled); i < out.size(); ++i, phase.advance (1))
+            for (size_t i = (size_t) before + (size_t) settled; i < out.size(); ++i, phase.advance (1))
                 worst = std::max (worst, (double) std::abs (out[i] - square.read (32, phase.t)));
             std::snprintf (what, sizeof (what), "after %.0f ms it is exactly the new table (largest difference %.2g)", PolyBlepOscillator::spectrumFadeSeconds * 1000.0, worst);
             check (worst == 0.0, what);

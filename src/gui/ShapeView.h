@@ -243,7 +243,10 @@ public:
             const int span = std::abs (to.index - lastPoint.index);
             const int direction = to.index >= lastPoint.index ? 1 : -1;
             for (int n = 1; n <= span; ++n)
-                pending[(size_t) (lastPoint.index + n * direction)] = juce::jmap ((float) n / (float) span, lastPoint.value, to.value);
+            {
+                const int index = lastPoint.index + n * direction;
+                pending[(size_t) index] = juce::jmap ((float) n / (float) span, lastPoint.value, to.value);
+            }
             pending[(size_t) to.index] = to.value;
             lastPoint = to;
             repaint();

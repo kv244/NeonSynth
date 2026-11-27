@@ -82,12 +82,7 @@ public:
     {
         const juce::ScopedLock sl (lock);
         if (spectrum != HarmonicSpectrum::defaultSpectrum())
-        {
-            juce::ValueTree h (StateFormat::harmonicsId);
-            h.setProperty (StateFormat::harmonicLevelsId, numbersToString (spectrum.levels.data(), HarmonicSpectrum::numHarmonics), nullptr);
-            h.setProperty (StateFormat::harmonicPhasesId, numbersToString (spectrum.phases.data(), HarmonicSpectrum::numHarmonics), nullptr);
-            parent.appendChild (h, nullptr);
-        }
+            parent.appendChild (harmonicsTree (spectrum), nullptr);
         if (drawing.has_value())
         {
             juce::ValueTree d (StateFormat::drawingId);
@@ -119,6 +114,15 @@ public:
 
         setSpectrum (s);
         setDrawing (d);
+    }
+
+    /** A spectrum as the <Harmonics> element sessions save (also used for factory presets). */
+    static juce::ValueTree harmonicsTree (const HarmonicSpectrum& s)
+    {
+        juce::ValueTree h (StateFormat::harmonicsId);
+        h.setProperty (StateFormat::harmonicLevelsId, numbersToString (s.levels.data(), HarmonicSpectrum::numHarmonics), nullptr);
+        h.setProperty (StateFormat::harmonicPhasesId, numbersToString (s.phases.data(), HarmonicSpectrum::numHarmonics), nullptr);
+        return h;
     }
 
 private:

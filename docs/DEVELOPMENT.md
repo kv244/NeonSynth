@@ -501,7 +501,7 @@ The plugin's sources are grouped by job under `src/` (v1.11.0); includes name th
 | `src/state/PresetManager.h` | Presets (v1.11.0): `.neonpreset` files (the session's XML with a category and a name), the user folder, the bank order, the host's program list, and what a session remembers of its preset |
 | `src/state/SessionState.h`, `.cpp` | The saved session (v1.11.1, moved from the processor): writing and reading the state the host stores (its layout is in `StateFormat.h`), the embedded sample and its status, CHOP's pattern string, the nesting check |
 | `src/state/FourierState.h` | CUSTOM's levels and phases and the drawn cycle (v1.12.0): saved as `<Harmonics>` and `<Drawing>` only when used, and the `WavetableBank` the voices read |
-| `src/state/FactoryPresets.h` | The 16 factory presets, written as data in each parameter's own units, with their patterns and CHOP steps |
+| `src/state/FactoryPresets.h` | The 24 factory presets (16 until v1.12.0), written as data in each parameter's own units, with their patterns, CHOP steps and CUSTOM harmonics |
 | `src/gui/ShapeView.h` | The SHAPE strip's drawing of one cycle, with CHOP step editing; with CUSTOM and DRAW on (v1.12.0), drawing a cycle |
 | `src/gui/HarmonicsView.h` | The HARMONICS view (v1.12.0): the 32 bars, phase rings, presets, BUILD and ZERO PHASE |
 | `src/gui/SampleView.h` | The sample's waveform in the editor, with draggable markers and live playheads |

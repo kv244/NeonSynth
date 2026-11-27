@@ -32,6 +32,7 @@ Each release adds its entry at the top of this section; the full history, fixes 
   - **CUSTOM** plays a wave built from up to 32 harmonics, which you set as bars in the new **HARMONICS** view. Presets give the textbook waves, **BUILD** adds the harmonics one at a time, and **ZERO PHASE** shows that the ear ignores phase. **HARMONICS** sets how many play and can be automated.
   - **DRAW** lets you draw one cycle in the SHAPE strip; it plays as its first 32 harmonics, clean at any pitch.
 - **Granular:** a grain whose pitch JITTER raises it past a band-limit now reads the next band-limited copy of the sample, so it no longer aliases; SIZE and DENSITY glide over 20 ms when you turn or automate them, instead of stepping the level. Sessions that never move them during a note, or use no JITTER, sound as before.
+- **Eight new factory presets** (programs 16 to 23) show the new switches: Drawbar Organ, Square Ladder, Octave Stack, Hollow Reed, Phase Matters, Aliased Arcade, Vowel Ah and Fold-back Siren. See [The factory bank](#the-factory-bank).
 - **Everything else sounds as it did:** with the three switches off, sessions from earlier versions render identically.
 - **For builders:** the code is now C++20, and rebuilds after an edit are two to three times faster (precompiled JUCE headers, the mold linker). See [Building from source](#building-from-source).
 
@@ -725,7 +726,7 @@ The output soft clipper leaves signals below −6 dBFS unchanged and constrains 
 
 ### The preset bar
 
-The preset bar in the header (region 11 in Figure 1) shows the current preset and its category. **<** and **>** step through the 16 factory presets, then your own, and wrap around. Click the name for the menu:
+The preset bar in the header (region 11 in Figure 1) shows the current preset and its category. **<** and **>** step through the 24 factory presets, then your own, and wrap around. Click the name for the menu:
 
 - **FACTORY**: the factory bank, grouped by category;
 - **USER**: your presets, sorted by name;
@@ -734,7 +735,7 @@ The preset bar in the header (region 11 in Figure 1) shows the current preset an
 
 A new instance, or a session saved before v1.11.0, shows **DEFAULT**: no preset has been loaded.
 
-A preset changes the sound, not the window: loading one never changes SCOPE or SPECTRUM, the envelope tab or SCANLINES. It sets every parameter, the pattern and CHOP's pattern; a parameter a factory preset does not list goes to its initial value, so each preset sounds the same whatever was loaded before it. Factory presets use the built-in pad, so loading one replaces a sample you had loaded; the Sequence and Percussion presets switch RUN on, and the others switch it off.
+A preset changes the sound, not the window: loading one never changes SCOPE or SPECTRUM, the envelope tab or SCANLINES. It sets every parameter, the pattern, CHOP's pattern and CUSTOM's harmonics (the SAW set for a preset that does not use CUSTOM); a parameter a factory preset does not list goes to its initial value, so each preset sounds the same whatever was loaded before it. Factory presets use the built-in pad, so loading one replaces a sample you had loaded; the Sequence and Percussion presets switch RUN on, and the others switch it off.
 
 ### Save your own
 
@@ -746,7 +747,7 @@ A preset file is an ordinary NeonSynth session, so you can send one to someone, 
 
 ### Presets in a DAW
 
-The 16 factory presets are also the DAW's program list, so a host's program menu can choose them. A saved project remembers which preset it came from and shows it in the preset bar when it opens; whatever you changed after loading the preset is kept, because the project saves the sound itself.
+The 24 factory presets are also the DAW's program list, so a host's program menu can choose them. A saved project remembers which preset it came from and shows it in the preset bar when it opens; whatever you changed after loading the preset is kept, because the project saves the sound itself.
 
 On a fresh instance, choosing program 0 (Glass Bell) from a DAW's program list does nothing until another program has been chosen: the VST3 plugin wrapper ignores a change to the program it takes to be current already. Use the preset bar instead, or choose another program first.
 
@@ -770,8 +771,16 @@ On a fresh instance, choosing program 0 (Glass Bell) from a DAW's program list d
 | 13 | Wind Sweep | FX | Band-passed noise that rises into a whistle, with Random LFO gusts; hold low notes. |
 | 14 | Gale | FX | Wind Sweep louder and wilder: a howling, gritty storm; add a fifth above. |
 | 15 | Drifting Cloud | FX | 100 ms grains scanning forward through the pad: a moving atmosphere. |
+| 16 | Drawbar Organ | Keys | CUSTOM: harmonics 1, 2, 3, 4, 6 and 8, like an organ's drawbars; add the mod wheel for vibrato. |
+| 17 | Square Ladder | Keys | CUSTOM: harmonics 1, 4, 9, 16 and 25 only, a bell that is still in tune; play from C4 up. |
+| 18 | Octave Stack | Bass | CUSTOM: harmonics 1, 2, 4 and 8, octaves with no fifths; mono. |
+| 19 | Hollow Reed | Lead | CUSTOM: odd harmonics only, the hollow tone of a clarinet, with a slow LFO vibrato. |
+| 20 | Phase Matters | Lead | A sawtooth's 16 levels with scattered phases, folded at 80%. Press ZERO PHASE in the HARMONICS view: the tone changes, because FOLD hears the shape; with FOLD at 0% it would not. |
+| 21 | Aliased Arcade | Lead | NAIVE: a square with no band-limiting and the filter off, so high notes alias into chiptune grit; play from C6 up and watch the red marks in the SPECTRUM. |
+| 22 | Vowel Ah | Pad | CUSTOM: a hump at harmonics 6 to 9 over a soft slope, like a sung vowel; it moves with the note, so it sounds most like a voice around C3. |
+| 23 | Fold-back Siren | FX | NAIVE: a sawtooth swept an octave up and down by the LFO; as it rises, the aliased harmonics fall. Hold a note from C6 up. |
 
-The numbers are the DAW's program numbers.
+The numbers are the DAW's program numbers. Presets 16 to 23 are new in v1.12.0; they were added after the first 16, so those keep their numbers.
 
 ## Saving, automation, and MIDI
 
