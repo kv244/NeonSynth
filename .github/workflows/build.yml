@@ -281,7 +281,8 @@ jobs:
           llvm-profdata merge -sparse build/profiles/*.profraw -o build/coverage.profdata
           objects=""
           for exe in build/*_artefacts/Debug/*; do
-            [ -x "$exe" ] && objects="$objects -object $exe"
+            # Test programs only: plugin targets put directories here (Standalone/, VST3/).
+            [ -f "$exe" ] && [ -x "$exe" ] && objects="$objects -object $exe"
           done
           ignore='(/tmp/JUCE|/usr/|build/|tests/)'
           llvm-cov report $objects -instr-profile=build/coverage.profdata -ignore-filename-regex="$ignore" > build/coverage.txt
