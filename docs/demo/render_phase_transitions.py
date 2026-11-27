@@ -98,7 +98,10 @@ def make_score(stage_seconds=STAGE):
         while t<stage_seconds*.85:
             note(sparks,rng.choice([76,81,83,88]),t,.12,rng.randint(38,75))
             t+=rng.uniform(.15,.75)
-        for t in range(int(stage_seconds*.6),int(stage_seconds)-8,12):
+        # At least one phrase: in --preview (20 s stages) the range would otherwise be empty
+        # and the part silent. Full-length stages get exactly the same phrases as before.
+        first=int(stage_seconds*.6)
+        for t in range(first,max(first+1,int(stage_seconds)-8),12):
             for i,p in enumerate([69,72,71,64]):note(center,p,t+i*2,1.8,75)
         for item in [memory,cloud,center]:
             for t in range(0,int(stage_seconds),2):
