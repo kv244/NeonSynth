@@ -54,7 +54,7 @@ and a final pitch bend. [`docs/demo/make_demo.py`](docs/demo/make_demo.py) rende
 
 ## How the sound is made
 
-![NeonSynth's signal path: MIDI and the step sequencer feed up to 16 voices; each voice runs its source (with CHOP, Noise and Fold for Oscillator and Random), velocity and the amp envelope, drive and the filter, and a pitch-based pan; the voices are summed, then tremolo, output gain and a soft clipper. A shared modulation stage (LFO, pitch bend, mod-wheel vibrato) moves the pitch, the cutoff and the level.](docs/images/fig10-signal-path.png)
+![NeonSynth's signal path: MIDI and the step sequencer feed up to 16 voices; each voice runs its source (the Oscillator band-limited, or from CUSTOM's 32 harmonic tables; CHOP, Noise and Fold for Oscillator and Random), velocity and the amp envelope, drive and the filter, and a pitch-based pan; the voices are summed, then tremolo, output gain and a soft clipper. A shared modulation stage (LFO, pitch bend, mod-wheel vibrato) moves the pitch, the cutoff and the level.](docs/images/fig10-signal-path.png)
 
 The **[user manual](docs/NeonSynth-User-Manual.md)** explains every control, with listening exercises,
 sound-design starting points, troubleshooting and a tour of the C++ source. Each release also carries it

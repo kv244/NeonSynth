@@ -1,7 +1,7 @@
 # NeonSynth - Copyright (C) 2026 Razvan Julian Petrescu
 # SPDX-License-Identifier: AGPL-3.0-only
 # Licensed under the GNU Affero General Public License v3; see LICENSE.
-"""Figure 10: the signal path (explanatory schematic, v1.9.0).
+"""Figure 10: the signal path (explanatory schematic, v1.12.0).
 
 Drawn from the source, not from audio: every box names a stage in the order
 NeonSynthProcessor::processBlock() and NeonSynthVoice::renderSamples() run
@@ -71,6 +71,11 @@ def draw():
     arrow(ax, [(28, 92), (30.5, 92), (30.5, 95.5), (33, 95.5)])
     arrow(ax, [(60, 97), (64, 97)])
 
+    # v1.12.0: CUSTOM's 32 wavetables, built off the audio thread from the HARMONICS view or a
+    # drawn cycle, handed to every voice's oscillator once per block (lock-free triple buffer).
+    box(ax, 34, 83.5, 28, 7, "CUSTOM tables", ["32 harmonics, lock-free"])
+    arrow(ax, [(37, 83.5), (37, 71.5), (34, 71.5)], color=fs.GREY)
+
     box(ax, 101, 88, 57, 19, "Modulation, once per block", ["LFO: 5 shapes, free or synced", "pitch bend, mod-wheel vibrato (MIDI)",
                                                             "→ pitch ratio, LFO cutoff, tremolo"],
         edge=MOD)
@@ -83,7 +88,7 @@ def draw():
     arrow(ax, [(79, 92), (79, 82)])
 
     # sources
-    box(ax, 6, 64, 28, 9, "Oscillator", ["band-limited (BLEP)"])
+    box(ax, 6, 64, 28, 9, "Oscillator", ["BLEP or CUSTOM tables;", "NAIVE: no BLEP"])
     box(ax, 6, 53, 28, 9, "Random", ["16 drifting steps"])
     box(ax, 6, 42, 28, 9, "Sample", ["3 rate-reduced copies"])
     box(ax, 6, 31.5, 28, 9, "Granular", ["up to 32 grains"])
