@@ -464,8 +464,12 @@ namespace { namespace harmonicsTests
         check (readout != nullptr && readout->getText() == juce::String (midway) + " of 32", "the readout counts them (" + (readout != nullptr ? readout->getText() : juce::String()) + ")");
         saveSnapshot (ed.createComponentSnapshot (ed.getLocalBounds(), true, 1.0f), "100-harmonics-build");
         click ("build");
+        // Compare with the count at the click, not with `midway`: under a slow build
+        // (ThreadSanitizer) the snapshot above can take longer than one BUILD step.
+        const int stopped = juce::roundToInt (valueOf (processor, "harmonics"));
         pump (500);
-        check (! view->isBuilding() && juce::roundToInt (valueOf (processor, "harmonics")) == midway, "a second click stops it where it is");
+        check (! view->isBuilding() && stopped >= midway && juce::roundToInt (valueOf (processor, "harmonics")) == stopped,
+               "a second click stops it where it is (" + juce::String (stopped) + ")");
         check (gestures.oneGesture (indexOf (processor, "harmonics")), "BUILD is one host gesture, begun and ended");
         set (processor, "harmonics", 32.0f);
 

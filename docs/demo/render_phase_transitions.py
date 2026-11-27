@@ -12,7 +12,6 @@ Audio dependencies: numpy, mido, pedalboard, compatible NeonSynth v1.11 VST3.
 No audio was rendered or auditioned when this script was prepared.
 """
 import argparse
-import bisect
 import json
 import math
 import random
