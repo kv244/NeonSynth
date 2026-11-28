@@ -11,3 +11,4 @@ docs/demo/*.wav
 build-san/
 build-move/
 build-*/
+build-*.log
