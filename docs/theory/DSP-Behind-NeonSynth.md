@@ -115,6 +115,9 @@ For every topic, distinguish three things: the ideal mathematical model, the pra
 - [Appendix B. Troubleshooting by signal path](#appendix-b-troubleshooting-by-signal-path)
 - [Appendix C. Versioned feature-to-source index](#appendix-c-versioned-feature-to-source-index)
 - [Appendix D. Model → Algorithm → Verified Behavior](#appendix-d-model--algorithm--verified-behavior)
+- [Appendix E. Filters as difference equations](#appendix-e-filters-as-difference-equations)
+- [Appendix F. Modulation: sidebands, beats and FM](#appendix-f-modulation-sidebands-beats-and-fm)
+- [Appendix G. MIDI messages](#appendix-g-midi-messages)
 
 **Part IV — JUCE and development**
 
@@ -1893,6 +1896,164 @@ This summary table contrasts the ideal continuous-time mathematical model, the d
 | **Multi-Mode Filter (§11)** | Continuous 2-pole state-variable prototype (12 dB/oct) with LP/HP/BP/Notch outputs | Trapezoidal TPT (`CytomicSvf.h`) matching JUCE operation order; 10 ms mode crossfade; 20 ms exponential cutoff smoothing; coefficients updated every 16 samples while moving | Bit-identical to JUCE `StateVariableTPTFilter` at Res 0%, Drive 0%; 16-sample counter persists across blocks (887 ms vs 1498 ms per 60 s sweep on 16 voices) |
 | **Filter Self-Oscillation & Drive (§11.3–11.4)** | Bounded limit-cycle oscillation and alias-free pre-filter saturation | Van der Pol damping k<sub>eff</sub> = k + Bq/(B+q) from quadrature states A<sup>2</sup> = (s<sub>1</sub><sup>2</sup> + s<sub>2</sub><sup>2</sup>)/4 scaled to L = max(vel · ampEnv, 10<sup>−6</sup>); double-precision 1st-order ADAA sat(u) = u/√(1+u<sup>2</sup>) with 5% dry crossfade | Self-oscillates at Res ≥ 98% (k ≤ 0), peak ≈ 1.05 L (±1 dB from 100 Hz to 5 kHz, −3.6 dB at 10 kHz, −5.6 dB at 15 kHz at 48 kHz), pitch within 0.02% of f<sub>c</sub>; Drive adds +8.6 dB boost to quiet signals with −32.4 dB vs −32.7 dB alias floor (11–17 dB cleaner than naive clipping) |
 | **Output Soft Clipper (§12.3)** | Smooth static saturation curve bounding summed voice peaks | Rational polynomial q(u) = u(27+u<sup>2</sup>)/(27+9u<sup>2</sup>) between knee a = 0.50118723 (−6 dBFS) and ceiling b = 0.89125094 (−1 dBFS), capped at u = 3 (+4.5 dBFS) | Zero slope above +4.5 dBFS; ≈ 4 ns/sample vs ≈ 16 ns/sample for `std::tanh` (MSVC) |
+
+## Appendix E. Filters as difference equations
+
+A digital filter turns an input sequence x[n] into an output sequence y[n] by a fixed rule. The filters in this book are linear and time-invariant (LTI): doubling the input doubles the output, and delaying the input delays the output by the same amount. A sine going in therefore comes out as a sine of the same frequency, changed only in amplitude and phase, so a filter is described completely by what it does to each frequency (Appendix A.5).
+
+With the convention a<sub>0</sub> = 1, every such filter is a difference equation:
+
+```equation
+y[n] = Σ_{k≥0} b_k x[n − k] − Σ_{k≥1} a_k y[n − k]
+```
+
+It is **FIR** (finite impulse response, §2.5) when every a<sub>k</sub> with k ≥ 1 is zero: each output is a weighted sum of recent inputs, and an impulse dies out after the last tap. It is **IIR** (infinite impulse response) when past outputs are fed back, so an impulse rings on, decaying for ever if the filter is stable. For the same amount of computation an IIR filter can reach a steeper slope; an FIR filter can have exactly linear phase.
+
+The frequency response follows by feeding in a complex exponential e<sup>jωn</sup>, where ω is the frequency in radians per sample (π is the Nyquist frequency):
+
+```equation
+H(e^{jω}) = Σ_k h[k] e^{−jωk}
+```
+
+Here h[k] is the impulse response, the output for a single unit impulse as input. |H| is the gain at ω, and the angle of H is the phase shift. Appendix A.6 gives the same response as H(z) on the unit circle, z = e<sup>jω</sup>.
+
+### E.1 Worked FIR example: treble compensation
+
+The treble compensation of §2.5 is a three-tap FIR filter:
+
+```equation
+y[n] = (1 + 2a) x[n − 1] − a ( x[n] + x[n − 2] ),   a = 0.27
+```
+
+Its taps are symmetric about the middle one, so its response factors into a pure one-sample delay and a real gain:
+
+```equation
+H(e^{jω}) = e^{−jω} [ (1 + 2a) − 2a cos ω ]
+```
+
+The bracket is never below 1, so every frequency is delayed by exactly one sample and no phase is distorted. With a = 0.27 the gain is:
+
+| Frequency | Gain | Gain in dB |
+|---|---|---|
+| 0 (DC) | 1.00 | 0.0 |
+| F<sub>s</sub> / 8 | 1.16 | +1.3 |
+| F<sub>s</sub> / 4 | 1.54 | +3.8 |
+| 3 F<sub>s</sub> / 8 | 1.92 | +5.7 |
+| F<sub>s</sub> / 2 (Nyquist) | 2.08 | +6.4 |
+
+The filter leaves low frequencies alone and lifts the top octave by up to 6.4 dB. This is the arithmetic behind the warning in §2.5 that restoring treble also amplifies any alias left near Nyquist, and the reason the sine (which has no edges to correct) and the Random source (whose steps run far above Nyquist at high notes) bypass it. NAIVE (§2.6) bypasses it along with the band-limiting.
+
+### E.2 IIR examples in NeonSynth
+
+The one-pole smoother of Appendix A.6, y[n] = (1 − a) x[n] + a y[n − 1], is the smallest IIR filter: one feedback term, stable for |a| < 1 (A.7), slow to respond when a is close to 1. The state-variable filter of Chapter 11 is a two-pole IIR filter whose feedback runs through two integrators with states s<sub>1</sub> and s<sub>2</sub>.
+
+*Background reading: Audio Engineering Explained (Elsevier, 2010), Chapter 15, DSP Technology.*
+
+## Appendix F. Modulation: sidebands, beats and FM
+
+Multiplying two sines produces their sum and difference frequencies:
+
+```equation
+cos a · cos b = ½ [ cos(a − b) + cos(a + b) ]
+```
+
+### F.1 Amplitude modulation, and why CHOP stays harmonic
+
+Multiplying a carrier of frequency f<sub>c</sub> by (1 + m cos 2π f<sub>m</sub> t) gives the carrier plus two sidebands, each with m/2 of the carrier's amplitude:
+
+```equation
+(1 + m cos 2π f_m t) cos 2π f_c t
+  = cos 2π f_c t + (m/2) cos 2π (f_c − f_m) t + (m/2) cos 2π (f_c + f_m) t
+```
+
+The LFO's tremolo (§10.4) is this case with a slow f<sub>m</sub>, so its sidebands sit close enough to each partial to be heard as movement, not as new tones.
+
+CHOP (Chapter 4) is also amplitude modulation, but its modulator is locked to the oscillator. The mask repeats C times per cycle (C = COMB), so it is periodic at C f<sub>0</sub>, and its own spectrum contains only multiples m C f<sub>0</sub>. Each harmonic k f<sub>0</sub> of the source therefore gains sidebands at
+
+```equation
+(k ± m C) f_0,   m = 1, 2, 3, …
+```
+
+which are again harmonics of f<sub>0</sub>. CHOP moves energy between harmonics (that is what "redistributes harmonics" in Chapter 4 means) and never adds an inharmonic tone: the pitch stays f<sub>0</sub> whatever the pattern. A modulator at a frequency unrelated to the note, such as a ring modulator whose ratio is not a whole number, is what makes sidebands fall between the harmonics and the sound clang.
+
+### F.2 Beats
+
+Two sines of nearly equal frequency f<sub>1</sub> and f<sub>2</sub> add to a wave whose loudness swells and fades at the difference frequency:
+
+```equation
+f_beat = | f_2 − f_1 |
+```
+
+For example, 440 Hz and 442 Hz beat twice a second. Two voices on the same pitch beat this way, which is one reason voice stealing takes a voice already playing that pitch first (§1.5).
+
+### F.3 Frequency modulation: Carson's rule and proportional modulation
+
+Modulating a carrier's frequency with a sine at f<sub>m</sub> gives the carrier plus sidebands at f<sub>c</sub> ± k f<sub>m</sub>, for k = 1, 2, 3 and so on, with amplitudes given by Bessel functions of the modulation index β, the peak frequency deviation Δf over the modulating frequency. Carson's rule estimates the bandwidth that holds about 98% of the power:
+
+```equation
+β = Δf / f_m
+BW ≈ 2 (Δf + f_m)
+```
+
+The larger β is, the further out the sidebands carry significant energy.
+
+**Worked example (NeonSynth's vibrato).** The mod wheel's default vibrato, ±30 cents at 5.5 Hz on A4 (§10.2), moves the pitch by 440 × (2<sup>0.3/12</sup> − 1) ≈ 7.7 Hz, so β ≈ 1.4 and BW ≈ 2 (7.7 + 5.5) ≈ 26 Hz. That is about two of the Spectrum display's 11.72 Hz bins, with sidebands 5.5 Hz apart, which is why a vibrating note shows as a widened peak rather than separate lines (Chapter 14).
+
+**Proportional modulation.** NeonSynth's vibrato scales the pitch ratio of the whole sound (§10.2), so harmonic n moves by n times the deviation of the fundamental, at the same rate, and its index is β<sub>n</sub> = n β. In the example, β is 1.4 for the fundamental, 2.8 for the second harmonic and 4.2 for the third. Perception research lists this common, proportional movement among the cues that help the ear fuse harmonics into one sound.
+
+*Background reading: L. Gunther, The Physics of Music and Color (Springer, 2019), Chapter 8, Complex Waves.*
+
+## Appendix G. MIDI messages
+
+MIDI sends instructions, not sound. Messages travel serially at 31,250 bits per second as 8-bit bytes, each framed by a start and a stop bit, so a byte takes 10 bits (0.32 ms) and a three-byte note-on about 1 ms. A chord of six notes on a hardware cable therefore spreads over 6 ms; inside a host, MIDI arrives as timestamped events and NeonSynth renders each one at its own sample (§10.5). A **status byte** (top bit 1) says what to do and, for performance messages, on which of 16 channels. A **data byte** (top bit 0) carries a 7-bit value from 0 to 127.
+
+### G.1 Note-on
+
+A note-on is three bytes:
+
+```text
+1001 0100   0100 0000   0101 1001
+status      data 1      data 2
+note-on     key 64      velocity 89
+channel 5
+```
+
+The low four bits of the status byte hold the channel, counted from zero, so 0100 is channel 5. The MIDI specification defines a note-on with velocity 0 as a note-off.
+
+### G.2 Pitch bend
+
+Pitch bend carries two data bytes, LSB first, which together form a 14-bit value of 16,384 steps centred on 8,192:
+
+```equation
+v = 128 × MSB + LSB          (0 … 16383, centre 8192)
+```
+
+NeonSynth maps the two halves separately (§10.2), so that both ends reach the full range exactly:
+
+```equation
+bend = (v − 8192) / 8191 for v ≥ 8192,    (v − 8192) / 8192 below
+r = 2^{bend × range / 12}
+```
+
+The ratio r is the pitch ratio of §10.2. With the largest range, 24 semitones, full bend up gives exactly r = 4 (two octaves up) and full bend down exactly 0.25.
+
+### G.3 Controllers
+
+A control-change message carries a controller number and a value from 0 to 127. Numbers 0 to 31 are coarse values and 32 to 63 their fine partners; a pair gives 14-bit resolution.
+
+| Number | Meaning | NeonSynth |
+|---|---|---|
+| 1 | Modulation wheel (fine partner: 33) | Vibrato depth, 7-bit alone or 14-bit with 33 (§10.2) |
+| 64 | Sustain pedal: 63 or less off, 64 or more on | Holds released keyboard notes (JUCE's synthesiser) |
+| 68 | Legato footswitch: 63 or less normal, 64 or more legato | Sent by NeonSynth's own sequencer on channel 16 to mark a SLIDE step (§13.3) |
+| 121 | Reset all controllers | Bend to the centre, wheel to 0 |
+| 123 | All notes off (value 0) | Releases the notes on that channel |
+
+### G.4 Timing
+
+MIDI's own synchronization uses single-byte real-time messages: timing clock, start, stop and continue, with the clock sent 24 times per quarter note. NeonSynth does not use them: as a plugin it reads the host's transport for each block (tempo, position and time signature; §10.1, §13.1), which is sample-accurate, and in the Standalone it runs on its own clock at TEMPO (§13.7).
+
+*Background reading: Audio Engineering Explained (Elsevier, 2010), Chapter 16, MIDI.*
 
 # Part IV — JUCE and development
 
