@@ -238,6 +238,13 @@ namespace FactoryPresets
                 { "width", 0.7f }, { "gain", -12.0f } },
               nullptr, nullptr,
               "1:1 2:0.8 3:0.65 4:0.55 5:0.45 6:0.38 7:0.32 8:0.27 9:0.23 10:0.2 11:0.17 12:0.15 14:0.12 16:0.1 18:0.08 20:0.06 22:0.05 24:0.04" },
+
+            { "Swelling Brass Pad", "Pad", "A sawtooth that swells open over two seconds with a slow vibrato, after the brassy pads of early-1980s film scores; hold chords",
+              { { "waveform", 3.0f }, { "noiseLevel", 3.0f },
+                { "attack", 1.2f }, { "decay", 1.5f }, { "sustain", 0.85f }, { "release", 2.5f },
+                { "cutoff", 600.0f }, { "filterRes", 15.0f }, { "filterEnvAmt", 2.2f }, { "filterAttack", 1.8f },
+                { "filterDecay", 2.5f }, { "filterSustain", 0.6f }, { "filterRelease", 2.5f }, { "filterVel", 0.6f },
+                { "lfoRate", 5.0f }, { "lfoPitch", 0.12f }, { "width", 0.8f }, { "gain", -12.0f } } },
         };
         return presets;
     }
