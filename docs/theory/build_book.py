@@ -18,6 +18,10 @@ The check fails (exit 1) when the book does not match the code it ships with:
 The book in the repository is never changed; the PDF is built from it as it is, and is
 named and footed with the edition's own version (the "Target instrument" line).
 
+Appendices E-G live in Appendices-E-G.md. When that file exists it is inserted before Part IV,
+and its "Appendix" headings are added to the contents, before anything is checked or printed;
+the checks run on the combined text.
+
 It is printed the way docs/build_manual.py prints the manual (Markdown -> HTML ->
 Chromium through Playwright), and borrows that script's version, heading-anchor and
 slug functions; the page style is the book's own.
@@ -38,6 +42,7 @@ import sys
 HERE = pathlib.Path(__file__).resolve().parent
 DOCS = HERE.parent
 BOOK = HERE / "DSP-Behind-NeonSynth.md"
+EXTRA = HERE / "Appendices-E-G.md"
 TITLE = "The DSP Behind NeonSynth"
 
 sys.dont_write_bytecode = True                  # no __pycache__ left in docs/
@@ -46,6 +51,9 @@ import build_manual  # noqa: E402  (docs/build_manual.py: project_version, headi
 
 REPO_TAG_LINK = re.compile(r"github\.com/kv244/NeonSynth/(?:blob|tree)/v(\d+\.\d+\.\d+)")
 TARGET = re.compile(r"Target instrument:\s*NeonSynth v(\d+\.\d+\.\d+)")
+EXTRA_HEADING = re.compile(r"^## (Appendix [A-Z]\. .+?)[ \t]*$", re.M)
+PART_IV = re.compile(r"^# Part IV\b", re.M)
+LAST_APPENDIX_LINK = re.compile(r"^- \[Appendix D\..*\]\(#appendix-d[^)]*\)[ \t]*$", re.M)
 
 
 def parse(version):
@@ -61,6 +69,28 @@ def same_minor(tag, version):
 def target_version(md):
     m = TARGET.search(md)
     return m.group(1) if m else None
+
+
+def heading_slug(title):
+    """GitHub-style anchor: lower case, punctuation dropped, spaces to hyphens."""
+    return re.sub(r" ", "-", re.sub(r"[^\w\- ]", "", title.lower()))
+
+
+def with_appendices(md):
+    """Insert Appendices-E-G.md before Part IV and list its appendices in the contents."""
+    if not EXTRA.exists():
+        return md
+    extra = EXTRA.read_text(encoding="utf-8").strip()
+    part_iv = PART_IV.search(md)
+    if part_iv:
+        md = md[:part_iv.start()] + extra + "\n\n" + md[part_iv.start():]
+    else:
+        md = md.rstrip() + "\n\n" + extra + "\n"
+    entries = "".join(f"\n- [{title}](#{heading_slug(title)})" for title in EXTRA_HEADING.findall(extra))
+    last = LAST_APPENDIX_LINK.search(md)
+    if last and entries:
+        md = md[:last.end()] + entries + md[last.end():]
+    return md
 
 
 def check(md, version):
@@ -226,7 +256,7 @@ def main():
     a = ap.parse_args()
 
     version = build_manual.project_version()
-    md = BOOK.read_text(encoding="utf-8")
+    md = with_appendices(BOOK.read_text(encoding="utf-8"))
     problems = check(md, version)
     for p in problems:
         print(f"::error file=docs/theory/{BOOK.name}::{p}" if os.environ.get("GITHUB_ACTIONS") else f"error: {p}")
