@@ -44,6 +44,7 @@
 #include "gui/ScopeView.h"
 #include "gui/LevelMeter.h"
 #include "gui/AdsrView.h"
+#include "gui/VoiceLights.h"
 #include "gui/NeonSynthEditor.h"
 #include "gui/HarmonicsView.h"
 #include "gui/SpectrumView.h"
@@ -755,13 +756,26 @@ int main()
         pump();
         check (juce::roundToInt (valueOf (processor, "voiceCount")) == 4 && gestures.oneGesture (indexOf (processor, "voiceCount")),
                "clicking light 4 sets Voices to 4, in one gesture");
-        check (labelShows (ed, "4 VOICES"), "the readout says 4 VOICES");
+        check (labelShows (ed, "4 V"), "the readout says 4 V");
         mouse.click (*leds, light (1));
         pump();
         check (juce::roundToInt (valueOf (processor, "voiceCount")) == 1 && labelShows (ed, "MONO"), "light 1 sets Voices to 1, and the readout says MONO");
         mouse.click (*leds, light (16));
         pump();
-        check (juce::roundToInt (valueOf (processor, "voiceCount")) == 16 && labelShows (ed, "16 VOICES"), "light 16 sets Voices back to 16");
+        check (juce::roundToInt (valueOf (processor, "voiceCount")) == 16 && labelShows (ed, "16 V"), "light 16 sets Voices back to 16");
+
+        // v1.13.0: a playing voice's light shows its note, name and octave.
+        if (const auto* lights = dynamic_cast<const VoiceLeds*> (leds))
+        {
+            harmonicsTests::playNote (processor, 61, true);
+            pump (70);
+            int shown = -1;
+            for (int i = 0; i < NeonSynthProcessor::numVoices; ++i)
+                if (lights->getShownNote (i) >= 0)
+                    shown = lights->getShownNote (i);
+            check (shown == 61 && VoiceLeds::noteName (shown) == "C#4", "a played C#4 lights a voice labelled C#4");
+            harmonicsTests::playNote (processor, 61, false);
+        }
     }
     else check (false, "the voice lights (ID voiceCount) and the voiceCount parameter found");
 

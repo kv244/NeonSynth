@@ -134,6 +134,7 @@ public:
         std::array<float, maxShownGrains> grainPositions {};   // read positions 0..1 of up to 8 sounding grains
         int numGrains = 0;
         bool playingRandom = false;      // the note plays the Random source
+        int  note = -1;                  // v1.13.0: the MIDI note it plays (through its release), else -1
         std::array<float, RandomStepOscillator::numSteps> randomLevels {};   // its current 16 levels (for the shape view)
     };
 

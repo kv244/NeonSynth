@@ -761,8 +761,8 @@ void NeonSynthEditor::layoutKnobRow()
 void NeonSynthEditor::layout()
 {
     // Header
-    voiceLeds.setBounds (880, 33, 288, 18);
-    voiceCountReadout.setBounds (764, 33, 110, 18);
+    voiceLeds.setBounds (828, 31, 368, 22);          // v1.13.0: 23 px a light, room for "C#4"
+    voiceCountReadout.setBounds (764, 33, 60, 18);   // "16 V" or "MONO"
     helpButton.setBounds (1212, 26, 40, 32);
     presetBar.setBounds (248, 26, 308, 32);          // v1.11.0
     holdButton.setBounds (564, 26, 72, 32);          // v1.11.0
@@ -1198,7 +1198,7 @@ void NeonSynthEditor::updateReadouts()
     set (seqSwingReadout, juce::String (juce::roundToInt (seqSwingValue->load() * 100.0f)) + "%");
     set (seqGateReadout,  juce::String (juce::roundToInt (seqGateValue->load() * 100.0f)) + "%");
 
-    set (voiceCountReadout, voiceCount() == 1 ? juce::String ("MONO") : juce::String (voiceCount()) + " VOICES");
+    set (voiceCountReadout, voiceCount() == 1 ? juce::String ("MONO") : juce::String (voiceCount()) + " V");   // v1.13.0: shorter, for the note names
 
     // Modulation. Signed values are rounded first, so a hair either side of 0 reads "0.00", not "-0.00".
     const auto signedText = [] (float v, const char* unit)

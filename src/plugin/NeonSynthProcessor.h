@@ -110,6 +110,7 @@ public:
         std::atomic<float> samplePosition { -1.0f };   // 0..1 while playing the sample, else -1
         std::array<std::atomic<float>, NeonSynthVoice::Telemetry::maxShownGrains> grainPositions;   // 0..1 per sounding grain, else -1
         std::atomic<bool>  playingRandom { false };
+        std::atomic<int>   note { -1 };                 // v1.13.0: the MIDI note it plays, else -1 (the voice lights)
         std::array<std::atomic<float>, RandomStepOscillator::numSteps> randomLevels;   // valid while playingRandom
 
         VoiceView()

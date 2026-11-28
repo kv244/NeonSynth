@@ -184,6 +184,7 @@ void NeonSynthProcessor::publishVoiceViews() noexcept
         for (size_t g = 0; g < v.grainPositions.size(); ++g)
             v.grainPositions[g].store ((int) g < t.numGrains ? t.grainPositions[g] : -1.0f, std::memory_order_relaxed);
         v.playingRandom.store (t.playingRandom, std::memory_order_relaxed);
+        v.note         .store (t.note,          std::memory_order_relaxed);
         if (t.playingRandom)
             for (size_t k = 0; k < v.randomLevels.size(); ++k)
                 v.randomLevels[k].store (t.randomLevels[k], std::memory_order_relaxed);

@@ -9,7 +9,8 @@
 #include "gui/NeonStyle.h"
 
 //==============================================================================
-/** One light per voice; brightness follows that voice's envelope, with a short afterglow. */
+/** One light per voice; brightness follows that voice's envelope, with a short afterglow.
+    A lit voice shows the note it plays, as a name with its octave (C4 = MIDI 60; v1.13.0). */
 class VoiceLeds : public juce::Component,
                   public juce::SettableTooltipClient
 {
@@ -53,6 +54,12 @@ public:
                                ? voices[i].level.load (std::memory_order_relaxed) : 0.0f;
             const float next = juce::jmax (target, glow[i] * glowDecay);
             if (std::abs (next - glow[i]) > repaintThreshold) { glow[i] = next; changed = true; }
+            // The name stays while the light fades, even after the voice has let its note go.
+            if (const int playing = voices[i].note.load (std::memory_order_relaxed); playing >= 0 && playing != notes[i])
+            {
+                notes[i] = playing;
+                changed = true;
+            }
         }
         if (changed)
             repaint();
@@ -73,7 +80,19 @@ public:
             const float level = glow[i];
             const auto dot = juce::Rectangle<float> (radius * 2.0f, radius * 2.0f).withCentre (c);
 
-            if (level > litThreshold)
+            if (level > litThreshold && notes[i] >= 0)
+            {
+                // v1.13.0: a lit voice is a pill holding its note's name, dark on the phosphor.
+                const auto pill = juce::Rectangle<float> (step - 1.0f, bounds.getHeight() - 1.0f).withCentre (c);
+                g.setColour (neon::crt::phosphorGlow.withAlpha (0.40f * level));
+                g.fillRoundedRectangle (pill.expanded (1.5f), 5.0f);
+                g.setColour (idle.interpolatedWith (lit, 0.5f + 0.5f * std::sqrt (level)));
+                g.fillRoundedRectangle (pill, 4.0f);
+                g.setColour (neon::background);
+                g.setFont (neon::font (12.0f, true));
+                g.drawFittedText (noteName (notes[i]), pill.toNearestInt(), juce::Justification::centred, 1, 0.8f);
+            }
+            else if (level > litThreshold)
             {
                 g.setColour (neon::crt::phosphorGlow.withAlpha (0.40f * level));
                 g.fillEllipse (dot.expanded (radius * 1.2f));
@@ -94,11 +113,21 @@ public:
         }
     }
 
+    /** The note light i (0..15) shows, or -1 (for tests). */
+    int getShownNote (int light) const noexcept
+    {
+        return juce::isPositiveAndBelow (light, (int) glow.size()) && glow[(size_t) light] > litThreshold ? notes[(size_t) light] : -1;
+    }
+
+    /** "C#4": the name and octave, middle C (MIDI 60) being C4, as the step sequencer writes it. */
+    static juce::String noteName (int note)   { return juce::MidiMessage::getMidiNoteName (note, true, true, 4); }
+
 private:
     static constexpr float glowDecay        = 0.75f;   // per timer tick, so a light fades in a few frames rather than blinking out
     static constexpr float repaintThreshold = 0.002f;  // changes smaller than this are not worth a repaint
     static constexpr float litThreshold     = 0.01f;   // a voice glows above this level; below it, it is drawn idle
 
     std::array<float, NeonSynthProcessor::numVoices> glow {};
+    std::array<int, NeonSynthProcessor::numVoices> notes = [] { std::array<int, NeonSynthProcessor::numVoices> n {}; n.fill (-1); return n; }();
     int limit = NeonSynthProcessor::numVoices;
 };

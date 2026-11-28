@@ -35,6 +35,7 @@ NeonSynthVoice::Telemetry NeonSynthVoice::getTelemetry() const noexcept
                           ? reader.getPosition() : -1.0f;
     t.numGrains       = t.active && cloud.isActive() ? cloud.getGrainPositions (t.grainPositions.data(), Telemetry::maxShownGrains) : 0;
     t.playingRandom   = t.active && source == Source::random;
+    t.note            = t.active ? getCurrentlyPlayingNote() : -1;
     if (t.playingRandom)
         t.randomLevels = randomOscillator.getLevels();
     return t;

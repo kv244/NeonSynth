@@ -469,7 +469,7 @@ Earlier versions ignored pitch bend and the mod wheel. A project that contains s
 
 ### Voices: from mono to 16
 
-The 16 voice lights at the top of the window also set how many voices can play. Click a light: click the fourth for four voices, the first for one. With one voice NeonSynth is monophonic (the readout says MONO): each new note takes over the voice that is playing, unless **LEGATO** is on (see [Playing: HOLD, GLIDE and LEGATO](#playing-hold-glide-and-legato)). The lights above the limit are drawn as faint dots. Notes already sounding on them finish normally, so lowering the limit never cuts a note off. The limit is the automatable parameter **Voices**; the initial value is 16.
+The 16 voice lights at the top of the window also set how many voices can play. Click a light: click the fourth for four voices, the first for one. With one voice NeonSynth is monophonic (the readout beside the lights says MONO; with more, it says 4 V for four, and so on): each new note takes over the voice that is playing, unless **LEGATO** is on (see [Playing: HOLD, GLIDE and LEGATO](#playing-hold-glide-and-legato)). The lights above the limit are drawn as faint dots. Notes already sounding on them finish normally, so lowering the limit never cuts a note off. The limit is the automatable parameter **Voices**; the initial value is 16.
 
 **Which voice a new note takes.** With fewer than 16 voices, a new note takes a free voice. If none is free, it reuses the oldest voice already playing that note, otherwise the oldest note already released (one held by the sustain pedal counts as held), otherwise the oldest note. At 16 voices the choice is the one NeonSynth has always made. v1.11.0 fixed two faults in this order: a note held by the sustain pedal counted as released, and of two voices on the same note the newer one was taken. A project that uses fewer than 16 voices can therefore sound different from v1.10 where a note is stolen.
 
@@ -717,7 +717,7 @@ WIDTH is not chorus, delay, or a stereo image restored from an imported recordin
 - **SCOPE:** Displays the output waveform and uses the lowest active note as its pitch reference.
 - **SPECTRUM:** Displays frequency content with the filter's response curve for the current mode, cutoff and resonance. When resonance raises a peak above the top of the display, the curve is lowered so the peak stays in view. With NAIVE on, red marks show where harmonics above Nyquist fold back to (see [NAIVE: hear aliasing](#naive-hear-aliasing)).
 - **HARMONICS:** CUSTOM's 32 harmonic levels and phases, its presets and BUILD (see [CUSTOM and the HARMONICS view](#custom-and-the-harmonics-view)).
-- **VOICES:** Provides one light per voice, with brightness following its envelope. Click a light to set how many voices can play (see [Voices: from mono to 16](#voices-from-mono-to-16)); the lights above the limit are drawn as faint dots.
+- **VOICES:** Provides one light per voice, with brightness following its envelope; a lit voice shows the note it plays, such as C#4 (middle C is C4; v1.13.0). The readout beside the lights says how many may play (16 V, or MONO). Click a light to set how many voices can play (see [Voices: from mono to 16](#voices-from-mono-to-16)); the lights above the limit are drawn as faint dots.
 - **Envelope graph:** Shows the note shape with moving voice-position dots.
 - **L/R meter:** Shows output levels, peak hold, and a clip indicator; click to reset the meter.
 
