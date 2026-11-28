@@ -49,8 +49,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout Parameters::createParameterL
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "sustain", 1 }, "Sustain", 0.0f, 1.0f, 0.7f));
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "release", 1 }, "Release", timeRange (10.0f), 0.30f));
 
-    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "gain", 1 }, "Output Gain (dB)",
-                                                        NormalisableRange<float> (-48.0f, 6.0f, 0.1f), 0.0f));
+    // v1.13.0: "Output Gain", with "dB" as the parameter's label (it was "Output Gain (dB)", the only
+    // name carrying its unit). Sessions and host automation use the ID, so they are unaffected, and
+    // pedalboard joins name and label, so Python scripts still read it as output_gain_db.
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "gain", 1 }, "Output Gain",
+                                                        NormalisableRange<float> (-48.0f, 6.0f, 0.1f), 0.0f,
+                                                        AudioParameterFloatAttributes().withLabel ("dB")));
 
     // Stereo spread of voices by pitch: 0 = mono, 1 = notes two octaves from middle C hard-panned.
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "width", 1 }, "Stereo Width", 0.0f, 1.0f, 0.6f));

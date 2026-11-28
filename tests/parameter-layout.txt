@@ -5,7 +5,7 @@
 4 decay v1 "Decay" float 0.001 to 5 step 0.001 skew 0.3 default 0.1
 5 sustain v1 "Sustain" float 0 to 1 step 0.01 skew 1 default 0.7
 6 release v1 "Release" float 0.001 to 10 step 0.001 skew 0.3 default 0.3
-7 gain v1 "Output Gain (dB)" float -48 to 6 step 0.1 skew 1 default 0
+7 gain v1 "Output Gain" float -48 to 6 step 0.1 skew 1 default 0 label "dB"
 8 width v1 "Stereo Width" float 0 to 1 step 0.01 skew 1 default 0.6
 9 seqOn v1 "Sequencer On" bool default off
 10 seqSync v1 "Sequencer Sync" bool default on
