@@ -270,11 +270,15 @@ Parameters: ['source', 'waveform', 'cutoff', 'filter_enabled', 'attack', … ]
 
 ### Old sessions still sound the same
 
-`tests/compare_versions.py` renders 16 sessions (every source, CHOP, Noise and
-Fold, the sequencer, the clipper) through two builds and requires the audio to
+`tests/compare_versions.py` renders a fixed set of sessions (every source, CHOP, Noise and
+Fold, the filter, the sequencer, the clipper) through two builds and requires the audio to
 be identical sample for sample. New parameters start at neutral defaults, so a
-session saved with an earlier release must not change. CI builds the v1.6.0
-release once from its tag, caches it, and compares every pull request with it.
+session saved with an earlier release must not change. Since v1.13.0 it also plays every
+factory preset, chosen through the host's program list, in both builds: a preset the
+earlier release lacks must render the same twice, and a preset changed on purpose is
+listed in `PRESETS_CHANGED` with the reason, for that release only. CI builds the
+previous release (v1.12.0) once from its tag, caches it, and compares every pull request
+with it; at each release the reference moves to the release just tagged.
 
 ```bash
 python tests/compare_versions.py old/NeonSynth.vst3 build/NeonSynth_artefacts/Release/VST3/NeonSynth.vst3
@@ -567,7 +571,8 @@ The plugin's sources are grouped by job under `src/` (v1.11.0); includes name th
 | `tests/RouterTests.cpp` | The MIDI router alone: HOLD, the ENTER queue and the internal clock |
 | `tests/integrity.py` | Versions, parameters described in the manual and help page, links, constants defined once, the preset table, quoted code names, and filtered cppcheck |
 | `tests/complexity_report.py` | Lines of code and the cyclomatic complexity of every plugin function, as Markdown (`pip install lizard`); CI runs it on every push and pull request |
-| `tests/compare_versions.py` | Renders a set of sessions through two VST3 builds and requires identical audio (CI compares against the v1.6.0 release) |
+| `tests/run_demos.py` | Runs every demo script in `docs/demo` in its short form against a VST3 and checks every WAV it writes is finite and audible (CI, Linux, since v1.13.0) |
+| `tests/compare_versions.py` | Renders a set of sessions through two VST3 builds and requires identical audio (CI compares against the previous release, factory presets included) |
 | `CMakeLists.txt` | Build config — Standalone + VST3, where JUCE comes from, `NEONSYNTH_LTO`, the two test libraries and the test programs |
 | `icon.png` | Application / plugin icon |
 | `test_midi.py` | Automated Python test suite |
@@ -581,7 +586,7 @@ The plugin's sources are grouped by job under `src/` (v1.11.0); includes name th
 | `docs/requirements-manual.in`, `.txt` | Python dependencies for the PDF build: the top-level list and the hash-pinned file compiled from it |
 | `pyproject.toml` | Ruff lint configuration |
 | `.github/workflows/test.yml` | CI on every PR — Windows build, unit tests, Python suite, the comparison with the reference release, pluginval (strictness 10, as at release), CPU benchmark |
-| `.github/workflows/build.yml` | CI — CMake build and unit tests on Ubuntu (GCC, without LTO, through ccache), and the sanitizer build |
+| `.github/workflows/build.yml` | CI — CMake build and unit tests on Ubuntu (GCC, without LTO, through ccache); since v1.13.0 the Linux VST3 in a host: the Python suite, the demo scripts and pluginval (strictness 10); the sanitizer, ThreadSanitizer and coverage jobs |
 | `.github/workflows/lint.yml` | CI — ruff lint of every Python file, and the code statistics report (lines of code, cyclomatic complexity per function) on the run's Summary page |
 | `.github/workflows/manual.yml` | CI — checks the manual against the version and builds its PDF |
 | `.github/workflows/integrity.yml` | CI — `tests/integrity.py`, cppcheck, and a Clang build with the integrity warnings plus clang-tidy on a pull request's changed files, on every push and pull request; weekly and on demand, clang-tidy on every file |

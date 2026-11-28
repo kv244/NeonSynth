@@ -16,6 +16,12 @@ each time in a fresh process, and the two renders must match: the new feature
 must be repeatable. Each build renders in its own process, so the two plugins
 (which share a plugin ID) never meet.
 
+Since v1.13.0 the factory bank is compared too: every preset, chosen through the
+host's program list, plays CHORD (sequenced presets play their pattern on a held
+note) in both builds, matched by name. A preset the earlier release lacks is
+compared with a second render of the new build. A preset whose sound is meant to
+change goes in PRESETS_CHANGED with the reason, for that release only.
+
     python tests/compare_versions.py OLD.vst3 NEW.vst3
 
 Exits non-zero, naming the sessions that differ, if any does.
@@ -93,6 +99,11 @@ SESSIONS = {
     "filter-velocity": (dict(cutoff=300.0, filter_velocity=3.0), LINE, 2.5),
 }
 
+# Factory presets whose sound a release changes on purpose, with the reason; emptied after each
+# release. They are rendered and must be repeatable, but are not compared with the old build.
+PRESETS_CHANGED: dict = {}
+HELD = [(48, 0.0, 3.0, 100)]   # a held note for sequenced presets (Transpose plays while it is held)
+
 
 def plugin_path(vst: str) -> str:
     """An absolute path pedalboard can load. On Windows that is the DLL inside the bundle
@@ -116,6 +127,14 @@ def render(vst: str, out: str) -> None:
         for key, value in params.items():
             setattr(plugin, key, value)
         results[name] = plugin.process(notes(*events), seconds, SR, buffer_size=512, reset=True)
+    program = probe.parameters.get("program")
+    names = list(program.valid_values) if program is not None else []
+    for name in names:
+        plugin = pedalboard.load_plugin(vst)
+        plugin.program = name
+        sequenced = bool(getattr(plugin, "sequencer_on", False))
+        events, seconds = (HELD, 3.4) if sequenced else (CHORD, 3.4)
+        results["preset: " + name] = plugin.process(notes(*events), seconds, SR, buffer_size=512, reset=True)
     np.savez(out, **results)
     if skipped:
         print(f"{vst}: sessions skipped, parameters missing: {skipped}", file=sys.stderr)
@@ -144,13 +163,21 @@ def main() -> int:
         again = render_in_process(new_vst, 2) if new_only else {}
 
         failed = []
-        for name in SESSIONS:
+        presets = [k for k in new if k.startswith("preset: ")]
+        for name in presets:
+            if name not in old or name[len("preset: "):] in PRESETS_CHANGED:
+                new_only.append(name)
+        if any(name in new_only and name not in again for name in presets):
+            again = render_in_process(new_vst, 2)
+        for name in list(SESSIONS) + presets:
             if name in new_only:
                 a, b, against = again.get(name), new[name], "a second render of the new build"
+                if name[len("preset: "):] in PRESETS_CHANGED:
+                    against += f"; changed on purpose: {PRESETS_CHANGED[name[len('preset: '):]]}"
             elif name in old and name in new:
                 a, b, against = old[name], new[name], "the old build"
             else:
-                print(f"  SKIP  {name} (a parameter it sets is missing from the new build)")
+                print(f"  SKIP  {name} (a parameter it sets, or the preset, is missing from the new build)")
                 continue
             if a is None:
                 failed.append(name)

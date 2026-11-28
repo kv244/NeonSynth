@@ -59,11 +59,14 @@ jobs:
       # Sessions saved with the reference release must render bit-identically (every new
       # parameter defaults to neutral). The reference is built once from its tag and cached;
       # the runner image is in the key, since a new compiler could round differently.
+      # v1.13.0: the reference is the previous release (it was still v1.6.0, so the factory bank,
+      # added in v1.11, had no old build to compare with). Move it to the release just tagged at
+      # each release, as the release checklist says.
       - name: Reference release
         id: reference
         shell: pwsh
         run: |
-          "version=v1.6.0" >> $env:GITHUB_OUTPUT
+          "version=v1.12.0" >> $env:GITHUB_OUTPUT
           "image=$env:ImageOS-$env:ImageVersion" >> $env:GITHUB_OUTPUT
 
       - name: Cache the reference VST3
@@ -87,7 +90,7 @@ jobs:
           Copy-Item -Recurse -Path ..\reference-build\NeonSynth_artefacts\Release\VST3\NeonSynth.vst3 -Destination reference\NeonSynth.vst3
           Get-ChildItem -Recurse reference | Select-Object -ExpandProperty FullName
 
-      - name: Sessions from the reference release render identically
+      - name: Sessions and factory presets from the reference release render identically
         run: python tests/compare_versions.py reference/NeonSynth.vst3 build/NeonSynth_artefacts/Release/VST3/NeonSynth.vst3
 
       - name: pluginval (strictness 10, the same as release.yml)
