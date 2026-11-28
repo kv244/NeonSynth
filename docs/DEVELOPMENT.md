@@ -173,8 +173,22 @@ it is empty, as none was needed. With Clang, the sanitizer runtime is a separate
 
 `-DNEONSYNTH_COVERAGE=ON` (v1.12.0, Clang) instruments the code for source-based coverage. The
 `coverage` job runs the unit tests, merges their profiles with `llvm-profdata` and writes the line
-coverage of each file in `src/` to the job summary, with the HTML report as an artifact. It has no
-threshold yet: it reports, it does not judge.
+coverage of each file in `src/` to the job summary, with the HTML report as an artifact. Since
+v1.13.0 `tests/coverage_gate.py` also judges it, and a failure fails the check (GitHub's failure
+email is the alert):
+
+- **Floors.** Each folder of `src/`, and the engine (every folder but `gui`) taken together, keeps
+  at least the line coverage in `tests/coverage-floors.txt`. They were set about two points under
+  the figures of 28 Nov 2026: dsp 96.4%, sequencer 98.0%, state 95.6%, plugin 90.9%, gui 92.6%,
+  engine 94.7%. Raise a floor when coverage rises; lower one only with the reason in the commit.
+- **No silent drops.** An engine file more than 2 points under its figure in
+  `tests/coverage-baseline.json` fails, even while its folder clears the floor: new code merged
+  without tests. A file new since the baseline is judged by the floors alone. At each release,
+  after looking at what changed, record a new baseline from the job's summary file:
+  `python tests/coverage_gate.py coverage-summary.json --write-baseline`.
+
+The unit tests are what is measured. Code only the Python suite reaches (the MIDI log's file
+writing, for one) shows as uncovered here.
 
 ### Performance
 
