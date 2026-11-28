@@ -229,6 +229,15 @@ namespace FactoryPresets
                 { "seqOn", 1.0f }, { "seqRate", 1.0f }, { "seqGate", 0.5f }, { "glide", 60.0f } },
               "A2:120 A2:70 A3:100/ A2:70 -A2:70 C3:120 A2:70 G3:110/ "
               "A2:70 D#3:100 A2:70 -A2:70 C3:120/ D3:80 A2:70 G2:110" },
+
+            { "Orchestra Hit", "Keys", "CUSTOM: a bright brass-and-strings stab with a noisy bite, after the 1980s sampled orchestra hit; play short chords",
+              { { "custom", 1.0f }, { "harmonics", 24.0f }, { "noiseLevel", 8.0f },
+                { "attack", 0.002f }, { "decay", 0.45f }, { "sustain", 0.0f }, { "release", 0.3f },
+                { "cutoff", 1600.0f }, { "filterEnvAmt", 2.6f }, { "filterAttack", 0.001f }, { "filterDecay", 0.3f },
+                { "filterSustain", 0.0f }, { "filterRelease", 0.3f }, { "filterVel", 1.0f }, { "filterDrive", 25.0f },
+                { "width", 0.7f }, { "gain", -12.0f } },
+              nullptr, nullptr,
+              "1:1 2:0.8 3:0.65 4:0.55 5:0.45 6:0.38 7:0.32 8:0.27 9:0.23 10:0.2 11:0.17 12:0.15 14:0.12 16:0.1 18:0.08 20:0.06 22:0.05 24:0.04" },
         };
         return presets;
     }

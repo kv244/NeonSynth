@@ -784,6 +784,7 @@ On a fresh instance, choosing program 0 (Glass Bell) from a DAW's program list d
 | 23 | Fold-back Siren | FX | NAIVE: a sawtooth swept an octave up and down by the LFO; as it rises, the aliased harmonics fall. Hold a note from C6 up. |
 | 24 | Tubular Bells | Keys | CUSTOM: strike partials 2, 3 and 4 over a weak hum, as a tube's strike note is heard, with fainter high partials; a bright strike that mellows and a long ring with a slow beat. Play from C4 to C6 (v1.13.0). |
 | 25 | Acid Line | Sequence | A 303-style line on a resonant sawtooth: a snappy filter envelope, accented steps (higher velocity) open the filter further, and SLIDE steps glide into the next note. Press play; change the cutoff and resonance while it runs (v1.13.0). |
+| 26 | Orchestra Hit | Keys | CUSTOM: a bright brass-and-strings stab with a noisy bite, after the sampled orchestra hit of 1980s pop. Twenty-four harmonics give the brass, a touch of NOISE the bite, and the filter envelope snaps shut in 300 ms. Play short chords (v1.13.0). |
 
 The numbers are the DAW's program numbers. Presets 16 to 23 are new in v1.12.0 and 24 onward in v1.13.0; each release adds its presets after the others, so the earlier ones keep their numbers.
 

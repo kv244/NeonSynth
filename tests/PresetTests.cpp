@@ -129,7 +129,7 @@ namespace
         std::printf ("Factory data\n");
         NeonSynthProcessor p;
         const auto& presets = FactoryPresets::all();
-        check (presets.size() == (size_t) PresetManager::numFactoryPresets, "26 factory presets (16 until v1.12.0, then appended)");
+        check (presets.size() == (size_t) PresetManager::numFactoryPresets, "27 factory presets (16 until v1.12.0, then appended)");
 
         std::set<juce::String> names;
         bool categoriesKnown = true, idsKnown = true, valuesInRange = true, patternsValid = true, slidesPlay = true, chopValid = true,
@@ -227,7 +227,7 @@ namespace
             { "Drawbar Organ", { 48, 60, 64, 67 } }, { "Square Ladder", { 60, 67, 72 } }, { "Octave Stack", { 36 } },
             { "Hollow Reed", { 60 } }, { "Phase Matters", { 48 } }, { "Aliased Arcade", { 84, 88, 91 } },
             { "Vowel Ah", { 48, 55, 60 } }, { "Fold-back Siren", { 84 } },
-            { "Tubular Bells", { 72 } },   // v1.13.0
+            { "Tubular Bells", { 72 } }, { "Orchestra Hit", { 60, 64, 67, 72 } },   // v1.13.0
         };
         const auto found = notes.find (name);
         return found != notes.end() ? found->second : std::vector<int> {};

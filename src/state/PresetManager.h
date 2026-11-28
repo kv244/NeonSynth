@@ -46,7 +46,7 @@ class PresetManager : public juce::ChangeBroadcaster,
 {
 public:
     static constexpr const char* fileExtension = ".neonpreset";
-    static constexpr int numFactoryPresets = 26;   // 16 in v1.11; v1.12.0 appended 8, v1.13.0 more
+    static constexpr int numFactoryPresets = 27;   // 16 in v1.11; v1.12.0 appended 8, v1.13.0 more
 
     /** Largest preset file read: a session with the largest embedded sample is about 14 MB. */
     static constexpr juce::int64 maxFileBytes = juce::int64 { 32 } * 1024 * 1024;
