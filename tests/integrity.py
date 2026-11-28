@@ -13,7 +13,7 @@
    the cover (docs/images/cover.json, written by docs/figures/cover.py) and the newest
    CHANGELOG row.
 2. Parameters: every parameter in tests/parameter-layout.txt is named in the user manual and on
-   the help page (HelpOverlay.h's text), by the label it has in the window. PARAMETER_TERMS
+   the help page (HelpOverlay.cpp's text), by the label it has in the window. PARAMETER_TERMS
    below says which words count for each; a new parameter needs a line there.
 3. Links: every local path the manual, README, DEVELOPMENT.md and the companion books
    (docs/theory/*.md) link to exists, and so does every repository path they quote in
