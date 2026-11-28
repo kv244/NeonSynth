@@ -21,6 +21,14 @@
    when they point at master, main or the version being released (they will be these files).
 4. Constants: each tuning constant that more than one place depends on is defined once.
    CONSTANTS lists them; add one whenever a review finds a duplicate.
+5. Presets (v1.13.0): the manual's factory bank table lists exactly the presets of
+   src/state/FactoryPresets.h, in order, with the same program numbers, names and categories,
+   and PresetManager::numFactoryPresets is their count.
+6. Symbols (v1.13.0): every code name the manual, README, DEVELOPMENT.md and the companion books
+   quote in backticks (`Chop::apply`, `prepareLegatoStep`, `filterEnvOctaves`) still exists in
+   the code: each part of a qualified name, and every camelCase, PascalCase-with-capitals or
+   snake_case word, must appear in src/, tests/, the Python tools or CMakeLists.txt. juce:: and
+   std:: names are left to their libraries. A rename that leaves the documents behind fails here.
 
 With --cppcheck it runs cppcheck --enable=unusedFunction,style over src/ and tests/ instead
 (cppcheck 2.13 or newer on the PATH) and fails on what is left after the filters in
@@ -379,6 +387,62 @@ def run_cppcheck():
     return 1 if findings or result.returncode not in (0, 1) else 0
 
 
+# ---------------------------------------------------------------------------------------------
+FACTORY = ROOT / "src" / "state" / "FactoryPresets.h"
+PRESET_MANAGER = ROOT / "src" / "state" / "PresetManager.h"
+
+
+def check_presets():
+    code = strip_comments(read(FACTORY))
+    presets = re.findall(r'^\s*\{\s*"([^"]+)",\s*"([A-Za-z]+)",', code, flags=re.M)
+    table = re.findall(r"^\| (\d+) \| ([^|]+?) \| ([A-Za-z]+) \|", read(MANUAL), flags=re.M)
+    note(f"{len(presets)} presets in {FACTORY.name}, {len(table)} rows in the manual's bank table")
+    count = re.search(r"numFactoryPresets\s*=\s*(\d+)", read(PRESET_MANAGER))
+    if not count or int(count.group(1)) != len(presets):
+        problem("presets", f"PresetManager::numFactoryPresets is {count.group(1) if count else '?'}, "
+                           f"but {FACTORY.name} has {len(presets)} presets")
+    for index, (name, category) in enumerate(presets):
+        row = next((r for r in table if int(r[0]) == index), None)
+        if row is None:
+            problem("presets", f"program {index} ({name}) has no row in the manual's factory bank table")
+        elif (row[1].strip(), row[2]) != (name, category):
+            problem("presets", f"program {index} is {name} ({category}) in the code, "
+                               f"{row[1].strip()} ({row[2]}) in the manual")
+    for row in table:
+        if int(row[0]) >= len(presets):
+            problem("presets", f"the manual lists program {row[0]} ({row[1].strip()}), which the code does not have")
+
+
+SYMBOL_DOCS = ["README.md", "DEVELOPMENT.md", "docs/NeonSynth-User-Manual.md", "docs/theory/*.md"]
+SYMBOL_SOURCES = ["src/**/*.h", "src/**/*.cpp", "tests/**/*.h", "tests/**/*.cpp", "tests/**/*.py",
+                  "*.py", "docs/**/*.py", "CMakeLists.txt"]
+CODE_LIKE = re.compile(r"[a-z][A-Z]|_[a-z]|^[A-Z][a-z]+[A-Z]")
+
+
+def check_symbols():
+    words = set()
+    for pattern in SYMBOL_SOURCES:
+        for path in ROOT.glob(pattern):
+            words.update(re.findall(r"[A-Za-z_][A-Za-z0-9_]*", path.read_text(encoding="utf-8", errors="ignore")))
+    looked = 0
+    for pattern in SYMBOL_DOCS:
+        for doc in sorted(ROOT.glob(pattern)):
+            missing = set()
+            for quoted in re.findall(r"`([^`\n]+)`", read(doc)):
+                for symbol in re.findall(r"(?<![\w/.~-])[A-Za-z_]\w*(?:::~?[A-Za-z_]\w*)*", quoted):
+                    parts = [part.lstrip("~") for part in symbol.split("::")]
+                    if parts[0] in ("std", "juce"):
+                        continue
+                    if len(parts) == 1 and not CODE_LIKE.search(symbol):
+                        continue
+                    looked += 1
+                    if not all(part in words for part in parts):
+                        missing.add(symbol)
+            for symbol in sorted(missing):
+                problem("symbols", f"{doc.relative_to(ROOT).as_posix()} quotes `{symbol}`, which the code no longer has")
+    note(f"{looked} quoted code names checked against {len(words)} words of code")
+
+
 def main():
     global verbose
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
@@ -389,7 +453,8 @@ def main():
     if args.cppcheck:
         return run_cppcheck()
 
-    checks = [("version", check_version), ("parameters", check_parameters), ("links", None), ("constants", check_constants)]
+    checks = [("version", check_version), ("parameters", check_parameters), ("links", None), ("constants", check_constants),
+              ("presets", check_presets), ("symbols", check_symbols)]
     version = None
     for name, fn in checks:
         print(f"{name}")

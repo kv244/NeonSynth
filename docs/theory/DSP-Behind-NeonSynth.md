@@ -630,7 +630,7 @@ Smoothing spreads a control change over time. Slew limiting bounds its rate, red
 
 Since v1.8.0, NeonSynth uses two independent `VoiceEnvelope` instances per voice:
 
-1. **Amplitude envelope:** Multiplies source amplitude with velocity level (`(source * velocityLevel) * ampEnvelope`) and governs voice lifetime.
+1. **Amplitude envelope:** Multiplies source amplitude with velocity level (`nextSourceSample (…) * levelNow * lastEnvelope`, where `level` is velocity times the voice gain and `lastEnvelope` the amp envelope's value) and governs voice lifetime.
 2. **Filter envelope:** Gated simultaneously with the amplitude envelope to modulate filter cutoff frequency, with defaults of 10 ms Attack, 300 ms Decay, 0.5 Sustain, and 300 ms Release. The filter envelope never ends the voice.
 
 Voice stealing reassigns an already sounding voice, potentially changing phase, source, level, pan, and state. NeonSynth combines continuity strategies rather than relying on one universal fade. These reduce artifacts but should not be treated as a proof that every arbitrary transition is perfect.
@@ -996,7 +996,7 @@ Cutoff frequency is modulated exponentially in octaves by the filter envelope, n
 f_c = clamp(f_knob × 2^{envAmount · envLevel + velAmount · velocity + lfoOctaves[n]}, 20 Hz, 0.45 F_s)
 ```
 
-When the octave sum is exactly zero (both `envAmount` and `velAmount` at zero and no LFO cutoff this block), f<sub>knob</sub> is returned untouched without the `log2`/`exp2` round trip, preserving bit-identity. The LFO term lfoOctaves[n] = d · m[n] is read from the shared buffer at the sample being rendered (§10.3); when no LFO cutoff is set the buffer is null and nothing is added. The cutoff knob is smoothed multiplicatively over 20 ms (f[n] = f<sub>0</sub> (f<sub>1</sub> / f<sub>0</sub>)<sup>n/N</sup>), while ENV amount, VEL amount, Resonance, and Drive are smoothed linearly over 20 ms. The filter runs continuously while bypassed so its integrator states remain warm, and resets when the voice's amplitude envelope finishes.
+When the octave sum is exactly zero (both `filterEnvOctaves` and `filterVelOctaves` at zero and no LFO cutoff this block), f<sub>knob</sub> is returned untouched without the `log2`/`exp2` round trip, preserving bit-identity. The LFO term lfoOctaves[n] = d · m[n] is read from the shared buffer at the sample being rendered (§10.3); when no LFO cutoff is set the buffer is null and nothing is added. The cutoff knob is smoothed multiplicatively over 20 ms (f[n] = f<sub>0</sub> (f<sub>1</sub> / f<sub>0</sub>)<sup>n/N</sup>), while ENV amount, VEL amount, Resonance, and Drive are smoothed linearly over 20 ms. The filter runs continuously while bypassed so its integrator states remain warm, and resets when the voice's amplitude envelope finishes.
 
 To minimize trigonometric (`tan`) overhead during sweeps, filter coefficients (g, R<sub>2</sub>, h) update once every **16 samples** while any parameter or envelope is moving, and are skipped completely when at rest. A non-null LFO cutoff buffer counts as moving, so the voice renders in its gliding version for that block and each update reads the LFO value of its own sample. The 16-sample counter persists across audio buffer boundaries so rendered audio is strictly independent of the host's buffer size.
 
