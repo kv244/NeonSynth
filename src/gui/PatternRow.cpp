@@ -21,8 +21,15 @@ PatternRow::PatternRow (NeonSynthProcessor& p, StepGrid& stepGrid)
                               "Natural minor", "Locrian", "Harmonic minor", "Major pentatonic",
                               "Minor pentatonic", "Blues", "Whole tone" }, 1);   // same order as the parameter
     lengthCombo.setTooltip ("Pattern length: the pattern repeats after this many steps (try 5 or 7 against the beat)");
-    keyCombo.setTooltip ("Key of the scale lock");
-    scaleCombo.setTooltip ("Scale lock: notes you set on the steps snap to this scale. Notes already there stay");
+    keyCombo.setTooltip ("Key of the scale lock. Choosing one moves every step to the nearest note of the scale (UNDO puts them back)");
+    scaleCombo.setTooltip ("Scale lock: choosing a scale moves every step to its nearest note in the scale (UNDO puts them back); "
+                           "notes you set afterwards snap to it too");
+    for (auto* combo : { &keyCombo, &scaleCombo })
+        combo->onChange = [this, combo]
+        {
+            if (combo->takeUserPick())
+                snapPatternToScale();
+        };
     lengthAttachment = std::make_unique<ComboBoxAttachment> (apvts, "seqLength", lengthCombo);
     keyAttachment    = std::make_unique<ComboBoxAttachment> (apvts, "seqKey",    keyCombo);
     scaleAttachment  = std::make_unique<ComboBoxAttachment> (apvts, "seqScale",  scaleCombo);
@@ -95,6 +102,17 @@ void PatternRow::undo()
 void PatternRow::rememberPattern()
 {
     history.remember (currentPattern());
+    updateUndoButton();
+}
+
+void PatternRow::snapPatternToScale()
+{
+    const auto before = currentPattern();
+    const auto after  = PatternTools::snapToScale (before, key(), scale());
+    if (after == before)
+        return;   // already in the scale, or the scale is off: nothing to undo
+    history.remember (before);
+    writePattern (after);
     updateUndoButton();
 }
 

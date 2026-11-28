@@ -599,7 +599,7 @@ int main()
     std::printf ("Pattern tools (v1.11.0)\n");
     {
         juce::Random random (1122);
-        bool shifts = true, reverses = true, octaves = true, others = true;
+        bool shifts = true, reverses = true, octaves = true, others = true, snaps = true;
 
         for (int trial = 0; trial < 200; ++trial)
         {
@@ -622,6 +622,22 @@ int main()
             for (int i = 0; i < length; ++i) fits = fits && p[(size_t) i].note + 12 < 128;
             octaves = octaves && (fits ? (down == p && ! (up == p)) : up == p);
 
+            // v1.13.0: snapping to a scale puts every note in it, moves none that already was,
+            // keeps everything but the note, and changes nothing with the scale off.
+            const int key = random.nextInt (12);
+            const auto scale = (StepSequencer::Scale) (1 + random.nextInt (StepSequencer::numScales - 1));
+            const auto snapped = PatternTools::snapToScale (p, key, scale);
+            for (int i = 0; i < StepSequencer::numSteps; ++i)
+            {
+                const auto& sn = snapped[(size_t) i];
+                const auto& o = p[(size_t) i];
+                snaps = snaps && StepSequencer::isInScale (sn.note, key, scale) && std::abs (sn.note - o.note) <= 2
+                              && (! StepSequencer::isInScale (o.note, key, scale) || sn.note == o.note)
+                              && sn.on == o.on && sn.velocity == o.velocity && sn.tie == o.tie && sn.slide == o.slide;
+            }
+            snaps = snaps && PatternTools::snapToScale (p, key, StepSequencer::Scale::off) == p
+                          && PatternTools::snapToScale (snapped, key, scale) == snapped;
+
             const auto cleared = PatternTools::clear (p, length);
             for (int i = 0; i < StepSequencer::numSteps; ++i)
             {
@@ -638,6 +654,8 @@ int main()
         check (reverses, "reversing twice gives the pattern back");
         check (octaves, "octave up then down gives the pattern back, and does nothing if a note would leave 0..127");
         check (others, "clear turns the steps off but keeps their notes; no tool touches the steps beyond the length");
+        check (snaps, "snapping to a scale (v1.13.0) moves every note to the nearest one in it, keeps notes already in it and "
+                      "everything but the note, and changes nothing with the scale off");
 
         // Ties move with their gap: 60~61 62 63 reversed is 63 62 61~60.
         auto p = allOnPattern();

@@ -51,6 +51,9 @@ public:
     /** Takes a snapshot of the pattern as it is now, before a change. */
     void rememberPattern();
 
+    /** v1.13.0: the user chose a scale or key: every step snaps to it (one undo level). */
+    void snapPatternToScale();
+
     /** Applies one of the TOOLS menu's entries (the menu calls this; so can a test). */
     void applyTool (Tool tool);
 
@@ -95,7 +98,46 @@ private:
     juce::AudioProcessorValueTreeState& apvts;
     StepGrid& grid;
 
-    juce::ComboBox   lengthCombo, keyCombo, scaleCombo;
+    /**
+        A menu that knows when the user picked from it (v1.13.0). A host's automation, a
+        session or a preset changes the parameter, and through the attachment the menu, the
+        same way; only a change that follows the menu's own popup counts as the user's.
+    */
+    class PickedComboBox : public juce::ComboBox, private juce::Timer
+    {
+    public:
+        /** Called after the user picks a new item (the parameter is already set). */
+        std::function<void()> onUserPick;
+
+        void showPopup() override
+        {
+            picking = true;
+            closedTicks = 0;
+            juce::ComboBox::showPopup();
+            startTimerHz (30);
+        }
+
+        /** The ComboBox's own onChange, routed here; true if the user made this change. */
+        bool takeUserPick() noexcept   { return std::exchange (picking, false); }
+
+    private:
+        void timerCallback() override
+        {
+            // The popup closed with nothing picked: after two quiet ticks, stop listening.
+            if (isPopupActive())
+                closedTicks = 0;
+            else if (++closedTicks >= 2)
+            {
+                picking = false;
+                stopTimer();
+            }
+        }
+
+        bool picking = false;
+        int  closedTicks = 0;
+    };
+
+    PickedComboBox   lengthCombo, keyCombo, scaleCombo;   // LENGTH's pick changes no steps
     juce::TextButton toolsButton { "TOOLS" }, enterButton { "ENTER" }, undoButton { "UNDO" };
     std::unique_ptr<ComboBoxAttachment> lengthAttachment, keyAttachment, scaleAttachment;
 

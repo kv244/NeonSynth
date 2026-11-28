@@ -445,6 +445,17 @@ namespace PatternTools
 
     inline int clampLength (int length) noexcept   { return juce::jlimit (1, StepSequencer::numSteps, length); }
 
+    /** v1.13.0: every step's note (all 16, played or not) moved to the nearest note of the
+        scale; with the scale off, the pattern unchanged. */
+    inline Pattern snapToScale (Pattern p, int key, Scale scale) noexcept
+    {
+        if (scale == Scale::off)
+            return p;
+        for (auto& step : p)
+            step.note = StepSequencer::snapToScale (step.note, key, scale);
+        return p;
+    }
+
     /** Every step one place earlier; the first becomes the last. */
     inline Pattern shiftLeft (Pattern p, int length) noexcept
     {

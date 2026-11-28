@@ -941,6 +941,18 @@ int main()
                 check (processor.getSequencerStep (1) == before, "TOOLS shift right moves step 1 to step 2");
                 row->undo();
                 check (processor.getSequencerStep (0) == before, "and undo moves it back");
+
+                // v1.13.0: choosing a scale snaps the steps; a host or session changing it does not.
+                set (processor, "seqScale", 0.0f);
+                processor.setSequencerStep (2, { true, 61, 100 });   // C#4: not in C major
+                set (processor, "seqScale", 1.0f);                   // as a host would: no pick in the menu
+                pump (100);
+                check (processor.getSequencerStep (2).note == 61, "a scale set by the host or a session leaves the steps alone");
+                row->snapPatternToScale();                           // what the user's pick in the menu does
+                check (processor.getSequencerStep (2).note == 60 || processor.getSequencerStep (2).note == 62,
+                       "choosing a scale moves a step outside it to the nearest note in it");
+                row->undo();
+                check (processor.getSequencerStep (2).note == 61, "and UNDO puts it back");   // C major stays on for ENTER below
             }
 
         auto* enter = dynamic_cast<juce::Button*> (find (ed, "seqEnter"));
