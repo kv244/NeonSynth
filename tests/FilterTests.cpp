@@ -18,8 +18,9 @@
 #include <juce_dsp/juce_dsp.h>
 #include "dsp/CytomicSvf.h"
 #include "dsp/Oscillator.h"
+#include <bit>
+#include <cstdint>
 #include <cstdio>
-#include <cstring>
 #include <cmath>
 #include <vector>
 #include <algorithm>
@@ -67,7 +68,7 @@ namespace
         return (float) std::exp (lo + (hi - lo) * random.nextDouble());
     }
 
-    bool sameBits (float a, float b)   { return std::memcmp (&a, &b, sizeof (float)) == 0; }
+    bool sameBits (float a, float b)   { return std::bit_cast<std::uint32_t> (a) == std::bit_cast<std::uint32_t> (b); }
     bool finite (float v)              { return std::isfinite (v); }
 
     void fft (std::vector<double>& re, std::vector<double>& im)

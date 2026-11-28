@@ -91,14 +91,15 @@ std::unique_ptr<juce::XmlElement> PresetManager::createFactoryXml (int index) co
     }
     if (preset.chopDepths != nullptr)   // v1.13.0: depths, with the nearest on/off pattern beside them
     {
-        const auto depths = parseChopDepths (preset.chopDepths);
-        jassert (depths.has_value());   // PresetTests checks every factory depth list parses
-        if (depths.has_value())
+        const auto parsed = parseChopDepths (preset.chopDepths);
+        jassert (parsed.has_value());   // PresetTests checks every factory depth list parses
+        if (parsed.has_value())
         {
+            const ChopSettings::Depths depths = *parsed;
             auto* chop = xml->createNewChildElement (StateFormat::chopId);
             juce::String pattern;
             for (int k = 0; k < Chop::stepsPerPattern; ++k)
-                pattern << (ChopSettings::depthOf (*depths, k) >= 8 ? "1" : "0");
+                pattern << (ChopSettings::depthOf (depths, k) >= 8 ? "1" : "0");
             chop->setAttribute (StateFormat::chopPatternId, pattern);
             chop->setAttribute (StateFormat::chopDepthsId, juce::String (preset.chopDepths).trim());
         }

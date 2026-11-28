@@ -144,6 +144,7 @@ int main()
         {
             auto s = make ({ level, 3.0f, 0.0f }, 3);
             std::vector<float> out;
+            out.reserve (input.size());
             for (const float v : input)
                 out.push_back (s.process (v));
             const double r = rms (out);
@@ -184,6 +185,7 @@ int main()
         const auto offsetInput = sine (220.0, 96000, 0.6f, 0.4f);
         auto d = make ({ 0.0f, 4.0f, 1.0f });
         std::vector<float> out;
+        out.reserve (offsetInput.size());
         for (const float v : offsetInput)
             out.push_back (d.process (v));
         double mean = 0.0;
@@ -206,6 +208,7 @@ int main()
             auto s = make ({ 0.0f, 1.0f, 0.5f });
             const auto x = sine (hz, 24000, 0.05f);
             std::vector<float> out;
+            out.reserve (x.size());
             for (const float v : x)
                 out.push_back (s.process (v));
             const double gain = rms (out, 4800) / rms (x, 4800);

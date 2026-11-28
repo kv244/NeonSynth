@@ -69,10 +69,11 @@ namespace
 
     double rms (const std::vector<float>& x)
     {
+        const size_t trim = x.size() / 10;   // skip a tenth at each end
         double sum = 0.0;
-        for (size_t i = x.size() / 10; i < x.size() - x.size() / 10; ++i)
+        for (size_t i = trim; i < x.size() - trim; ++i)
             sum += (double) x[i] * x[i];
-        return std::sqrt (sum / (double) (x.size() - 2 * (x.size() / 10)));
+        return std::sqrt (sum / (double) (x.size() - 2 * trim));
     }
 
     float largestStep (const std::vector<float>& x)
