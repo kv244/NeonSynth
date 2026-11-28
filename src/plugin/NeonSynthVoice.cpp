@@ -3,9 +3,11 @@
 // Licensed under the GNU Affero General Public License v3; see LICENSE.
 
 // The voice's work outside the sample loop (v1.11.1): preparing, starting and stopping notes,
-// taking each block's parameters, and the telemetry for the editor. The render path (the
-// per-sample loop and everything it calls) stays in NeonSynthVoice.h, so the compiler sees it
-// inline wherever it is used without relying on link-time optimisation.
+// taking each block's parameters, and the telemetry for the editor. Since v1.13.0 also the
+// per-block code around the loop: renderNextBlock() (which picks the steady or gliding loop),
+// endVoice(), setFilterCoefficients(), renderCloud() and settleSampleCopy(). The per-sample loop
+// itself (renderSamples<steady>() and everything it calls) stays in NeonSynthVoice.h, so the
+// compiler sees it inline without relying on link-time optimisation.
 
 #include "plugin/NeonSynthVoice.h"
 

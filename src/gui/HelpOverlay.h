@@ -29,7 +29,7 @@
          closes on a fresh press while the host's process is in front. It runs only while
          the help is showing, and only notices a key pressed after the help opened.
 
-    To edit the help, change the entries in buildColumns() - each one is a
+    To edit the help, change the entries in buildColumns() (in HelpOverlay.cpp) - each one is a
     heading followed by its lines.
 */
 class HelpOverlay : public juce::Component,

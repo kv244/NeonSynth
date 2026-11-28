@@ -49,7 +49,7 @@ public:
     double getTailLengthSeconds() const override { return (double) parameters.release->get() + NeonSynthVoice::hardStopFadeSeconds; }
 
     // v1.11.0, region C (presets): the 16 factory presets are the host's program list. The current
-    // program is the factory preset loaded last, remembered with the session (PresetManager.h); 0
+    // program is the factory preset loaded last, remembered with the session (PresetManager.h, .cpp); 0
     // when there is none, as JUCE needs an index.
     int getNumPrograms() override                         { return PresetManager::numFactoryPresets; }
     int getCurrentProgram() override                      { return juce::jmax (0, presetManager.getCurrentProgramIndex()); }

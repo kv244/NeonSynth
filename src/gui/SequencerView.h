@@ -31,7 +31,7 @@
 
     v1.11.0: steps beyond the pattern's LENGTH are drawn dim (they keep their notes and come
     back when the pattern is made longer), and while ENTER waits for notes the step the next
-    note goes to is outlined. The pattern row (PatternRow.h) hooks in through onBeforeEdit
+    note goes to is outlined. The pattern row (PatternRow.h, .cpp) hooks in through onBeforeEdit
     (for undo) and onStepClicked (for ENTER).
 
     The grid keeps no pattern of its own: refresh(), called from the editor's

@@ -18,8 +18,9 @@
     ID; its six controls keep the IDs seqLength, seqKey, seqScale, seqTools, seqEnter, seqUndo.
 
     Everything here runs on the message thread. The pattern logic lives in StepSequencer.h
-    (PatternTools, PatternHistory, NoteEntry), where the unit tests reach it; this file only
-    wires it to the controls, the step grid and the processor:
+    (PatternTools, PatternHistory, NoteEntry), where the unit tests reach it; this class (its
+    methods in PatternRow.cpp since v1.13.0) only wires it to the controls, the step grid and
+    the processor:
 
       - UNDO (and Ctrl+Z, through the editor's keyPressed) steps back through 32 whole-pattern
         snapshots. A snapshot is taken before each grid gesture, each tool and each ENTER run.

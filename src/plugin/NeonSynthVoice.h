@@ -42,10 +42,11 @@ public:
     output buffer (no scratch buffer to overrun), and every parameter that can
     click is smoothed or latched at a phase wrap.
 
-    The render path (renderNextBlock() and what its loop runs every sample) is
+    The per-sample loop (renderSamples<steady>() and what it runs every sample) is
     here, where every file that uses it sees it inline. Preparing, starting and
     stopping notes, the per-block parameters and the telemetry are in
-    NeonSynthVoice.cpp (v1.11.1).
+    NeonSynthVoice.cpp (v1.11.1), and so since v1.13.0 is the per-block code
+    around the loop (renderNextBlock(), endVoice(), renderCloud() and the rest).
 */
 class NeonSynthVoice : public juce::SynthesiserVoice
 {

@@ -958,9 +958,9 @@ You do not need to understand the whole application before investigating one par
 | Start here | What to look for | Connect it to the instrument |
 |---|---|---|
 | `src/dsp/Oscillator.h` / `src/dsp/Chop.h` | Waveform generation, phase and band-limiting; CHOP in a file of its own. | Compare Sine, Triangle, Square, and Sawtooth on the same note. |
-| `src/dsp/Sculpt.h` / `src/gui/ShapeView.h` | Noise, the oversampled wavefolder, and the SHAPE strip's drawing. | Sweep DRIVE while watching the drawing and the spectrum. |
+| `src/dsp/Sculpt.h` / `src/gui/ShapeView.cpp` | Noise, the oversampled wavefolder, and the SHAPE strip's drawing. | Sweep DRIVE while watching the drawing and the spectrum. |
 | `src/dsp/Wavetable.h` / `src/dsp/CycleAnalysis.h` / `src/state/FourierState.h` | CUSTOM's Fourier series: 32 tables summed from sines, handed lock-free to the audio thread; a drawn cycle analysed into harmonics (v1.12.0). | BUILD a square and watch the table count climb; draw a corner and see the Gibbs ripple. |
-| `src/gui/HarmonicsView.h` | The HARMONICS view: bars, phase rings, presets, BUILD. | Click ZERO PHASE and compare what you see with what you hear. |
+| `src/gui/HarmonicsView.cpp` | The HARMONICS view: bars, phase rings, presets, BUILD. | Click ZERO PHASE and compare what you see with what you hear. |
 | `src/dsp/VoiceEnvelope.h` | Envelope stages and their time/level behaviour. | Move ATTACK, DECAY, SUSTAIN, and RELEASE while watching the graph. |
 | `src/plugin/NeonSynthVoice.h` / `src/plugin/NeonSynthVoice.cpp` | One note's source, envelope, filter, panning, and glide: the per-sample rendering in the header, note start and stop and the parameter plumbing in the `.cpp`. | Follow a note from source generation to stereo placement; set GLIDE and watch it slide. |
 | `src/plugin/PlayingSynthesiser.h` | LEGATO and the sequencer's slides: moving a sounding voice to a new note. | Play overlapping keys at MONO with LEGATO on and off. |
@@ -972,13 +972,13 @@ You do not need to understand the whole application before investigating one par
 | `src/state/SampleData.h` / `src/state/SampleLoader.h` | File preparation, mono conversion, normalisation, and embedded audio. | Compare an imported recording with its prepared sample. |
 | `src/dsp/SampleReader.h` | Pitch mapping and crossfaded loop playback. | Investigate ROOT, loop boundaries, and XFADE. |
 | `src/dsp/GrainCloud.h` | Grain scheduling, windows, scan positions, and SIMD paths. | Connect SIZE, DENS, and SCAN to individual fragments. |
-| `src/sequencer/StepSequencer.h` / `src/gui/SequencerView.h` | Timing engine, ties and slides, the scale lock, the pattern tools and undo, versus the editable grid. | See how a visual step becomes a timed note event. |
-| `src/gui/PatternRow.h` | The pattern row: LENGTH, KEY, SCALE, TOOLS, ENTER and UNDO wired to the grid. | Follow an ENTER run from a played key to a written step. |
-| `src/state/PresetManager.h` / `src/state/FactoryPresets.h` / `src/gui/PresetBar.h` | Preset files, the factory bank written as data, and the preset bar. | Change a factory preset's value by ear and rebuild. |
+| `src/sequencer/StepSequencer.h` and `.cpp` / `src/gui/SequencerView.cpp` | Timing engine, ties and slides, the scale lock, the pattern tools and undo, versus the editable grid. | See how a visual step becomes a timed note event. |
+| `src/gui/PatternRow.cpp` | The pattern row: LENGTH, KEY, SCALE, TOOLS, ENTER and UNDO wired to the grid. | Follow an ENTER run from a played key to a written step. |
+| `src/state/PresetManager.cpp` / `src/state/FactoryPresets.h` / `src/gui/PresetBar.cpp` | Preset files, the factory bank written as data, and the preset bar. | Change a factory preset's value by ear and rebuild. |
 | `src/gui/ScopeView.h` / `src/gui/NeonSynthEditor.cpp` | Display processing and control attachments. | Understand how sound and parameter state reach the screen. |
 | `tests/` | Focused engine tests and the render benchmark. | Read the expected behaviour before changing its implementation. |
 
-Since v1.11.0 the source files are grouped by what they do: `src/dsp` (sound), `src/sequencer`, `src/state` (samples, presets and the saved session), `src/gui` (the window) and `src/plugin` (the processor, its parameters, the MIDI router and the voice). Since v1.11.1 the processor's jobs are in files of their own, and the editor and the voice have `.cpp` files for their setup work; the code that runs for every sample stays in headers.
+Since v1.11.0 the source files are grouped by what they do: `src/dsp` (sound), `src/sequencer`, `src/state` (samples, presets and the saved session), `src/gui` (the window) and `src/plugin` (the processor, its parameters, the MIDI router and the voice). Since v1.11.1 the processor's jobs are in files of their own, and the editor and the voice have `.cpp` files for their setup work; since v1.13.0 every view, the look and feel, the sequencer's per-block code and the preset manager have one too. The code that runs for every sample stays in headers.
 
 It is an editorial guide, not a requirement to read every file in this order.
 

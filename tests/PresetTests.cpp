@@ -3,7 +3,7 @@
 // Licensed under the GNU Affero General Public License v3; see LICENSE.
 
 /*
-    Presets (v1.11.0): PresetManager.h, FactoryPresets.h, PresetBar.h and the host program list.
+    Presets (v1.11.0): PresetManager (.h, .cpp), FactoryPresets.h, PresetBar (.h, .cpp) and the host program list.
 
       - The factory data: 24 presets (v1.12.0 appended 8), unique names, known categories, every parameter ID real and
         every value inside its range, patterns of 16 valid steps (a slide always into a step that
