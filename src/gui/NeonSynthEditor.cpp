@@ -544,6 +544,10 @@ NeonSynthEditor::NeonSynthEditor (NeonSynthProcessor& p)
     setUpLinearSlider (seqGateSlider, neon::amber);
     seqGateAttachment = std::make_unique<SliderAttachment> (apvts, "seqGate", seqGateSlider);
     setUpReadout (seqGateReadout, neon::amber, juce::Justification::centredRight);
+    seqSwingSlider.setTooltip ("Swing: delays every second step, by up to half a step at 100%, for a shuffle. "
+                               "0% plays straight; about 67% is a triplet feel.");
+    seqGateSlider.setTooltip ("Gate: how long each note lasts, as a share of one step. Low values are short "
+                              "and staccato; 100% holds each note until the next one starts (legato).");
 
     // Help: "?" toggles the overlay; the overlay un-toggles the button when it closes itself.
     helpButton.setClickingTogglesState (true);
