@@ -988,7 +988,7 @@ int main()
 
         // v1.13.0: a drag draws depths, each step taking the pointer's height (top = 15, bottom = 0).
         const auto inner = shape->getLocalBounds().toFloat().reduced (4.0f, 3.0f);
-        const auto atHeight = [shape, inner] (int step, float height)   // height 0..1 from the bottom
+        const auto atHeight = [inner] (int step, float height)   // height 0..1 from the bottom
         {
             return juce::Point<float> (inner.getX() + inner.getWidth() * ((float) step + 0.5f) / 16.0f,
                                        inner.getBottom() - height * inner.getHeight());

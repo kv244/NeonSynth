@@ -335,7 +335,9 @@ int main (int argc, char* argv[])
             return chop != nullptr ? std::make_unique<juce::XmlElement> (*chop) : std::unique_ptr<juce::XmlElement>();
         };
 
-        NeonSynthProcessor p;
+        // On the heap: a processor is about 400 KB, and three on the stack overflow Windows' 1 MB.
+        auto owner = std::make_unique<NeonSynthProcessor>();
+        auto& p = *owner;
         p.setChopStep (0, true);
         p.setChopStep (1, false);
         const auto onOff = chopElement (save (p));
@@ -352,18 +354,18 @@ int main (int argc, char* argv[])
                    && withDepths->getStringAttribute (StateFormat::chopPatternId) == "0000000011111111",
                "partial depths save as depths=\"0 1 .. 15\", with the nearest on/off pattern for older versions");
 
-        NeonSynthProcessor restored;
-        restored.setStateInformation (state.getData(), (int) state.getSize());
-        check (restored.getChopDepths() == ramp, "and load back exactly");
+        auto restored = std::make_unique<NeonSynthProcessor>();
+        restored->setStateInformation (state.getData(), (int) state.getSize());
+        check (restored->getChopDepths() == ramp, "and load back exactly");
 
         // A damaged depths attribute falls back to the on/off pattern beside it.
         auto xml = juce::AudioProcessor::getXmlFromBinary (state.getData(), (int) state.getSize());
         xml->getChildByName (StateFormat::chopId)->setAttribute (StateFormat::chopDepthsId, "0 1 2 99");
         juce::MemoryBlock damaged;
         juce::AudioProcessor::copyXmlToBinary (*xml, damaged);
-        NeonSynthProcessor fallback;
-        fallback.setStateInformation (damaged.getData(), (int) damaged.getSize());
-        check (fallback.getChopDepths() == ChopSettings::fromPattern (0xFF00), "a damaged depths list falls back to the on/off pattern");
+        restored = std::make_unique<NeonSynthProcessor>();
+        restored->setStateInformation (damaged.getData(), (int) damaged.getSize());
+        check (restored->getChopDepths() == ChopSettings::fromPattern (0xFF00), "a damaged depths list falls back to the on/off pattern");
     }
 
     std::printf ("\nSessions saved by earlier releases\n");
