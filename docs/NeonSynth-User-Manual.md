@@ -658,7 +658,7 @@ Only a slide makes a sequencer step glide: steps without SLD before them keep th
 
 ### The scale lock: KEY and SCALE
 
-The **KEY** and **SCALE** menus in the pattern row lock the notes you set to a scale. With a scale chosen, dragging, the mouse wheel, ENTER and the randomise tool all land on notes of the scale, and a drag moves one scale note per 6 pixels. Choosing a scale or a key in the menus also moves every step to the nearest note of the scale (v1.13.0; steps already in it keep their note), so the pads show the notes the scale allows. **UNDO** puts the old notes back. A scale set by your DAW's automation, a session or a preset leaves the steps as they are.
+The **KEY** and **SCALE** menus in the pattern row lock the notes you set to a scale. With a scale chosen, dragging, the mouse wheel, ENTER and the randomise tool all land on notes of the scale, and a drag moves one scale note per 6 pixels. Choosing a scale or a key in the menus also fills the 16 steps with the scale (v1.13.0): its notes in order, rising from the key's root in octave 3 and on up through the octaves as needed (C major runs from C3 to D5, a pentatonic to D6). Only the notes change; each step keeps whether it plays, its velocity, and its tie and slide. **UNDO** puts the old notes back. A scale set by your DAW's automation, a session or a preset leaves the steps as they are.
 
 The 13 choices of SCALE are Off (shown as **Scale off**, every note allowed), Major, Dorian, Phrygian, Lydian, Mixolydian, Natural minor, Locrian, Harmonic minor, Major pentatonic, Minor pentatonic, Blues and Whole tone.
 

@@ -265,6 +265,7 @@ public:
                        harmonicMinor, majorPentatonic, minorPentatonic, blues, wholeTone };
 
     static constexpr int numScales = 13;
+    static constexpr int fillRootNote = 48;   ///< v1.13.0: C3, where filling the pattern with a scale starts
 
     /** The scale's notes as a 12-bit mask, bit i = i semitones above the key. Off = every note. */
     static int scaleMask (Scale scale) noexcept;
@@ -445,14 +446,22 @@ namespace PatternTools
 
     inline int clampLength (int length) noexcept   { return juce::jlimit (1, StepSequencer::numSteps, length); }
 
-    /** v1.13.0: every step's note (all 16, played or not) moved to the nearest note of the
-        scale; with the scale off, the pattern unchanged. */
-    inline Pattern snapToScale (Pattern p, int key, Scale scale) noexcept
+    /** v1.13.0: the 16 steps filled with the scale, ascending from the key's root in octave 3
+        (C3 = MIDI 48) and on up through the octaves as needed: C major is C3 D3 E3 .. B3 C4 .. D5,
+        a pentatonic reaches D6. Only the notes change; each step keeps on/off, velocity, tie and
+        slide. With the scale off, the pattern unchanged. */
+    inline Pattern fillWithScale (Pattern p, int key, Scale scale) noexcept
     {
         if (scale == Scale::off)
             return p;
+        int note = StepSequencer::fillRootNote + juce::jlimit (0, 11, key);
         for (auto& step : p)
-            step.note = StepSequencer::snapToScale (step.note, key, scale);
+        {
+            while (note < StepSequencer::numMidiNotes - 1 && ! StepSequencer::isInScale (note, key, scale))
+                ++note;
+            step.note = juce::jmin (note, StepSequencer::numMidiNotes - 1);
+            ++note;
+        }
         return p;
     }
 

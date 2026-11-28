@@ -622,21 +622,28 @@ int main()
             for (int i = 0; i < length; ++i) fits = fits && p[(size_t) i].note + 12 < 128;
             octaves = octaves && (fits ? (down == p && ! (up == p)) : up == p);
 
-            // v1.13.0: snapping to a scale puts every note in it, moves none that already was,
-            // keeps everything but the note, and changes nothing with the scale off.
+            // v1.13.0: filling with a scale gives its notes in order, rising from the key's root
+            // in octave 3 with none skipped, keeps everything but the note, and changes nothing
+            // with the scale off.
             const int key = random.nextInt (12);
             const auto scale = (StepSequencer::Scale) (1 + random.nextInt (StepSequencer::numScales - 1));
-            const auto snapped = PatternTools::snapToScale (p, key, scale);
+            const auto filled = PatternTools::fillWithScale (p, key, scale);
+            snaps = snaps && filled[0].note == StepSequencer::fillRootNote + key;
             for (int i = 0; i < StepSequencer::numSteps; ++i)
             {
-                const auto& sn = snapped[(size_t) i];
+                const auto& f = filled[(size_t) i];
                 const auto& o = p[(size_t) i];
-                snaps = snaps && StepSequencer::isInScale (sn.note, key, scale) && std::abs (sn.note - o.note) <= 2
-                              && (! StepSequencer::isInScale (o.note, key, scale) || sn.note == o.note)
-                              && sn.on == o.on && sn.velocity == o.velocity && sn.tie == o.tie && sn.slide == o.slide;
+                snaps = snaps && StepSequencer::isInScale (f.note, key, scale)
+                              && f.on == o.on && f.velocity == o.velocity && f.tie == o.tie && f.slide == o.slide;
+                if (i > 0)
+                {
+                    const int previous = filled[(size_t) i - 1].note;
+                    snaps = snaps && f.note > previous;
+                    for (int between = previous + 1; between < f.note; ++between)
+                        snaps = snaps && ! StepSequencer::isInScale (between, key, scale);   // no scale note skipped
+                }
             }
-            snaps = snaps && PatternTools::snapToScale (p, key, StepSequencer::Scale::off) == p
-                          && PatternTools::snapToScale (snapped, key, scale) == snapped;
+            snaps = snaps && PatternTools::fillWithScale (p, key, StepSequencer::Scale::off) == p;
 
             const auto cleared = PatternTools::clear (p, length);
             for (int i = 0; i < StepSequencer::numSteps; ++i)
@@ -654,8 +661,8 @@ int main()
         check (reverses, "reversing twice gives the pattern back");
         check (octaves, "octave up then down gives the pattern back, and does nothing if a note would leave 0..127");
         check (others, "clear turns the steps off but keeps their notes; no tool touches the steps beyond the length");
-        check (snaps, "snapping to a scale (v1.13.0) moves every note to the nearest one in it, keeps notes already in it and "
-                      "everything but the note, and changes nothing with the scale off");
+        check (snaps, "filling with a scale (v1.13.0) gives its notes in order from the key in octave 3, none skipped, "
+                      "keeps on, velocity, tie and slide, and leaves the pattern alone with the scale off");
 
         // Ties move with their gap: 60~61 62 63 reversed is 63 62 61~60.
         auto p = allOnPattern();

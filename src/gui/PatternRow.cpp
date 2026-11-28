@@ -21,14 +21,15 @@ PatternRow::PatternRow (NeonSynthProcessor& p, StepGrid& stepGrid)
                               "Natural minor", "Locrian", "Harmonic minor", "Major pentatonic",
                               "Minor pentatonic", "Blues", "Whole tone" }, 1);   // same order as the parameter
     lengthCombo.setTooltip ("Pattern length: the pattern repeats after this many steps (try 5 or 7 against the beat)");
-    keyCombo.setTooltip ("Key of the scale lock. Choosing one moves every step to the nearest note of the scale (UNDO puts them back)");
-    scaleCombo.setTooltip ("Scale lock: choosing a scale moves every step to its nearest note in the scale (UNDO puts them back); "
-                           "notes you set afterwards snap to it too");
+    keyCombo.setTooltip ("Key of the scale lock. Choosing one fills the 16 steps with the scale from that key, rising from octave 3 "
+                         "(UNDO puts the old notes back)");
+    scaleCombo.setTooltip ("Scale lock: choosing a scale fills the 16 steps with its notes, rising from the key in octave 3 "
+                           "(UNDO puts the old notes back); notes you set afterwards snap to it");
     for (auto* combo : { &keyCombo, &scaleCombo })
         combo->onChange = [this, combo]
         {
             if (combo->takeUserPick())
-                snapPatternToScale();
+                fillPatternWithScale();
         };
     lengthAttachment = std::make_unique<ComboBoxAttachment> (apvts, "seqLength", lengthCombo);
     keyAttachment    = std::make_unique<ComboBoxAttachment> (apvts, "seqKey",    keyCombo);
@@ -105,10 +106,10 @@ void PatternRow::rememberPattern()
     updateUndoButton();
 }
 
-void PatternRow::snapPatternToScale()
+void PatternRow::fillPatternWithScale()
 {
     const auto before = currentPattern();
-    const auto after  = PatternTools::snapToScale (before, key(), scale());
+    const auto after  = PatternTools::fillWithScale (before, key(), scale());
     if (after == before)
         return;   // already in the scale, or the scale is off: nothing to undo
     history.remember (before);

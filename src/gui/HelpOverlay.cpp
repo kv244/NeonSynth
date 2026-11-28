@@ -157,7 +157,7 @@ void HelpOverlay::buildColumns()
         "TIE holds the note into the next step. SLD slides into the next step's note at GLIDE time." } }, neon::amber);
 
     addSection (0, { "PATTERN ROW", {
-        "LENGTH: the pattern repeats after 1 to 16 steps. KEY + SCALE: choosing them snaps every step to the scale (UNDO undoes it).",
+        "LENGTH: the pattern repeats after 1 to 16 steps. KEY + SCALE: choosing them fills the steps with the scale, rising from octave 3 (UNDO undoes it).",
         "ENTER: switch it on, click a step, play keys: each fills a step and moves on.",
         "TOOLS: shift, octave up / down, reverse, randomise, clear. UNDO (or Ctrl+Z) steps back." } }, neon::amber);
 

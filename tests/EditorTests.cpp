@@ -788,11 +788,14 @@ int main()
         if (const auto* lights = dynamic_cast<const VoiceLeds*> (leds))
         {
             harmonicsTests::playNote (processor, 61, true);
-            pump (70);
             int shown = -1;
-            for (int i = 0; i < NeonSynthProcessor::numVoices; ++i)
-                if (lights->getShownNote (i) >= 0)
-                    shown = lights->getShownNote (i);
+            for (int tries = 0; tries < 50 && shown < 0; ++tries)   // the lights follow on the editor's timer: wait up to 1 s, not a fixed time
+            {
+                pump (20);
+                for (int i = 0; i < NeonSynthProcessor::numVoices; ++i)
+                    if (lights->getShownNote (i) >= 0)
+                        shown = lights->getShownNote (i);
+            }
             check (shown == 61 && VoiceLeds::noteName (shown) == "C#4", "a played C#4 lights a voice labelled C#4");
             harmonicsTests::playNote (processor, 61, false);
         }
@@ -976,15 +979,16 @@ int main()
                 row->undo();
                 check (processor.getSequencerStep (0) == before, "and undo moves it back");
 
-                // v1.13.0: choosing a scale snaps the steps; a host or session changing it does not.
+                // v1.13.0: choosing a scale fills the steps with it; a host or session changing it does not.
                 set (processor, "seqScale", 0.0f);
                 processor.setSequencerStep (2, { true, 61, 100 });   // C#4: not in C major
                 set (processor, "seqScale", 1.0f);                   // as a host would: no pick in the menu
                 pump (100);
                 check (processor.getSequencerStep (2).note == 61, "a scale set by the host or a session leaves the steps alone");
-                row->snapPatternToScale();                           // what the user's pick in the menu does
-                check (processor.getSequencerStep (2).note == 60 || processor.getSequencerStep (2).note == 62,
-                       "choosing a scale moves a step outside it to the nearest note in it");
+                row->fillPatternWithScale();                         // what the user's pick in the menu does
+                check (processor.getSequencerStep (0).note == 48 && processor.getSequencerStep (2).note == 52
+                           && processor.getSequencerStep (7).note == 60 && processor.getSequencerStep (15).note == 74,
+                       "choosing C major fills the steps C3 D3 E3 .. C4 .. D5");
                 row->undo();
                 check (processor.getSequencerStep (2).note == 61, "and UNDO puts it back");   // C major stays on for ENTER below
             }

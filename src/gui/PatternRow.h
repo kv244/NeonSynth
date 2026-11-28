@@ -52,8 +52,9 @@ public:
     /** Takes a snapshot of the pattern as it is now, before a change. */
     void rememberPattern();
 
-    /** v1.13.0: the user chose a scale or key: every step snaps to it (one undo level). */
-    void snapPatternToScale();
+    /** v1.13.0: the user chose a scale or key: the 16 steps' notes become the scale, ascending
+        from the key's root in octave 3 (PatternTools::fillWithScale; one undo level). */
+    void fillPatternWithScale();
 
     /** Applies one of the TOOLS menu's entries (the menu calls this; so can a test). */
     void applyTool (Tool tool);
