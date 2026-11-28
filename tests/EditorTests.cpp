@@ -603,8 +603,8 @@ int main()
     //==========================================================================
     std::printf ("\nMouse-over hints\n");
     {
-        // v1.13.0: Julian asked for hints on SWING and GATE; this also lists any parameter's
-        // control still without one, so the gap is visible.
+        // v1.13.0: Julian asked for hints on SWING and GATE, then on every control; a new
+        // parameter's control without one fails here.
         for (const auto* id : { "seqSwing", "seqGate" })
         {
             auto* tip = dynamic_cast<juce::SettableTooltipClient*> (find (ed, id));
@@ -616,7 +616,8 @@ int main()
                 if (auto* tip = dynamic_cast<juce::SettableTooltipClient*> (find (ed, ranged->getParameterID()));
                     tip != nullptr && tip->getTooltip().isEmpty())
                     withoutHint.add (ranged->getParameterID());
-        std::printf ("        controls without a hint (%d): %s\n", withoutHint.size(), withoutHint.joinIntoString (", ").toRawUTF8());
+        check (withoutHint.isEmpty(), "every parameter's control has a mouse-over hint"
+                                          + (withoutHint.isEmpty() ? juce::String() : " (missing: " + withoutHint.joinIntoString (", ") + ")"));
     }
 
     //==========================================================================

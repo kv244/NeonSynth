@@ -147,6 +147,9 @@ NeonSynthEditor::NeonSynthEditor (NeonSynthProcessor& p)
     }
     smpRootKnob.setTooltip ("Root: the key at which the sample plays at its own pitch");
     smpXfadeKnob.setTooltip ("Loop crossfade length");
+    smpStartKnob.setTooltip ("Start: where in the sample each note begins playing");
+    smpLoopStartKnob.setTooltip ("Loop start: where the loop begins (in Loop and Loop until release)");
+    smpLoopEndKnob.setTooltip ("Loop end: where the loop jumps back to its start");
 
     const std::pair<juce::Slider*, const char*> grainKnobs[] = {
         { &grPosKnob, "grPos" }, { &grScanKnob, "grScan" }, { &grSizeKnob, "grSize" },
@@ -548,6 +551,19 @@ NeonSynthEditor::NeonSynthEditor (NeonSynthProcessor& p)
                                "0% plays straight; about 67% is a triplet feel.");
     seqGateSlider.setTooltip ("Gate: how long each note lasts, as a share of one step. Low values are short "
                               "and staccato; 100% holds each note until the next one starts (legato).");
+
+    // v1.13.0: hints for the last controls that had none (EditorTests now requires one on every
+    // parameter's control).
+    waveformCombo.setTooltip ("Waveform: the oscillator's basic shape. Sine is a pure tone; square, triangle and "
+                              "sawtooth add harmonics, the sawtooth the most");
+    seqTempoSlider.setTooltip ("Tempo of the sequencer (and of a synced LFO) when it does not follow the host: "
+                               "SYNC off, or the Standalone");
+    cutoffSlider.setTooltip ("Cutoff: where the filter starts to work. In low-pass, lower values sound darker");
+    filterToggle.setTooltip ("Filter on or off. Off bypasses the drive and the filter together");
+    attackKnob.setTooltip ("Attack: how long each note takes to reach full level");
+    decayKnob.setTooltip ("Decay: how long it then takes to fall to the sustain level");
+    sustainKnob.setTooltip ("Sustain: the level a note holds while the key stays down");
+    releaseKnob.setTooltip ("Release: how long a note takes to fade after the key is let go");
 
     // Help: "?" toggles the overlay; the overlay un-toggles the button when it closes itself.
     helpButton.setClickingTogglesState (true);
