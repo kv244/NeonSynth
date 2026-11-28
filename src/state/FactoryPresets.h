@@ -208,6 +208,18 @@ namespace FactoryPresets
               { { "waveform", 3.0f }, { "naive", 1.0f }, { "filterEnabled", 0.0f },
                 { "attack", 0.5f }, { "sustain", 1.0f }, { "release", 1.5f },
                 { "lfoShape", 1.0f }, { "lfoRate", 0.1f }, { "lfoPitch", 12.0f }, { "width", 0.5f }, { "gain", -1.0f } } },
+
+            // ── v1.13.0 ───────────────────────────────────────────────────────
+            // A tubular bell's strike note is heard from partials near 2:3:4 above a weak hum,
+            // with fainter high partials, a bright strike that mellows and a long ring. CUSTOM
+            // builds that from whole harmonics; a slow, shallow tremolo gives the beating of a
+            // real tube. (The ring modulator later in v1.13 can add true inharmonicity.)
+            { "Tubular Bells", "Keys", "CUSTOM: strike partials 2, 3 and 4 over a weak hum, a bright strike and a long ring; play from C4 to C6",
+              { { "custom", 1.0f }, { "harmonics", 17.0f },
+                { "attack", 0.001f }, { "decay", 5.0f }, { "sustain", 0.0f }, { "release", 4.0f },
+                { "cutoff", 2500.0f }, { "filterEnvAmt", 2.0f }, { "filterAttack", 0.001f }, { "filterDecay", 1.5f }, { "filterSustain", 0.0f },
+                { "filterRelease", 2.0f }, { "lfoRate", 3.5f }, { "lfoAmp", 8.0f }, { "width", 0.5f }, { "gain", -8.0f } },
+              nullptr, nullptr, "1:0.15 2:0.9 3:0.8 4:0.7 5:0.2 6:0.35 8:0.2 9:0.25 11:0.12 13:0.15 17:0.08" },
         };
         return presets;
     }

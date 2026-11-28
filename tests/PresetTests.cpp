@@ -129,7 +129,7 @@ namespace
         std::printf ("Factory data\n");
         NeonSynthProcessor p;
         const auto& presets = FactoryPresets::all();
-        check (presets.size() == (size_t) PresetManager::numFactoryPresets, "24 factory presets (16 until v1.12.0, 8 appended)");
+        check (presets.size() == (size_t) PresetManager::numFactoryPresets, "25 factory presets (16 until v1.12.0, then appended)");
 
         std::set<juce::String> names;
         bool categoriesKnown = true, idsKnown = true, valuesInRange = true, patternsValid = true, slidesPlay = true, chopValid = true,
@@ -227,6 +227,7 @@ namespace
             { "Drawbar Organ", { 48, 60, 64, 67 } }, { "Square Ladder", { 60, 67, 72 } }, { "Octave Stack", { 36 } },
             { "Hollow Reed", { 60 } }, { "Phase Matters", { 48 } }, { "Aliased Arcade", { 84, 88, 91 } },
             { "Vowel Ah", { 48, 55, 60 } }, { "Fold-back Siren", { 84 } },
+            { "Tubular Bells", { 72 } },   // v1.13.0
         };
         const auto found = notes.find (name);
         return found != notes.end() ? found->second : std::vector<int> {};
@@ -513,7 +514,7 @@ namespace
         bool namesRight = p.getNumPrograms() == PresetManager::numFactoryPresets;
         for (int i = 0; i < p.getNumPrograms(); ++i)
             namesRight = namesRight && p.getProgramName (i) == FactoryPresets::all()[(size_t) i].name;
-        check (namesRight, "24 programs, named after the factory presets");
+        check (namesRight, "every program named after its factory preset");
         check (p.getCurrentProgram() == 0 && p.getPresetManager().getCurrentName().isEmpty(), "a new instance has no preset (program 0)");
 
         pumpMessages();
