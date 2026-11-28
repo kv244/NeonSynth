@@ -220,6 +220,15 @@ namespace FactoryPresets
                 { "cutoff", 2500.0f }, { "filterEnvAmt", 2.0f }, { "filterAttack", 0.001f }, { "filterDecay", 1.5f }, { "filterSustain", 0.0f },
                 { "filterRelease", 2.0f }, { "lfoRate", 3.5f }, { "lfoAmp", 8.0f }, { "width", 0.5f }, { "gain", -8.0f } },
               nullptr, nullptr, "1:0.15 2:0.9 3:0.8 4:0.7 5:0.2 6:0.35 8:0.2 9:0.25 11:0.12 13:0.15 17:0.08" },
+
+            { "Acid Line", "Sequence", "A 303-style line: resonant sawtooth, snappy filter envelope, accents open the filter, SLIDE steps glide",
+              { { "waveform", 3.0f }, { "attack", 0.003f }, { "decay", 0.3f }, { "sustain", 0.6f }, { "release", 0.04f },
+                { "cutoff", 350.0f }, { "filterRes", 82.0f }, { "filterDrive", 30.0f },
+                { "filterEnvAmt", 3.2f }, { "filterAttack", 0.001f }, { "filterDecay", 0.22f }, { "filterSustain", 0.0f },
+                { "filterRelease", 0.08f }, { "filterVel", 1.5f }, { "width", 0.0f }, { "gain", -8.0f },
+                { "seqOn", 1.0f }, { "seqRate", 1.0f }, { "seqGate", 0.5f }, { "glide", 60.0f } },
+              "A2:120 A2:70 A3:100/ A2:70 -A2:70 C3:120 A2:70 G3:110/ "
+              "A2:70 D#3:100 A2:70 -A2:70 C3:120/ D3:80 A2:70 G2:110" },
         };
         return presets;
     }

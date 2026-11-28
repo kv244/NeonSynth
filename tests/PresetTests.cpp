@@ -129,7 +129,7 @@ namespace
         std::printf ("Factory data\n");
         NeonSynthProcessor p;
         const auto& presets = FactoryPresets::all();
-        check (presets.size() == (size_t) PresetManager::numFactoryPresets, "25 factory presets (16 until v1.12.0, then appended)");
+        check (presets.size() == (size_t) PresetManager::numFactoryPresets, "26 factory presets (16 until v1.12.0, then appended)");
 
         std::set<juce::String> names;
         bool categoriesKnown = true, idsKnown = true, valuesInRange = true, patternsValid = true, slidesPlay = true, chopValid = true,
