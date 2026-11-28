@@ -53,6 +53,7 @@ namespace StateFormat
 
     inline const juce::Identifier chopId        { "Chop" };
     inline const juce::Identifier chopPatternId { "pattern" };
+    inline const juce::Identifier chopDepthsId  { "depths" };   // v1.13.0, only when a depth is not 0 or 15
 
     inline const juce::Identifier sampleId        { "Sample" };
     inline const juce::Identifier sampleDefaultId { "default" };

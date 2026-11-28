@@ -20,7 +20,9 @@ namespace
     using namespace StateFormat;   // the state's names and version (src/state/StateFormat.h)
 
     // State tree layout for CHOP's pattern (v1.6.0+): <Chop pattern="0101010101010101"/>,
-    // one character per step, step 1 first, "1" = chopped.
+    // one character per step, step 1 first, "1" = chopped. From v1.13.0, when a step's
+    // depth is neither 0 nor 15, also depths="15 0 8 ..." (16 numbers, 0..15); pattern then
+    // holds the nearest on/off steps, which is what an older version plays.
 
     juce::String chopPatternToString (juce::uint16 pattern)
     {
@@ -41,6 +43,35 @@ namespace
         return pattern;
     }
 
+    juce::String chopDepthsToString (ChopSettings::Depths depths)
+    {
+        juce::StringArray parts;
+        for (int i = 0; i < Chop::stepsPerPattern; ++i)
+            parts.add (juce::String (ChopSettings::depthOf (depths, i)));
+        return parts.joinIntoString (" ");
+    }
+
+    /** 16 numbers 0..15; anything else gives `fallback`. */
+    ChopSettings::Depths chopDepthsFromString (const juce::String& text, ChopSettings::Depths fallback)
+    {
+        juce::StringArray parts;
+        parts.addTokens (text, " ", "");
+        parts.removeEmptyStrings();
+        if (parts.size() != Chop::stepsPerPattern)
+            return fallback;
+        ChopSettings::Depths depths = 0;
+        for (int i = 0; i < Chop::stepsPerPattern; ++i)
+        {
+            if (! parts[i].containsOnly ("0123456789") || parts[i].length() > 2)
+                return fallback;
+            const int depth = parts[i].getIntValue();
+            if (depth > ChopSettings::maxDepth)
+                return fallback;
+            depths = ChopSettings::withDepth (depths, i, depth);
+        }
+        return depths;
+    }
+
     // State tree layout for the sample (v1.5.0+):
     //   <Sample default="1"/>                                  the built-in pad
     //   <Sample name="pad.wav" path="C:/..." hash="..." flac="<base64>"/>
@@ -48,9 +79,9 @@ namespace
 }
 
 SessionState::SessionState (juce::AudioProcessor& processorToNotify, juce::AudioProcessorValueTreeState& parameterState,
-                            StepSequencer& patternSequencer, std::atomic<juce::uint16>& chopPatternBits,
+                            StepSequencer& patternSequencer, std::atomic<ChopSettings::Depths>& chopStepDepths,
                             FourierState& fourierState)
-    : apvts (parameterState), sequencer (patternSequencer), chopPattern (chopPatternBits), fourier (fourierState),
+    : apvts (parameterState), sequencer (patternSequencer), chopDepths (chopStepDepths), fourier (fourierState),
       hostNotifier (processorToNotify)
 {
     publishSample (SampleLoader::makeDefaultSample());
@@ -192,7 +223,10 @@ void SessionState::save (juce::MemoryBlock& destData)
     state.appendChild (pattern, nullptr);
 
     juce::ValueTree chop (chopId);
-    chop.setProperty (chopPatternId, chopPatternToString (chopPattern.load()), nullptr);
+    const auto depths = chopDepths.load();
+    chop.setProperty (chopPatternId, chopPatternToString (ChopSettings::toPattern (depths)), nullptr);
+    if (! ChopSettings::isOnOff (depths))   // v1.13.0: only then, so other sessions save as before
+        chop.setProperty (chopDepthsId, chopDepthsToString (depths), nullptr);
     state.appendChild (chop, nullptr);
 
     fourier.writeTo (state);   // v1.12.0: Harmonics and Drawing, only when not a new session's
@@ -320,9 +354,12 @@ void SessionState::load (const void* data, int sizeInBytes)
                                 (bool) step.getProperty (slideId, false) });
     }
 
-    // CHOP's pattern; states from before v1.6.0 have none and get the default.
-    chopPattern.store (chopPatternFromString (tree.getChildWithName (chopId).getProperty (chopPatternId).toString(),
-                                              ChopSettings().pattern));
+    // CHOP's pattern; states from before v1.6.0 have none and get the default. Depths
+    // (v1.13.0), when present and valid, win over the on/off pattern.
+    const auto chop = tree.getChildWithName (chopId);
+    const auto onOff = ChopSettings::fromPattern (chopPatternFromString (chop.getProperty (chopPatternId).toString(),
+                                                                         ChopSettings::defaultPattern));
+    chopDepths.store (chopDepthsFromString (chop.getProperty (chopDepthsId).toString(), onOff));
 
     fourier.readFrom (tree);   // v1.12.0; states without them get the SAW set and no drawing
 

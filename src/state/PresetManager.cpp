@@ -89,7 +89,21 @@ std::unique_ptr<juce::XmlElement> PresetManager::createFactoryXml (int index) co
             if (parsed.slide) s->setAttribute (StateFormat::slideId, 1);
         }
     }
-    if (preset.chop != nullptr)
+    if (preset.chopDepths != nullptr)   // v1.13.0: depths, with the nearest on/off pattern beside them
+    {
+        const auto depths = parseChopDepths (preset.chopDepths);
+        jassert (depths.has_value());   // PresetTests checks every factory depth list parses
+        if (depths.has_value())
+        {
+            auto* chop = xml->createNewChildElement (StateFormat::chopId);
+            juce::String pattern;
+            for (int k = 0; k < Chop::stepsPerPattern; ++k)
+                pattern << (ChopSettings::depthOf (*depths, k) >= 8 ? "1" : "0");
+            chop->setAttribute (StateFormat::chopPatternId, pattern);
+            chop->setAttribute (StateFormat::chopDepthsId, juce::String (preset.chopDepths).trim());
+        }
+    }
+    else if (preset.chop != nullptr)
         xml->createNewChildElement (StateFormat::chopId)->setAttribute (StateFormat::chopPatternId, preset.chop);
     if (preset.harmonics != nullptr)   // v1.12.0: CUSTOM's harmonics, as a session saves them
     {
@@ -157,6 +171,23 @@ std::optional<HarmonicSpectrum> PresetManager::parseHarmonics (const char* text)
     if (count == 0)
         return std::nullopt;
     return s;
+}
+
+std::optional<ChopSettings::Depths> PresetManager::parseChopDepths (const char* text)
+{
+    juce::StringArray parts;
+    parts.addTokens (text, " ", "");
+    parts.removeEmptyStrings();
+    if (parts.size() != Chop::stepsPerPattern)
+        return std::nullopt;
+    ChopSettings::Depths depths = 0;
+    for (int k = 0; k < Chop::stepsPerPattern; ++k)
+    {
+        if (! parts[k].containsOnly ("0123456789") || parts[k].length() > 2 || parts[k].getIntValue() > ChopSettings::maxDepth)
+            return std::nullopt;
+        depths = ChopSettings::withDepth (depths, k, parts[k].getIntValue());
+    }
+    return depths;
 }
 
 std::vector<PresetManager::PatternStep> PresetManager::parsePattern (const char* text)

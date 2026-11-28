@@ -234,13 +234,14 @@ Figure 3. The SOURCE panel with the SHAPE strip: a sawtooth, OVERTONE 100% and F
 
 While Oscillator or Random is selected, the sample strip becomes the **SHAPE** strip. Its drawing shows one cycle of the wave as it leaves the FOLD stage, with CHOP applied; noise is left out, because a single cycle of noise would mislead more than it shows. The drawing is the ideal shape rather than the exact samples, so the band-limited edges you hear are drawn as clean corners.
 
-The cycle is divided into the steps of CHOP's pattern. A shaded step is chopped; the shading stays faint while OVERTONE is 0%, because chopping then changes nothing.
+The cycle is divided into the steps of CHOP's pattern. A shaded step is chopped, and since v1.13.0 the shading rises as high as the step's depth; it stays faint while OVERTONE is 0%, because chopping then changes nothing.
 
-- **Click a step** to chop it, or to open it again.
-- **Drag across steps** to set them all the same way as the first one you clicked.
-- With COMB above 1 the pattern repeats along the cycle, so clicking any copy of a step changes every copy.
+- **Click a step** to chop it fully, or to open it again.
+- **Drag** to draw depths: each step the pointer passes takes the pointer's height, the top fully chopped and the bottom open, in 16 levels. A step at half height is cut half as far as a fully chopped one, so a rising line across the strip gives a cycle that fades in or out step by step (v1.13.0).
+- **Double-click** to go back to every second step chopped.
+- With COMB above 1 the pattern repeats along the cycle, so editing any copy of a step changes every copy.
 
-The pattern is shared by all voices and saved with the session, like the sequencer's steps. It is not a host parameter, and a click cannot be undone; click the step again instead. A new instance, or a session saved before v1.6.0, starts with every second step chopped, so turning up OVERTONE does something straight away. Pattern edits and PAD loads are not host parameters, so a DAW may not ask to save them when you close the project; save the project yourself after making them.
+The pattern is shared by all voices and saved with the session, like the sequencer's steps. It is not a host parameter, and an edit cannot be undone; click or draw again instead. A session with partly chopped steps also stores the nearest on/off pattern, which is what an earlier version plays when it opens the session. A new instance, or a session saved before v1.6.0, starts with every second step chopped, so turning up OVERTONE does something straight away. Pattern edits and PAD loads are not host parameters, so a DAW may not ask to save them when you close the project; save the project yourself after making them.
 
 With Random selected, the drawing follows the 16 levels of the lowest Random note sounding, so you can watch them drift as they are re-rolled. With no Random note sounding it shows a fixed example set.
 
@@ -256,6 +257,8 @@ CHOP is modelled on the OSC CHOP of the Roland S-1. Every cycle is cut into 16 e
 | 50% | Half as loud |
 | 100% | Silent |
 | 200% | Turned upside down, at full level |
+
+A step drawn part of the way up (v1.13.0) gets that share of the cut: it is multiplied by 1 − OVERTONE × depth, where depth runs from 0 (open) to 1 (fully chopped). At OVERTONE 100%, a step drawn at half height plays at half level.
 
 **COMB** (1–32) repeats the 16-step pattern COMB times within one cycle, so the cuts come faster and the tone turns metallic. A pattern edit or a COMB change takes effect at the start of the next cycle, so it never cuts a cycle in two; OVERTONE glides over 10 ms, so sweeping it doesn't click.
 

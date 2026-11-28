@@ -15,8 +15,9 @@
 #include "dsp/Oscillator.h"
 #include <cstdio>
 #include <cmath>
-#include <vector>
+#include <array>
 #include <algorithm>
+#include <vector>
 
 namespace
 {
@@ -71,7 +72,7 @@ int main()
             o->setWaveform (w);
             o->setFrequency (440.0f, rate);
         }
-        chopped.setChop ({ 0xAAAA, 4, 0.0f });
+        chopped.setChop ({ ChopSettings::fromPattern (0xAAAA), 4, 0.0f });
         bool same = true;
         for (int i = 0; i < 48000; ++i)
             same = same && plain.nextSample() == chopped.nextSample();
@@ -99,9 +100,9 @@ int main()
 
     std::printf ("Overtone 100%% and 200%%\n");
     {
-        auto open   = make (PolyBlepOscillator::sawtooth, 375.0f, { 0xAAAA, 1, 0.0f });
-        auto silent = make (PolyBlepOscillator::sawtooth, 375.0f, { 0xAAAA, 1, 1.0f });
-        auto invert = make (PolyBlepOscillator::sawtooth, 375.0f, { 0xAAAA, 1, 2.0f });
+        auto open   = make (PolyBlepOscillator::sawtooth, 375.0f, { ChopSettings::fromPattern (0xAAAA), 1, 0.0f });
+        auto silent = make (PolyBlepOscillator::sawtooth, 375.0f, { ChopSettings::fromPattern (0xAAAA), 1, 1.0f });
+        auto invert = make (PolyBlepOscillator::sawtooth, 375.0f, { ChopSettings::fromPattern (0xAAAA), 1, 2.0f });
         const auto a = render (open, cycle * 20), b = render (silent, cycle * 20), c = render (invert, cycle * 20);
 
         double worstSilent = 0.0, worstKept = 0.0, worstInverted = 0.0;
@@ -139,11 +140,78 @@ int main()
         check (worstInverted < 0.03 && std::sqrt (residual / reference) < 0.03, what);
     }
 
+    std::printf ("Depths (v1.13.0)\n");
+    {
+        // Step k at depth k (0..15), Overtone 100%: each step's level falls to 1 - k/15 of the open wave's.
+        ChopSettings::Depths ramp = 0;
+        for (int k = 0; k < 16; ++k)
+            ramp = ChopSettings::withDepth (ramp, k, k);
+        auto open   = make (PolyBlepOscillator::sawtooth, 375.0f, { ChopSettings::fromPattern (0x0000), 1, 1.0f });
+        auto ramped = make (PolyBlepOscillator::sawtooth, 375.0f, { ramp, 1, 1.0f });
+        const auto a = render (open, cycle * 20), b = render (ramped, cycle * 20);
+        double worst = 0.0;
+        for (int step = 0; step < 16; ++step)
+        {
+            const double reference = stepRms (a, step, 20);
+            if (reference < 1e-3)
+                continue;
+            // make() leaves the oscillator half a cycle in, so measured step s is pattern step s + 8
+            // (the 0xAAAA tests above look the same either way).
+            const int patternStep = (step + 8) % 16;
+            worst = std::max (worst, std::abs (stepRms (b, step, 20) / reference - (1.0 - patternStep / 15.0)));
+        }
+        std::snprintf (what, sizeof (what), "a ramp of depths 0..15 gives levels 1 - k/15 step by step (worst error %.2f%%, under 3%%)", 100.0 * worst);
+        check (worst < 0.03, what);
+
+        // NAIVE's hard edges: the same ramp, sample for sample inside each step.
+        PolyBlepOscillator naiveOpen, naiveRamp;
+        for (auto* o : { &naiveOpen, &naiveRamp })
+        {
+            o->prepare (rate);
+            o->setWaveform (PolyBlepOscillator::sawtooth);
+            o->setNaive (true);
+            o->setFrequency (375.0f, rate);
+        }
+        naiveOpen.setChop ({ ChopSettings::fromPattern (0x0000), 1, 1.0f });
+        naiveRamp.setChop ({ ramp, 1, 1.0f });
+        for (int i = 0; i < 4800; ++i)
+        {
+            naiveOpen.nextSample();
+            naiveRamp.nextSample();
+        }
+        // Every sample is the open one times one of the 16 levels, and all 16 occur.
+        double hardWorst = 0.0;
+        std::array<bool, 16> seen {};
+        for (int i = 0; i < cycle * 4; ++i)
+        {
+            const float plain = naiveOpen.nextSample(), cut = naiveRamp.nextSample();
+            if (std::abs (plain) < 0.05f)
+                continue;
+            const double ratio = (double) cut / plain;
+            const int k = juce::jlimit (0, 15, (int) std::lround ((1.0 - ratio) * 15.0));
+            seen[(size_t) k] = true;
+            hardWorst = std::max (hardWorst, std::abs (ratio - (1.0 - k / 15.0)));
+        }
+        const bool allSeen = std::all_of (seen.begin(), seen.end(), [] (bool present) { return present; });
+        std::snprintf (what, sizeof (what), "NAIVE: every sample scaled by exactly one of the 16 levels 1 - k/15 (worst %.1e), all 16 present", hardWorst);
+        check (hardWorst < 1.0e-5 && allSeen, what);
+
+        // Depths 0 and 15 are v1.12's off and on: bit for bit the on/off pattern.
+        auto onOff = make (PolyBlepOscillator::sawtooth, 375.0f, { ChopSettings::fromPattern (0x5A5A), 1, 0.7f });
+        auto asDepths = make (PolyBlepOscillator::sawtooth, 375.0f,
+                              { ChopSettings::withDepth (ChopSettings::fromPattern (0x5A5A), 0, 0), 1, 0.7f });
+        const auto x = render (onOff, cycle * 10), y = render (asDepths, cycle * 10);
+        check (x == y, "depths 0 and 15 render bit for bit as the on/off pattern they stand for");
+        check (ChopSettings::isOnOff (ChopSettings::fromPattern (0x5A5A)) && ! ChopSettings::isOnOff (ramp)
+                   && ChopSettings::toPattern (ramp) == 0xFF00,
+               "an on/off pattern is recognised as one; a ramp's nearest on/off pattern is steps 9-16");
+    }
+
     std::printf ("Comb\n");
     for (const int comb : { 1, 2, 8 })
     {
         // One chopped step (step 0) at 100%: silent stretches appear `comb` times per cycle.
-        auto osc = make (PolyBlepOscillator::sawtooth, 46.875f, { 0x0001, comb, 1.0f });   // 1024 samples a cycle
+        auto osc = make (PolyBlepOscillator::sawtooth, 46.875f, { ChopSettings::fromPattern (0x0001), comb, 1.0f });   // 1024 samples a cycle
         const auto x = render (osc, 1024 * 4);
         // Count silent stretches of at least a quarter of a step (the smoothed edges take two
         // samples at each end; the saw's own zero crossing is silent for only a sample).
@@ -169,7 +237,7 @@ int main()
         osc.prepare (rate);
         osc.setWaveform (PolyBlepOscillator::sawtooth);
         osc.setFrequency (hz, rate);
-        osc.setChop ({ 0xAAAA, 1, 1.0f });
+        osc.setChop ({ ChopSettings::fromPattern (0xAAAA), 1, 1.0f });
         osc.nextSample();   // the sine's first cycle ends at once (phase 0): from here both run the saw
         Blep4::TrebleCompensation treble;
         float phase = dt;
@@ -216,8 +284,8 @@ int main()
     {
         // A high note with Comb 32: steps far shorter than two samples. CHOP must fade out, so the
         // output is the plain wave, never louder than it.
-        auto plain = make (PolyBlepOscillator::sawtooth, 2000.0f, { 0xAAAA, 32, 0.0f });
-        auto osc   = make (PolyBlepOscillator::sawtooth, 2000.0f, { 0xAAAA, 32, 2.0f });
+        auto plain = make (PolyBlepOscillator::sawtooth, 2000.0f, { ChopSettings::fromPattern (0xAAAA), 32, 0.0f });
+        auto osc   = make (PolyBlepOscillator::sawtooth, 2000.0f, { ChopSettings::fromPattern (0xAAAA), 32, 2.0f });
         const auto a = render (plain, 48000), b = render (osc, 48000);
         float peakA = 0.0f, peakB = 0.0f;
         bool same = true;
@@ -231,7 +299,7 @@ int main()
         check (same, what);
 
         // Between four and two samples per step it fades: the chopped wave stays within the plain one's peak.
-        auto mid = make (PolyBlepOscillator::sawtooth, 1000.0f, { 0xAAAA, 1, 2.0f });   // 3-sample steps
+        auto mid = make (PolyBlepOscillator::sawtooth, 1000.0f, { ChopSettings::fromPattern (0xAAAA), 1, 2.0f });   // 3-sample steps
         const auto c = render (mid, 48000);
         float peakC = 0.0f;
         for (const float v : c)
@@ -249,14 +317,14 @@ int main()
         chopped.reseed (7);
         plain.setFrequency (220.0f, rate);
         chopped.setFrequency (220.0f, rate);
-        chopped.setChop ({ 0xAAAA, 1, 0.0f });
+        chopped.setChop ({ ChopSettings::fromPattern (0xAAAA), 1, 0.0f });
         bool same = true;
         for (int i = 0; i < 48000; ++i)
             same = same && plain.nextSample() == chopped.nextSample();
         check (same, "Random with Overtone 0% is bit-identical to no CHOP");
 
         chopped.reseed (7);
-        chopped.setChop ({ 0xFFFF, 1, 1.0f });   // every step chopped, 100%: silence once the glide ends
+        chopped.setChop ({ ChopSettings::fromPattern (0xFFFF), 1, 1.0f });   // every step chopped, 100%: silence once the glide ends
         float tail = 0.0f;
         for (int i = 0; i < 48000; ++i)
         {

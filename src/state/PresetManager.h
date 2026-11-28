@@ -7,6 +7,7 @@
 #include <optional>
 #include "state/FactoryPresets.h"
 #include "state/FourierState.h"
+#include "dsp/Chop.h"   // ChopSettings::Depths (v1.13.0)
 #include "state/StateFormat.h"
 
 /**
@@ -111,6 +112,9 @@ public:
     static std::optional<HarmonicSpectrum> parseHarmonics (const char* text);
 
     static std::vector<PatternStep> parsePattern (const char* text);
+
+    /** A factory preset's CHOP depths (v1.13.0): 16 numbers 0..15 separated by spaces; empty otherwise. */
+    static std::optional<ChopSettings::Depths> parseChopDepths (const char* text);
 
     //==========================================================================
     // Loading and saving

@@ -60,7 +60,7 @@ public:
 
     void set (const ChopSettings& s) noexcept
     {
-        pendingPattern  = s.pattern;
+        pendingPattern  = ChopSettings::toPattern (s.depths);   // the v1.11 reference knows on/off steps only
         pendingComb     = juce::jlimit (1, ChopSettings::maxComb, s.comb);
         pendingOvertone = juce::jlimit (0.0f, ChopSettings::maxOvertone, s.overtone);
         gain.setTargetValue (1.0f - pendingOvertone);

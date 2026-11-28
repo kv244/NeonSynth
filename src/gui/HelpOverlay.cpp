@@ -167,7 +167,7 @@ void HelpOverlay::buildColumns()
         "Transpose: the pattern plays while you hold a key, shifted by that key's distance from C4 (hold C5 for an octave up)." } }, neon::amber);
 
     addSection (0, { "SHAPE (Oscillator and Random)", {
-        "The strip shows one cycle of the wave after CHOP and Fold. Click a step to chop it; drag across steps to set several.",
+        "The strip shows one cycle of the wave after CHOP and Fold. Click a step to chop it; drag to draw each step's depth (top = fully chopped); double-click resets.",
         "OVERTONE: how far the shaded steps are cut (100% silences them, 200% turns them upside down). COMB repeats the pattern within each cycle.",
         "NOISE fades the wave into white noise. FOLD folds it back on itself for brighter harmonics; DRIVE sets how hard." } }, neon::cyan);
 

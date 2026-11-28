@@ -11,6 +11,7 @@
 #include "state/SampleLoader.h"
 #include "state/StateFormat.h"
 #include "state/FourierState.h"
+#include "dsp/Chop.h"   // ChopSettings::Depths (v1.13.0)
 
 /**
     The saved session (v1.11.1: moved out of NeonSynthProcessor): writing and reading the
@@ -45,7 +46,7 @@ public:
         the processor is also told when a background load changes the sample. All four must
         outlive this. */
     SessionState (juce::AudioProcessor& processorToNotify, juce::AudioProcessorValueTreeState& parameterState,
-                  StepSequencer& patternSequencer, std::atomic<juce::uint16>& chopPatternBits,
+                  StepSequencer& patternSequencer, std::atomic<ChopSettings::Depths>& chopStepDepths,
                   FourierState& fourierState);
     ~SessionState();
 
@@ -94,7 +95,7 @@ public:
 private:
     juce::AudioProcessorValueTreeState& apvts;
     StepSequencer& sequencer;
-    std::atomic<juce::uint16>& chopPattern;
+    std::atomic<ChopSettings::Depths>& chopDepths;
     FourierState& fourier;   // v1.12.0: CUSTOM's harmonics and the drawn cycle
 
     std::atomic<int> loads { 0 };   // see getLoadCount()

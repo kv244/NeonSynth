@@ -133,7 +133,7 @@ namespace
 
         std::set<juce::String> names;
         bool categoriesKnown = true, idsKnown = true, valuesInRange = true, patternsValid = true, slidesPlay = true, chopValid = true,
-             harmonicsValid = true, customHasHarmonics = true;
+             harmonicsValid = true, customHasHarmonics = true, depthsValid = true;
         juce::String problem;
         for (const auto& preset : presets)
         {
@@ -171,6 +171,8 @@ namespace
                 chopValid = chopValid && juce::String (preset.chop).length() == 16 && juce::String (preset.chop).containsOnly ("01");
             if (preset.harmonics != nullptr)
                 harmonicsValid = harmonicsValid && PresetManager::parseHarmonics (preset.harmonics).has_value();
+            if (preset.chopDepths != nullptr)
+                depthsValid = depthsValid && PresetManager::parseChopDepths (preset.chopDepths).has_value();
             bool custom = false;
             for (const auto& [id, value] : preset.values)
                 custom = custom || (juce::String (id) == "custom" && value > 0.5f);
@@ -187,6 +189,11 @@ namespace
         check (chopValid, "every CHOP pattern has 16 steps of 0 and 1");
         check (harmonicsValid, "every harmonics list parses (k 1..32 once each, level 0..1, phase 0..2 pi)");
         check (customHasHarmonics, "a preset sets harmonics exactly when it turns CUSTOM on");
+        check (depthsValid, "every CHOP depth list has 16 numbers from 0 to 15");
+        check (PresetManager::parseChopDepths ("0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15").has_value()
+                   && ! PresetManager::parseChopDepths ("0 1 2").has_value() && ! PresetManager::parseChopDepths ("0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 16").has_value()
+                   && ! PresetManager::parseChopDepths ("a b c d e f g h i j k l m n o p").has_value(),
+               "the depth notation: 16 numbers 0..15, anything else refused");
 
         const auto parsed = PresetManager::parseHarmonics ("1:1 3:0.5@1.5");
         check (parsed.has_value() && parsed->levels[0] == 1.0f && parsed->levels[2] == 0.5f && parsed->phases[2] == 1.5f

@@ -49,7 +49,7 @@ void ShapeView::refresh()
     now.comb     = juce::jlimit (1, ChopSettings::maxComb, juce::roundToInt (combValue->load()));
     now.drive    = driveValue->load();
     now.foldMix  = foldMixValue->load() * 0.01f;
-    now.pattern  = processor.getChopPattern();
+    now.depths   = processor.getChopDepths();
     now.levels   = exampleLevels;
     now.custom    = customValue->load() >= 0.5f;                                   // v1.12.0
     now.harmonics = juce::jlimit (1, HarmonicSpectrum::numHarmonics, juce::roundToInt (harmonicsValue->load()));
@@ -101,14 +101,16 @@ void ShapeView::paint (juce::Graphics& g)
 
     // Chopped steps, shaded; step edges as faint lines (only where they are far enough apart to read).
     // Chopped steps also get an amber block along the bottom edge, like a lit step in a row of them.
+    // v1.13.0: a step shaded up to its depth, from the bottom, so the shading draws the depths.
     for (int s = 0; s < steps; ++s)
-        if (((shown.pattern >> (s % Chop::stepsPerPattern)) & 1u) != 0)
+        if (const int depth = ChopSettings::depthOf (shown.depths, s % Chop::stepsPerPattern); depth > 0)
         {
             const float strength = shown.overtone > 0.0f ? 1.0f : 0.4f;
+            const float share = (float) depth / (float) ChopSettings::maxDepth;
             const auto column = juce::Rectangle<float> (inner.getX() + (float) s * stepWidth, inner.getY(), stepWidth, inner.getHeight());
             g.setColour (neon::amber.withAlpha (0.18f * strength));
-            g.fillRect (column);
-            g.setColour (neon::amber.withAlpha (0.75f * strength));
+            g.fillRect (column.withTop (column.getBottom() - column.getHeight() * share));
+            g.setColour (neon::amber.withAlpha (0.75f * strength * (0.35f + 0.65f * share)));
             g.fillRect (column.withTop (column.getBottom() - 4.0f).reduced (stepWidth >= 6.0f ? 1.0f : 0.0f, 0.0f));
         }
     if (stepWidth >= 3.0f)
@@ -183,8 +185,10 @@ void ShapeView::mouseDown (const juce::MouseEvent& e)
     const int step = stepAt ((float) e.x);
     if (step < 0)
         return;
-    paintChopped = ((processor.getChopPattern() >> step) & 1u) == 0;   // the click flips this step; a drag copies that
+    paintChopped = ((processor.getChopPattern() >> step) & 1u) == 0;   // the click flips this step
     lastStep = step;
+    downAt = e.position;
+    drawingDepths = false;
     processor.setChopStep (step, paintChopped);
     refresh();
 }
@@ -207,11 +211,30 @@ void ShapeView::mouseDrag (const juce::MouseEvent& e)
         return;
     }
 
+    // v1.13.0: once the pointer has moved, the press draws depths. Each step the pointer
+    // passes takes its height; the step pressed first takes it too, undoing the click's toggle.
+    if (! drawingDepths)
+    {
+        if (e.position.getDistanceFrom (downAt) < 4.0f)
+            return;
+        drawingDepths = true;
+        if (lastStep >= 0)
+            processor.setChopDepth (lastStep, depthAt (downAt.y));   // the pressed step: where it was pressed
+    }
     const int step = stepAt ((float) e.x);
-    if (step < 0 || step == lastStep)
+    if (step < 0)
         return;
+    const int depth = depthAt ((float) e.y);
+    if (lastStep < 0 || step == lastStep)
+        processor.setChopDepth (step, depth);
+    else
+        for (int s = lastStep + (step > lastStep ? 1 : -1); ; s += (step > lastStep ? 1 : -1))   // a fast drag fills the steps it skipped
+        {
+            processor.setChopDepth (s, depth);
+            if (s == step)
+                break;
+        }
     lastStep = step;
-    processor.setChopStep (step, paintChopped);
     refresh();
 }
 
@@ -227,7 +250,11 @@ void ShapeView::mouseUp (const juce::MouseEvent&)
 void ShapeView::mouseDoubleClick (const juce::MouseEvent&)
 {
     if (! isDrawing())
+    {
+        processor.setChopDepths (ChopSettings::defaultDepths);   // v1.13.0: back to every second step
+        refresh();
         return;
+    }
     dragging = false;
     processor.setCycleDrawing (std::nullopt, HarmonicSpectrum::sine());
     refresh();
@@ -272,8 +299,8 @@ float ShapeView::valueAt (float phase) const noexcept
     }
 
     const int segment = juce::jmin ((int) (phase * (float) (Chop::stepsPerPattern * shown.comb)), Chop::stepsPerPattern * shown.comb - 1);
-    if (((shown.pattern >> (segment % Chop::stepsPerPattern)) & 1u) != 0)
-        x *= 1.0f - shown.overtone;
+    if (const int depth = ChopSettings::depthOf (shown.depths, segment % Chop::stepsPerPattern); depth > 0)
+        x *= 1.0f - shown.overtone * (float) depth / (float) ChopSettings::maxDepth;
 
     if (shown.foldMix > 0.0f)
         x += shown.foldMix * (Sculpt::fastSin (juce::MathConstants<float>::halfPi * shown.drive * x) - x);
@@ -288,4 +315,11 @@ int ShapeView::stepAt (float x) const noexcept
         return -1;
     const int steps = Chop::stepsPerPattern * shown.comb;
     return juce::jmin ((int) (fraction * (float) steps), steps - 1) % Chop::stepsPerPattern;
+}
+
+int ShapeView::depthAt (float y) const noexcept
+{
+    const auto inner = getLocalBounds().toFloat().reduced (4.0f, 3.0f);
+    const float height = juce::jlimit (0.0f, 1.0f, (inner.getBottom() - y) / juce::jmax (1.0f, inner.getHeight()));
+    return juce::roundToInt (height * (float) ChopSettings::maxDepth);
 }

@@ -97,7 +97,7 @@ void NeonSynthProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
                               parameters.smpLoopStart->get(), parameters.smpLoopEnd->get(), parameters.smpXfade->get() * 0.001f };
     params.grainSettings  = { parameters.grPos->get(), parameters.grScan->get(), parameters.grSize->get() * 0.001f,
                               parameters.grDensity->get(), parameters.grSpray->get(), parameters.grJitter->get() };
-    params.chop = { chopPattern.load (std::memory_order_relaxed), parameters.chopComb->get(), parameters.chopOvertone->get() * 0.01f };
+    params.chop = { chopDepths.load (std::memory_order_relaxed), parameters.chopComb->get(), parameters.chopOvertone->get() * 0.01f };
     params.sculpt = { parameters.noiseLevel->get() * 0.01f, parameters.foldDrive->get(), parameters.foldMix->get() * 0.01f };
     params.glideSeconds = parameters.glide->get() * 0.001f;   // v1.11.0 (region B): GLIDE, ms to seconds
     params.naive      = parameters.naive->get();               // v1.12.0 "Fourier"
@@ -290,13 +290,12 @@ MidiRouter::Controls NeonSynthProcessor::routerControls() const noexcept
 //==============================================================================
 // CHOP
 
-void NeonSynthProcessor::setChopStep (int step, bool chopped) noexcept
+void NeonSynthProcessor::setChopDepth (int step, int depth) noexcept
 {
     if (step < 0 || step >= Chop::stepsPerPattern)
         return;
-    const auto bit = (juce::uint16) (1u << step);
-    auto current = chopPattern.load();
-    while (! chopPattern.compare_exchange_weak (current, chopped ? (juce::uint16) (current | bit) : (juce::uint16) (current & ~bit)))
+    auto current = chopDepths.load();
+    while (! chopDepths.compare_exchange_weak (current, ChopSettings::withDepth (current, step, depth)))
     {
     }
 }

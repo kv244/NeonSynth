@@ -203,13 +203,23 @@ public:
     int getNumEmbeddedSampleEncodes() const noexcept   { return session.getNumEmbeddedSampleEncodes(); }
 
     //==========================================================================
-    // CHOP's pattern (v1.6.0): 16 steps, saved with the session, not host parameters.
+    // CHOP's pattern (v1.6.0): 16 steps, saved with the session, not host parameters. From
+    // v1.13.0 each step has a depth, 0..15 (ChopSettings).
 
     /** Any thread except the audio thread. Sounding voices pick it up at their next cycle. */
-    void setChopStep (int step, bool chopped) noexcept;
+    void setChopStep (int step, bool chopped) noexcept   { setChopDepth (step, chopped ? ChopSettings::maxDepth : 0); }
 
-    /** Bit k set = step k (0..15) chopped. */
-    juce::uint16 getChopPattern() const noexcept   { return chopPattern.load(); }
+    /** Step 0..15 to depth 0..15 (clamped). Any thread except the audio thread. */
+    void setChopDepth (int step, int depth) noexcept;
+
+    /** All 16 depths at once (a preset, a reset). Any thread except the audio thread. */
+    void setChopDepths (ChopSettings::Depths depths) noexcept   { chopDepths.store (depths); }
+
+    /** The 16 depths, step k in bits 4k..4k+3. */
+    ChopSettings::Depths getChopDepths() const noexcept   { return chopDepths.load(); }
+
+    /** The nearest on/off pattern, bit k = step k chopped (depth 8 or more). */
+    juce::uint16 getChopPattern() const noexcept   { return ChopSettings::toPattern (chopDepths.load()); }
 
     //==========================================================================
     // v1.12.0 "Fourier": CUSTOM's 32 harmonics and the drawn cycle, saved with the session,
@@ -257,8 +267,9 @@ private:
     /** The sequencer's and HOLD's parameters for the router, read once per block. Audio thread. */
     MidiRouter::Controls routerControls() const noexcept;
 
-    /** CHOP's pattern, bit k = step k chopped. Written by the editor, read once per block; lock-free. */
-    std::atomic<juce::uint16> chopPattern { ChopSettings().pattern };
+    /** CHOP's depths (ChopSettings::Depths). Written by the editor, read once per block; lock-free. */
+    std::atomic<ChopSettings::Depths> chopDepths { ChopSettings::defaultDepths };
+    static_assert (std::atomic<ChopSettings::Depths>::is_always_lock_free, "the audio thread reads CHOP's depths without a lock");
 
     juce::AudioProcessorValueTreeState apvts;
     Parameters    parameters { apvts };            // after apvts, whose parameters it looks up
@@ -276,8 +287,8 @@ private:
     /** v1.12.0: CUSTOM's harmonics, the drawn cycle and their wavetables. */
     FourierState fourier;
 
-    // The session and its sample; after apvts, the sequencer, chopPattern and fourier, which it saves and restores.
-    SessionState session { *this, apvts, sequencer, chopPattern, fourier };
+    // The session and its sample; after apvts, the sequencer, chopDepths and fourier, which it saves and restores.
+    SessionState session { *this, apvts, sequencer, chopDepths, fourier };
     const SampleData* blockSample = nullptr;   // audio thread: the sample for the current block
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (NeonSynthProcessor)

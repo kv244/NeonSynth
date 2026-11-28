@@ -40,6 +40,8 @@ namespace FactoryPresets
         const char* harmonics = nullptr; ///< v1.12.0: CUSTOM's harmonics, "k:level" or "k:level@phase"
                                          ///< (k 1..32, level 0..1, phase in radians), unlisted ones 0;
                                          ///< nullptr: the SAW set a new session starts with
+        const char* chopDepths = nullptr; ///< v1.13.0: CHOP's 16 depths, "0".."15" separated by spaces;
+                                          ///< replaces `chop` when given
     };
 
     inline const std::vector<Preset>& all()

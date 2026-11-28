@@ -986,13 +986,32 @@ int main()
         mouse.click (*shape, at (5));
         check (bit (5) == before, "a second click toggles it back");
 
-        const bool painted = ! bit (8);
-        mouse.down (*shape, at (8));
-        for (int s = 9; s <= 11; ++s)
-            mouse.drag (*shape, at (s));
-        mouse.up (*shape, at (11), true);
-        check (bit (8) == painted && bit (9) == painted && bit (10) == painted && bit (11) == painted,
-               "a drag from step 9 to 12 gives all four the clicked step's new state");
+        // v1.13.0: a drag draws depths, each step taking the pointer's height (top = 15, bottom = 0).
+        const auto inner = shape->getLocalBounds().toFloat().reduced (4.0f, 3.0f);
+        const auto atHeight = [shape, inner] (int step, float height)   // height 0..1 from the bottom
+        {
+            return juce::Point<float> (inner.getX() + inner.getWidth() * ((float) step + 0.5f) / 16.0f,
+                                       inner.getBottom() - height * inner.getHeight());
+        };
+        const auto depth = [&processor] (int step) { return ChopSettings::depthOf (processor.getChopDepths(), step); };
+        mouse.down (*shape, atHeight (8, 0.0f));
+        mouse.drag (*shape, atHeight (8, 0.0f));   // no movement: still a click
+        check (depth (8) == 0 || depth (8) == ChopSettings::maxDepth, "a press without moving only toggles the step");
+        const float heights[] = { 0.0f, 1.0f / 3.0f, 2.0f / 3.0f, 1.0f };
+        for (int s = 8; s <= 11; ++s)
+            mouse.drag (*shape, atHeight (s, heights[s - 8]));
+        mouse.up (*shape, atHeight (11, 1.0f), true);
+        check (depth (8) == 0 && depth (9) == 5 && depth (10) == 10 && depth (11) == 15,
+               "a drag from step 9 to 12, rising from the bottom to the top, sets depths 0, 5, 10 and 15");
+
+        mouse.down (*shape, atHeight (0, 1.0f));
+        mouse.drag (*shape, atHeight (0, 1.0f) + juce::Point<float> (0.0f, 8.0f));
+        mouse.drag (*shape, atHeight (4, 0.5f));   // a fast drag: steps 2 to 4 are filled in too
+        mouse.up (*shape, atHeight (4, 0.5f), true);
+        check (depth (1) == 8 && depth (2) == 8 && depth (3) == 8 && depth (4) == 8, "a fast drag sets the steps it skipped");
+
+        shape->mouseDoubleClick (mouse.event (*shape, atHeight (5, 0.5f), {}, false));
+        check (processor.getChopDepths() == ChopSettings::defaultDepths, "a double-click goes back to every second step");
     }
     else check (false, "shape view found");
 

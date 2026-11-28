@@ -17,8 +17,10 @@
       single drawn cycle of noise would mislead more than it shows.
     - CHOP's 16 x Comb steps are marked along the cycle, the chopped ones shaded
       (faintly while Overtone is 0, when chopping changes nothing).
-    - Click a step to toggle it; drag across steps to set them all the same way.
-      Steps repeat with Comb, so a click toggles every copy of that step.
+    - Click a step to toggle it (fully chopped or open). Drag to draw depths (v1.13.0):
+      each step the pointer passes takes the pointer's height, the top fully chopped and
+      the bottom open; a chopped step is shaded by its depth. Double-click goes back to
+      every second step. Steps repeat with Comb, so an edit changes every copy of a step.
     - With Random, the drawing follows the 16 levels of the lowest sounding
       Random voice, which drift as Random re-rolls them; with none sounding it
       shows a fixed example set.
@@ -74,7 +76,8 @@ private:
     static_assert (CycleAnalysis::numPoints == FourierState::drawingPoints, "a drawing is one analysed cycle");
 
     static constexpr const char* chopTooltip = "One cycle of the wave after CHOP and Fold. Click a step to chop it (or not); "
-                                               "drag across steps to set several. OVERTONE sets how far chopped steps are cut.";
+                                               "drag to draw each step's depth, the top fully chopped; double-click for every second step. "
+                                               "OVERTONE sets how far the deepest steps are cut.";
     static constexpr const char* drawTooltip = "Draw one cycle; it plays as its first 32 harmonics. "
                                                "Drag across the strip to draw; double-click for a sine.";
     static constexpr const char* drawCaption = "Draw one cycle; it plays as its first 32 harmonics";
@@ -97,7 +100,7 @@ private:
         bool random = false;
         int waveform = 0, comb = 1;
         float overtone = 0.0f, drive = 3.0f, foldMix = 0.0f;
-        juce::uint16 pattern = 0;
+        ChopSettings::Depths depths = 0;   // v1.13.0: step k's depth 0..15 (was an on/off pattern)
         std::array<float, RandomStepOscillator::numSteps> levels {};
         bool custom = false, drawing = false;      // v1.12.0
         int harmonics = HarmonicSpectrum::numHarmonics;
@@ -106,7 +109,7 @@ private:
         bool operator== (const Shown& o) const noexcept
         {
             return random == o.random && waveform == o.waveform && comb == o.comb && overtone == o.overtone
-                && drive == o.drive && foldMix == o.foldMix && pattern == o.pattern && levels == o.levels
+                && drive == o.drive && foldMix == o.foldMix && depths == o.depths && levels == o.levels
                 && custom == o.custom && drawing == o.drawing && harmonics == o.harmonics && fourierVersion == o.fourierVersion;
         }
     };
@@ -116,6 +119,9 @@ private:
 
     /** The pattern step (0..15) under x, or -1 outside the drawing. */
     int stepAt (float x) const noexcept;
+
+    /** The depth (0..15) a drag at height y sets: the top is fully chopped, the bottom open. */
+    int depthAt (float y) const noexcept;
 
     NeonSynthProcessor& processor;
     std::atomic<float>* sourceValue = nullptr;
@@ -131,6 +137,8 @@ private:
     Shown shown;
     bool paintChopped = true;
     int  lastStep = -1;
+    juce::Point<float> downAt;      // v1.13.0: where the press began
+    bool drawingDepths = false;     // the press has moved far enough to draw depths
 
     // v1.12.0: CUSTOM's spectrum and drawing as last read (when getFourierVersion() moved), the
     // wave they play as, and the drawing in progress.

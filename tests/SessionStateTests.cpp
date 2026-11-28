@@ -326,6 +326,46 @@ int main (int argc, char* argv[])
     dir.deleteRecursively();
 
     //==========================================================================
+    std::printf ("\nCHOP depths (v1.13.0)\n");
+    {
+        const auto chopElement = [] (const juce::MemoryBlock& state)
+        {
+            auto xml = juce::AudioProcessor::getXmlFromBinary (state.getData(), (int) state.getSize());
+            auto* chop = xml != nullptr ? xml->getChildByName (StateFormat::chopId) : nullptr;
+            return chop != nullptr ? std::make_unique<juce::XmlElement> (*chop) : std::unique_ptr<juce::XmlElement>();
+        };
+
+        NeonSynthProcessor p;
+        p.setChopStep (0, true);
+        p.setChopStep (1, false);
+        const auto onOff = chopElement (save (p));
+        check (onOff != nullptr && onOff->hasAttribute (StateFormat::chopPatternId) && ! onOff->hasAttribute (StateFormat::chopDepthsId),
+               "a pattern of whole steps saves only the on/off pattern, as v1.12 did");
+
+        ChopSettings::Depths ramp = 0;
+        for (int k = 0; k < 16; ++k)
+            ramp = ChopSettings::withDepth (ramp, k, k);
+        p.setChopDepths (ramp);
+        const auto state = save (p);
+        const auto withDepths = chopElement (state);
+        check (withDepths != nullptr && withDepths->getStringAttribute (StateFormat::chopDepthsId) == "0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15"
+                   && withDepths->getStringAttribute (StateFormat::chopPatternId) == "0000000011111111",
+               "partial depths save as depths=\"0 1 .. 15\", with the nearest on/off pattern for older versions");
+
+        NeonSynthProcessor restored;
+        restored.setStateInformation (state.getData(), (int) state.getSize());
+        check (restored.getChopDepths() == ramp, "and load back exactly");
+
+        // A damaged depths attribute falls back to the on/off pattern beside it.
+        auto xml = juce::AudioProcessor::getXmlFromBinary (state.getData(), (int) state.getSize());
+        xml->getChildByName (StateFormat::chopId)->setAttribute (StateFormat::chopDepthsId, "0 1 2 99");
+        juce::MemoryBlock damaged;
+        juce::AudioProcessor::copyXmlToBinary (*xml, damaged);
+        NeonSynthProcessor fallback;
+        fallback.setStateInformation (damaged.getData(), (int) damaged.getSize());
+        check (fallback.getChopDepths() == ChopSettings::fromPattern (0xFF00), "a damaged depths list falls back to the on/off pattern");
+    }
+
     std::printf ("\nSessions saved by earlier releases\n");
     {
         // On the heap: a processor is about 400 KB, and three on the stack at once overflow
