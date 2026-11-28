@@ -149,11 +149,13 @@ python tests/integrity.py --cppcheck # cppcheck, filtered (cppcheck 2.13 or newe
 | Check | What it requires |
 |---|---|
 | version | The same x.y.z in `CMakeLists.txt` (project and plugin), `installer.nsi`, the manual's "Applies to" line and its newest "What's new in this version" entry, the cover (`docs/images/cover.json`, written by `docs/figures/cover.py`) and the newest CHANGELOG row |
-| parameters | Every parameter in `tests/parameter-layout.txt` is named in the manual and on the help page (the text in `HelpOverlay.h`'s `buildColumns()`) by its label in the window; `PARAMETER_TERMS` in the script lists the words that count, so a new parameter needs a line there |
+| parameters | Every parameter in `tests/parameter-layout.txt` is named in the manual and on the help page (the text in `buildColumns()`, in `HelpOverlay.cpp` since v1.13.0) by its label in the window; `PARAMETER_TERMS` in the script lists the words that count, so a new parameter needs a line there |
 | links | Every local path the manual, the README, this file and the companion books link to or quote in backticks exists, and so do links into this repository on GitHub that point at master, main or the version being released |
 | constants | Each tuning constant several places depend on (the soft clipper's knee and ceiling, the voice count, the 5 ms hard-stop fade and others) is defined once |
+| presets (v1.13.0) | The manual's factory bank table lists exactly the presets of `src/state/FactoryPresets.h`, in order, with the same program numbers, names and categories, and `numFactoryPresets` in `PresetManager.h` is their count |
+| symbols (v1.13.0) | Every code name the manual, the README, this file and the companion books quote in backticks (`Chop::apply`, `prepareLegatoStep`, `filterEnvOctaves`) still exists: each part of a qualified name, and every camelCase or snake_case word, must appear in `src/`, `tests/`, the Python tools or `CMakeLists.txt` (`juce::` and `std::` names are not checked). A rename that leaves the documents behind fails here; the check cannot tell whether the prose around a name is still true, which stays the release review's job |
 
-`.github/workflows/integrity.yml` runs it on every push and pull request, in three jobs: the four checks above, cppcheck (`--enable=unusedFunction,style` on `src/` and `tests/`, with each filtered finding given its reason in the script), and a Clang build of the plugin and every test with the integrity warnings as errors (`-DNEONSYNTH_INTEGRITY=ON`), followed on a pull request by clang-tidy (`tests/clang-tidy.yaml`) on the C++ files it changes.
+`.github/workflows/integrity.yml` runs it on every push and pull request, in three jobs: the six checks above, cppcheck (`--enable=unusedFunction,style` on `src/` and `tests/`, with each filtered finding given its reason in the script), and a Clang build of the plugin and every test with the integrity warnings as errors (`-DNEONSYNTH_INTEGRITY=ON`), followed on a pull request by clang-tidy (`tests/clang-tidy.yaml`) on the C++ files it changes. Since v1.13.0 it also runs every Sunday at 18:43 UTC and on demand (Actions → Integrity → Run workflow), and those runs give clang-tidy every file in `src/` and `tests/`, so findings in files no pull request touches cannot build up.
 
 ### Sanitizers
 
@@ -549,7 +551,7 @@ The plugin's sources are grouped by job under `src/` (v1.11.0); includes name th
 | `tests/VoiceStealingTests.cpp` | The stealing order below 16 voices, against a reference synthesiser |
 | `tests/SweepTests.cpp` | Sample rates and block sizes: identical audio and exact step timing |
 | `tests/RouterTests.cpp` | The MIDI router alone: HOLD, the ENTER queue and the internal clock |
-| `tests/integrity.py` | Versions, parameters described in the manual and help page, links, constants defined once, and filtered cppcheck |
+| `tests/integrity.py` | Versions, parameters described in the manual and help page, links, constants defined once, the preset table, quoted code names, and filtered cppcheck |
 | `tests/complexity_report.py` | Lines of code and the cyclomatic complexity of every plugin function, as Markdown (`pip install lizard`); CI runs it on every push and pull request |
 | `tests/compare_versions.py` | Renders a set of sessions through two VST3 builds and requires identical audio (CI compares against the v1.6.0 release) |
 | `CMakeLists.txt` | Build config — Standalone + VST3, where JUCE comes from, `NEONSYNTH_LTO`, the two test libraries and the test programs |
@@ -568,7 +570,7 @@ The plugin's sources are grouped by job under `src/` (v1.11.0); includes name th
 | `.github/workflows/build.yml` | CI — CMake build and unit tests on Ubuntu (GCC, without LTO, through ccache), and the sanitizer build |
 | `.github/workflows/lint.yml` | CI — ruff lint of every Python file, and the code statistics report (lines of code, cyclomatic complexity per function) on the run's Summary page |
 | `.github/workflows/manual.yml` | CI — checks the manual against the version and builds its PDF |
-| `.github/workflows/integrity.yml` | CI — `tests/integrity.py`, cppcheck, and a Clang build with the integrity warnings plus clang-tidy on a pull request's changed files, on every push and pull request |
+| `.github/workflows/integrity.yml` | CI — `tests/integrity.py`, cppcheck, and a Clang build with the integrity warnings plus clang-tidy on a pull request's changed files, on every push and pull request; weekly and on demand, clang-tidy on every file |
 | `.github/workflows/release.yml` | Release on a version tag — manual check, all tests, pluginval (strictness 10), installer, GitHub Release with the manual PDF |
 | `requirements-test.in`, `.txt` | Python dependencies for `test_midi.py` and the compare test: the top-level list and the hash-pinned file compiled from it |
 | `.github/dependabot.yml` | Monthly update proposals for the three Python requirement sets |
